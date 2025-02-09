@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Municipio {
+  id_municipio     Int      @id @default(autoincrement())
+  nombre           String
+  latitud          Float
+  longitud         Float
+  codigo_municipio String   @unique
+  barrios          Barrio[]
+  propiedades      Propiedades_Existentes[]
+}
+
+model Barrio {
+  id_barrio      Int        @id @default(autoincrement())
+  nombre         String
+  codigo_barrio  String
+  id_municipio   Int
+  municipio      Municipio  @relation(fields: [id_municipio], references: [id_municipio])
+  sectores       Sector[]
+  propiedades    Propiedades_Existentes[]
+}
+
+model Sector {
+  id_sector     Int      @id @default(autoincrement())
+  nombre        String
+  codigo_sector String
+  id_barrio     Int
+  barrio        Barrio   @relation(fields: [id_barrio], references: [id_barrio])
+  propiedades   Propiedades_Existentes[]
+}
+
+model Propiedades_Existentes {
+  id           Int      @id @default(autoincrement())
+  valor        Float
+  tipo         String
+  id_municipio Int
+  id_barrio    Int
+  id_sector    Int
+  municipio    Municipio @relation(fields: [id_municipio], references: [id_municipio])
+  barrio       Barrio    @relation(fields: [id_barrio], references: [id_barrio])
+  sector       Sector    @relation(fields: [id_sector], references: [id_sector])
+  gridId       Int
+  grid         KilometerGrid @relation(fields: [gridId], references: [id])
+  geometria    Json
+  eventos      EventosPropiedades[]
+  incidentes   Incidentes[]
+}
+
+model KilometerGrid {
+  id          Int        @id @default(autoincrement())
+  usngCode    String     @unique
+  geometria   Json
+  propiedades Propiedades_Existentes[]
+  cuencas     Cuenca[]
+  eventos     Eventos[]
+}
+
+model Cuenca {
+  id             Int            @id @default(autoincrement())
+  nombre         String
+  codigo_cuenca  String         @unique
+  gridId         Int
+  geometria      Json
+  grid           KilometerGrid  @relation(fields: [gridId], references: [id])
+  incidentes     Incidentes[]
+}
+
+model Eventos {
+  id                    Int      @id @default(autoincrement())
+  notificacionId        Int
+  notificacion          Notificacion @relation(fields: [notificacionId], references: [id])
+  titulo                String
+  descripcion           String
+  fecha                 DateTime
+  incidentes            Incidentes[]
+  gridId                Int
+  grid                  KilometerGrid @relation(fields: [gridId], references: [id])
+  propiedades_afectadas EventosPropiedades[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Incidentes {
+  id              Int      @id @default(autoincrement())
+  eventoId        Int
+  evento          Eventos  @relation(fields: [eventoId], references: [id])
+  tipo            String
+  descripcion     String
+  propiedades     Propiedades_Existentes[]
+  cuencaId        Int
+  cuenca          Cuenca   @relation(fields: [cuencaId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Notificacion {
+  id        Int       @id @default(autoincrement())
+  eventos   Eventos[]
+  createdAt DateTime  @default(now())
+}
+
+model EventosPropiedades {
+  eventoId    Int
+  evento      Eventos     @relation(fields: [eventoId], references: [id])
+  propiedadId Int
+  propiedad   Propiedades_Existentes @relation(fields: [propiedadId], references: [id])
+  daños       String?
+  @@id([eventoId, propiedadId])
+}
