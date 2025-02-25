@@ -2,11 +2,18 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "tsx prisma/seed.mts",
+    "db:fresh": "npm run db:reset && npm run db:seed",
+    "seed:properties": "tsx prisma/seeds/properties.mts",
+    "seed:cuencas": "tsx prisma/seeds/cuencas.mts",
+    "seed:incidentes": "tsx prisma/seeds/incidentes.mts"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
@@ -50,8 +57,10 @@
     "framer-motion": "latest",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
+    "mgrs": "^2.1.0",
     "next": "14.2.16",
     "next-themes": "^0.4.4",
+    "node-fetch": "^3.3.2",
     "ol": "latest",
     "prisma": "latest",
     "react": "^18",
@@ -68,15 +77,17 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/node": "^22.13.1",
+    "@types/node": "^22.13.4",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "cross-env": "^7.0.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "tsx prisma/seed.mts"
   }
 }

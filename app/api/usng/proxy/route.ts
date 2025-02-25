@@ -15,57 +15,78 @@ const generateCacheKey = (geometry: string): string => {
   }
 };
 
+// The actual USNG service URL from your configuration
+const USNG_SERVICE_URL = 'https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_National_Grid_HFL_V/FeatureServer/3/query';
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const geometry = searchParams.get('geometry');
+  const url = new URL(request.url);
+  const params = url.searchParams;
   
-  if (!geometry) {
-    return NextResponse.json({ error: 'Missing geometry parameter' }, { status: 400 });
-  }
-
-  // Simple cache check
-  const cacheKey = generateCacheKey(geometry);
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return NextResponse.json(cached.data);
-  }
-
-  const url = `https://services2.arcgis.com/FiaPA4ga0iQKduv3/ArcGIS/rest/services/US_National_Grid_HFL_V/FeatureServer/3/query?${searchParams}`;
-
   try {
-    const response = await fetch(url, {
+    // Ensure all required parameters are present
+    const requiredParams = {
+      f: 'json',
+      returnGeometry: 'true',
+      spatialRel: 'esriSpatialRelIntersects',
+      outSR: '102100',
+      geometryType: 'esriGeometryEnvelope',
+      where: '1=1',
+      resultRecordCount: '8000',
+      orderByFields: 'OBJECTID',
+      outFields: 'USNG,OBJECTID',
+    };
+
+    // Add any missing required parameters
+    for (const [key, value] of Object.entries(requiredParams)) {
+      if (!params.has(key)) {
+        params.set(key, value);
+      }
+    }
+
+    const serviceUrl = `${USNG_SERVICE_URL}?${params.toString()}`;
+    console.log('Requesting from:', serviceUrl);
+
+    const response = await fetch(serviceUrl, {
       headers: {
-        'Accept-Encoding': 'gzip',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       }
     });
-
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      console.error('Service error:', {
+        status: response.status,
+        statusText: response.statusText,
+        url: serviceUrl
+      });
+      throw new Error(`Service responded with ${response.status}: ${response.statusText}`);
     }
 
     const data = await response.json();
+    console.log('Service response:', {
+      featureCount: data.features?.length || 0,
+      extent: data.extent,
+      exceededTransferLimit: data.exceededTransferLimit
+    });
 
-    // Only cache if we have features
-    if (data.features?.length > 0) {
-      cache.set(cacheKey, {
-        data,
-        timestamp: Date.now()
-      });
-    }
+    return new NextResponse(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=3600'
+      }
+    });
 
-    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching USNG data:', error);
-    
-    // Return cached data on error, even if expired
-    const staleData = cache.get(cacheKey);
-    if (staleData) {
-      return NextResponse.json(staleData.data);
-    }
-    
-    return NextResponse.json({ 
-      error: 'Failed to fetch USNG data' 
-    }, { status: 500 });
+    console.error('Proxy error:', error);
+    return new NextResponse(JSON.stringify({ 
+      error: 'Failed to fetch USNG data',
+      details: error instanceof Error ? error.message : String(error)
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 } 

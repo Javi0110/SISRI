@@ -47,29 +47,10 @@ model Propiedades_Existentes {
   barrio       Barrio    @relation(fields: [id_barrio], references: [id_barrio])
   sector       Sector    @relation(fields: [id_sector], references: [id_sector])
   gridId       Int
-  grid         KilometerGrid @relation(fields: [gridId], references: [id])
+  grid         USNGSquare @relation(fields: [gridId], references: [id])
   geometria    Json
   eventos      EventosPropiedades[]
   incidentes   Incidentes[]
-}
-
-model KilometerGrid {
-  id          Int        @id @default(autoincrement())
-  usngCode    String     @unique
-  geometria   Json
-  propiedades Propiedades_Existentes[]
-  cuencas     Cuenca[]
-  eventos     Eventos[]
-}
-
-model Cuenca {
-  id             Int            @id @default(autoincrement())
-  nombre         String
-  codigo_cuenca  String         @unique
-  gridId         Int
-  geometria      Json
-  grid           KilometerGrid  @relation(fields: [gridId], references: [id])
-  incidentes     Incidentes[]
 }
 
 model Eventos {
@@ -81,7 +62,7 @@ model Eventos {
   fecha                 DateTime
   incidentes            Incidentes[]
   gridId                Int
-  grid                  KilometerGrid @relation(fields: [gridId], references: [id])
+  grid                  USNGSquare @relation(fields: [gridId], references: [id])
   propiedades_afectadas EventosPropiedades[]
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -113,4 +94,25 @@ model EventosPropiedades {
   propiedad   Propiedades_Existentes @relation(fields: [propiedadId], references: [id])
   daños       String?
   @@id([eventoId, propiedadId])
+}
+
+model USNGSquare {
+  id          Int      @id @default(autoincrement())
+  usng        String   @unique
+  geometry    Json
+  latitudes   String   // Store as comma-separated values
+  longitudes  String   // Store as comma-separated values
+  properties  Propiedades_Existentes[]
+  cuencas     Cuenca[]
+  eventos     Eventos[]
+}
+
+model Cuenca {
+  id             Int        @id @default(autoincrement())
+  nombre         String
+  codigo_cuenca  String     @unique
+  gridId         Int
+  geometria      Json
+  grid           USNGSquare @relation(fields: [gridId], references: [id])
+  incidentes     Incidentes[]
 }

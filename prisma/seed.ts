@@ -1,6 +1,13 @@
-const { PrismaClient } = require('@prisma/client')
-const fs = require('fs')
-const path = require('path')
+import { PrismaClient } from '@prisma/client'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+import fs from 'fs'
+import path from 'path'
+import mgrs from 'mgrs'
+import fetch from 'node-fetch'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 const prisma = new PrismaClient()
 
@@ -61,20 +68,19 @@ const property_types = ["Residential", "Commercial", "Industrial", "Agricultural
 // Configuration for seeding control
 const SEED_CONFIG = {
   TABLES: {
-    KILOMETER_GRID: false,    // Set to true to populate KilometerGrid
-    MUNICIPIOS: false,        // Set to true to populate Municipios
-    PROPERTIES: false,         // Set to true to populate Properties
-    CUENCAS: true,           // Set to true to populate Cuencas
-
+    USNG_GRID: true,        // Set to true to populate USNGSquare
+    KILOMETER_GRID: true,    // Set to true to populate KilometerGrid
+    MUNICIPIOS: true,        // Set to true to populate Municipios
+    PROPERTIES: true,        // Set to true to populate Properties
+    CUENCAS: true,          // Set to true to populate Cuencas
   },
   CLEAR_BEFORE_SEED: {
     PROPERTIES: false,        // Set to true to clear properties before seeding
     CUENCAS: false,          // Set to true to clear cuencas before seeding
   },
   LIMITS: {
-    MAX_TOTAL_PROPERTIES: 200,
-    PROPERTIES_PER_GRID: 2,
-    MAX_CUENCAS_PER_GRID: 3
+    MAX_PROPERTIES_PER_GRID: 5,
+    MAX_CUENCAS_PER_GRID: 2
   },
   PROPERTY_TYPES: ["Residential", "Commercial", "Industrial", "Agricultural"]
 }
@@ -91,6 +97,47 @@ const cuencaNames = [
   "Río Guanajibo",
   "Río Portugués"
 ]
+
+// Function to convert lat/lon to USNG
+function convertLatLngToUSNG(lat: number, lon: number) {
+  try {
+    const usng = mgrs.forward([lon, lat], 4) // 4-digit precision for 1000m grid
+    return usng.replace(/\s/g, '') // Remove spaces
+
+  } catch (error) {
+    console.error(`Error converting coordinates (${lat}, ${lon}) to USNG:`, error)
+    throw error
+  }
+}
+
+// Use native fetch since it's available in Node.js now
+async function fetchUSNGFeatures(offset = 0) {
+  const url = 'https://services2.arcgis.com/FiaPA4ga0iQKduv3/ArcGIS/rest/services/US_National_Grid_HFL_V/FeatureServer/3/query?' +
+    'f=json&' +
+    'returnGeometry=true&' +
+    'spatialRel=esriSpatialRelIntersects&' +
+    'where=1=1&' +
+    'outFields=USNG&' +
+    'outSR=4326&' + // Use geographic coordinates
+    'resultOffset=' + offset + '&' +
+    'resultRecordCount=100&' +
+    'geometry=' + encodeURIComponent(JSON.stringify({
+      xmin: -67.5,
+      ymin: 17.8,
+      xmax: -65.5,
+      ymax: 18.5,
+      spatialReference: { wkid: 4326 }
+    }))
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching USNG features:', error)
+    throw error
+  }
+}
 
 async function createBarriosAndSectores(municipioId: number) {
   // Create a barrio
@@ -140,162 +187,133 @@ function generateRandomProperties(gridId: number, municipioId: number, barrioId:
 
 async function main() {
   try {
-    console.log('Starting seed process...')
+    console.log('Starting database seeding...')
 
-    // KilometerGrid Population
-    if (SEED_CONFIG.TABLES.KILOMETER_GRID) {
-      console.log('Seeding KilometerGrid...')
-      const gridDataPath = path.join(__dirname, 'grid_Ksquares.json')
-      const gridData = JSON.parse(fs.readFileSync(gridDataPath, 'utf8'))
+    // First, clear only the USNG and KilometerGrid data
+    // Don't delete Propiedades_Existentes as it depends on other tables
+    await prisma.$transaction([
+      prisma.uSNGSquare.deleteMany(),
+      prisma.kilometerGrid.deleteMany(),
+    ])
 
-      for (const grid of gridData) {
-        await prisma.kilometerGrid.upsert({
-          where: { usngCode: grid.usng },
-          update: {
-            geometria: {
-              type: "Point",
-              coordinates: [grid.longitud, grid.latitud]
-            }
-          },
-          create: {
-            usngCode: grid.usng,
-            geometria: {
-              type: "Point",
-              coordinates: [grid.longitud, grid.latitud]
-            }
-          }
-        })
-      }
-      console.log('KilometerGrid seeding completed')
-    }
+    console.log('Fetching USNG grid data...')
+    let offset = 0
+    let hasMoreFeatures = true
+    const processedUSNG = new Set()
 
-    // Get existing grids for properties and cuencas
-    const grids = await prisma.kilometerGrid.findMany({
-      select: {
-        id: true,
-        usngCode: true,
-        geometria: true
-      },
-      take: Math.ceil(SEED_CONFIG.LIMITS.MAX_TOTAL_PROPERTIES / SEED_CONFIG.LIMITS.PROPERTIES_PER_GRID)
-    })
-
-    if (grids.length === 0) {
-      throw new Error('No KilometerGrid records found. Please populate KilometerGrid first.')
-    }
-
-    // Properties Population
-    if (SEED_CONFIG.TABLES.PROPERTIES) {
-      if (SEED_CONFIG.CLEAR_BEFORE_SEED.PROPERTIES) {
-        console.log('Clearing existing properties...')
-        await prisma.propiedades_Existentes.deleteMany({})
+    while (hasMoreFeatures) {
+      const data = await fetchUSNGFeatures(offset) as { features?: { attributes: any; geometry: any }[]; exceededTransferLimit?: boolean }
+      
+      if (!data.features?.length) {
+        hasMoreFeatures = false
+        continue
       }
 
-      console.log(`Creating properties for ${grids.length} grids...`)
-      let propertyCount = 0
+      for (const feature of data.features) {
+        try {
+          const usng = feature.attributes.USNG
+          if (processedUSNG.has(usng)) continue
 
-      for (const grid of grids) {
-        if (propertyCount >= SEED_CONFIG.LIMITS.MAX_TOTAL_PROPERTIES) break
+          // Extract coordinates from the geometry
+          const rings = feature.geometry.rings[0]
+          const latitudes = rings.map((coord: number[]) => coord[1])
+          const longitudes = rings.map((coord: number[]) => coord[0])
 
-        const randomMunicipio = await prisma.municipio.findFirst({
-          select: {
-            id_municipio: true,
-            barrios: {
-              select: {
-                id_barrio: true,
-                sectores: {
-                  select: {
-                    id_sector: true
-                  }
-                }
+          // Calculate center point
+          const centerLat = latitudes.reduce((a: number, b: number) => a + b) / latitudes.length
+          const centerLon = longitudes.reduce((a: number, b: number) => a + b) / longitudes.length
+
+          // Create USNG square
+          await prisma.uSNGSquare.create({
+            data: {
+              usng,
+              geometry: feature.geometry,
+              latitudes: latitudes.join(','),
+              longitudes: longitudes.join(',')
+            }
+          })
+
+          // Create corresponding kilometer grid
+          await prisma.kilometerGrid.create({
+            data: {
+              usngCode: usng,
+              geometria: {
+                type: "Point",
+                coordinates: [centerLon, centerLat]
               }
             }
-          },
-          orderBy: {
-            id_municipio: 'asc'
+          })
+
+          processedUSNG.add(usng)
+          
+          if (processedUSNG.size % 10 === 0) {
+            console.log(`Processed ${processedUSNG.size} USNG squares`)
           }
-        })
-
-        if (!randomMunicipio || !randomMunicipio.barrios[0]) continue
-
-        const barrio = randomMunicipio.barrios[0]
-        const sector = barrio.sectores[0]
-
-        for (let i = 0; i < SEED_CONFIG.LIMITS.PROPERTIES_PER_GRID; i++) {
-          if (propertyCount >= SEED_CONFIG.LIMITS.MAX_TOTAL_PROPERTIES) break
-
-          try {
-            await prisma.propiedades_Existentes.create({
-              data: {
-                valor: Math.floor(Math.random() * 450000) + 50000,
-                tipo: SEED_CONFIG.PROPERTY_TYPES[Math.floor(Math.random() * SEED_CONFIG.PROPERTY_TYPES.length)],
-                id_municipio: randomMunicipio.id_municipio,
-                id_barrio: barrio.id_barrio,
-                id_sector: sector.id_sector,
-                gridId: grid.id,
-                geometria: {
-                  type: "Point",
-                  coordinates: [
-                    Number(grid.geometria.coordinates[0]),
-                    Number(grid.geometria.coordinates[1])
-                  ]
-                }
-              }
-            })
-            propertyCount++
-            
-            if (propertyCount % 10 === 0) {
-              console.log(`Created ${propertyCount} properties...`)
-            }
-          } catch (error) {
-            console.error(`Error creating property for grid ${grid.usngCode}:`, error)
-            continue
-          }
+        } catch (error) {
+          console.error('Error processing USNG feature:', error)
+          console.error('Feature data:', feature)
+          continue // Continue with next feature even if one fails
         }
       }
-      console.log(`Finished creating ${propertyCount} properties.`)
+      offset += data.features.length
+      hasMoreFeatures = data.exceededTransferLimit ?? false
+      console.log(`Processed batch of ${data.features.length} features. Total: ${processedUSNG.size}`)
     }
 
-    // Cuencas Population
-    if (SEED_CONFIG.TABLES.CUENCAS) {
-      if (SEED_CONFIG.CLEAR_BEFORE_SEED.CUENCAS) {
-        console.log('Clearing existing cuencas...')
-        await prisma.cuenca.deleteMany({})
+    console.log(`Completed seeding ${processedUSNG.size} USNG squares`)
+
+    // Create properties and cuencas for each grid
+    const grids = await prisma.kilometerGrid.findMany()
+
+    for (const grid of grids) {
+      // Create properties
+      if (SEED_CONFIG.TABLES.PROPERTIES) {
+        const numProperties = Math.floor(Math.random() * SEED_CONFIG.LIMITS.MAX_PROPERTIES_PER_GRID) + 1
+        
+        for (let i = 0; i < numProperties; i++) {
+          await prisma.propiedades_Existentes.create({
+            data: {
+              valor: Math.floor(Math.random() * 450000) + 50000,
+              tipo: SEED_CONFIG.PROPERTY_TYPES[Math.floor(Math.random() * SEED_CONFIG.PROPERTY_TYPES.length)],
+              id_municipio: 1, // You'll need to create municipalities first
+              id_barrio: 1,   // You'll need to create barrios first
+              id_sector: 1,   // You'll need to create sectors first
+              gridId: grid.id,
+              geometria: {
+                type: "Point",
+                coordinates: [
+                  (grid.geometria as any)?.coordinates?.[0] ?? 0,
+                  (grid.geometria as any)?.coordinates?.[1] ?? 0
+                ]
+              }
+            }
+          })
+        }
       }
 
-      console.log('Start seeding cuencas...')
-      for (const grid of grids) {
+      // Create cuencas
+      if (SEED_CONFIG.TABLES.CUENCAS) {
         const numCuencas = Math.floor(Math.random() * SEED_CONFIG.LIMITS.MAX_CUENCAS_PER_GRID) + 1
         
         for (let i = 0; i < numCuencas; i++) {
-          const randomCuencaName = cuencaNames[Math.floor(Math.random() * cuencaNames.length)]
-          
-          try {
-            await prisma.cuenca.create({
-              data: {
-                nombre: randomCuencaName,
-                codigo_cuenca: `CUE-${grid.usngCode}-${i + 1}`,
-                gridId: grid.id,
-                geometria: {
-                  type: "Point",
-                  coordinates: [
-                    Number(grid.geometria.coordinates[0]),
-                    Number(grid.geometria.coordinates[1])
-                  ]
-                }
+          await prisma.cuenca.create({
+            data: {
+              nombre: `Cuenca ${i + 1}`,
+              codigo_cuenca: `CUE-${grid.usngCode}-${i + 1}`,
+              gridId: grid.id,
+              geometria: {
+                type: "Polygon",
+                coordinates: (grid.geometria as any)?.coordinates ?? []
               }
-            })
-          } catch (error) {
-            console.error(`Error creating cuenca for grid ${grid.usngCode}:`, error)
-            continue
-          }
+            }
+          })
         }
       }
-      console.log('Cuencas seeding completed')
     }
 
-    console.log('Seeding process finished.')
+    console.log('Database seeding completed successfully')
   } catch (error) {
-    console.error('Error in main:', error)
+    console.error('Error seeding database:', error)
     throw error
   } finally {
     await prisma.$disconnect()

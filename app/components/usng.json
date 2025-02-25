@@ -1,0 +1,397 @@
+{
+    "currentVersion": 11.2,
+    "id": 3,
+    "name": "USNG 1000m",
+    "type": "Feature Layer",
+    "serviceItemId": "d96095fb637846889fb0e46ce69e3967",
+    "cacheMaxAge": 3600,
+    "isView": true,
+    "isUpdatableView": true,
+    "sourceSchemaChangesAllowed": true,
+    "displayField": "Shape_Length",
+    "description": "\u003CDIV STYLE=\"text-align:Left;font-size:12pt\"\u003E\u003CP\u003E\u003CSPAN STYLE=\"font-size:16pt\"\u003EUSNG is standard that established a nationally consistent grid reference system. It provides a seamless plane coordinate system across jurisdictional boundaries and map scales; it enables precise position referencing with GPS, web map portals, and hardcopy maps. USNG enables a practical system of geo-addresses and a universal map index. This data resides in the GCS 1983 coordinate system and is most suitable for viewing over North America. This layer shows 1,000-meter grid squares.\u003C/SPAN\u003E\u003C/P\u003E\u003C/DIV\u003E",
+    "copyrightText": "National Geospatial-Intelligence Agency (NGA); Delta State University; Esri",
+    "defaultVisibility": true,
+    "editingInfo": {
+      "lastEditDate": 1734391398771,
+      "schemaLastEditDate": 1734379327823,
+      "dataLastEditDate": 1654786221099
+    },
+    "relationships": [],
+    "isDataVersioned": false,
+    "hasContingentValuesDefinition": false,
+    "supportsAppend": true,
+    "supportsCalculate": true,
+    "supportsASyncCalculate": true,
+    "supportsTruncate": false,
+    "supportsAttachmentsByUploadId": true,
+    "supportsAttachmentsResizing": true,
+    "supportsRollbackOnFailureParameter": true,
+    "supportsStatistics": true,
+    "supportsExceedsLimitStatistics": true,
+    "supportsAdvancedQueries": true,
+    "supportsValidateSql": true,
+    "supportsCoordinatesQuantization": true,
+    "supportsLayerOverrides": true,
+    "supportsTilesAndBasicQueriesMode": true,
+    "supportsFieldDescriptionProperty": true,
+    "supportsQuantizationEditMode": true,
+    "supportsApplyEditsWithGlobalIds": false,
+    "supportsMultiScaleGeometry": true,
+    "supportsReturningQueryGeometry": true,
+    "hasGeometryProperties": true,
+    "geometryProperties": {
+      "shapeAreaFieldName": "Shape__Area",
+      "shapeLengthFieldName": "Shape__Length",
+      "units": "esriDecimalDegrees"
+    },
+    "advancedQueryCapabilities": {
+      "supportsPagination": true,
+      "supportsQueryAttachmentsCountOnly": true,
+      "supportsPaginationOnAggregatedQueries": true,
+      "supportsQueryRelatedPagination": true,
+      "supportsQueryWithDistance": true,
+      "supportsReturningQueryExtent": true,
+      "supportsStatistics": true,
+      "supportsOrderBy": true,
+      "supportsDistinct": true,
+      "supportsQueryWithResultType": true,
+      "supportsSqlExpression": true,
+      "supportsTimeRelation": true,
+      "supportsAdvancedQueryRelated": true,
+      "supportsCountDistinct": true,
+      "supportsPercentileStatistics": true,
+      "supportsApproxPercentileStatistics": true,
+      "supportsSpatialAggregationStatistics": true,
+      "supportsTrueCurve": true,
+      "supportedSpatialAggregationStatistics": [
+        "EnvelopeAggregate",
+        "CentroidAggregate",
+        "ConvexHullAggregate"
+      ],
+      "supportsLod": true,
+      "supportsQueryWithLodSR": false,
+      "supportedLodTypes": [
+        "geohash"
+      ],
+      "supportsReturningGeometryCentroid": true,
+      "supportsReturningGeometryEnvelope": true,
+      "supportsReturningGeometryProperties": true,
+      "supportsQueryWithDatumTransformation": true,
+      "supportsCurrentUserQueries": true,
+      "supportsHavingClause": true,
+      "supportsOutFieldSQLExpression": true,
+      "supportsMaxRecordCountFactor": true,
+      "supportsTopFeaturesQuery": true,
+      "supportsDisjointSpatialRel": true,
+      "supportsQueryWithCacheHint": true,
+      "supportedOperationsWithCacheHint": [
+        "query",
+        "queryTopFilter",
+        "queryAnalytics",
+        "queryAttachments",
+        "queryRelated",
+        "queryBins"
+      ],
+      "supportsQueryAnalytic": true,
+      "supportsQueryBins": true,
+      "supportsDefaultSR": true,
+      "supportsFullTextSearch": true,
+      "supportsFullTextAccentSensitivity": true,
+      "supportsFullTextStopWords": true
+    },
+    "advancedQueryAnalyticCapabilities": {
+      "supportsLinearRegression": true,
+      "supportsAsync": true,
+      "supportsPercentileAnalytic": true
+    },
+    "queryBinsCapabilities": {
+      "supportsAsync": true,
+      "supportsAutoIntervalBin": true,
+      "supportsFixedIntervalBin": true,
+      "supportsFixedBoundariesBin": true,
+      "supportsDateBin": true,
+      "supportedStatisticTypes": [
+        "COUNT",
+        "SUM",
+        "AVG",
+        "VAR",
+        "STDDEV",
+        "MIN",
+        "MAX",
+        "PERCENTILE_CONT",
+        "PERCENTILE_DISC",
+        "APPROX_PERCENTILE_CONT",
+        "APPROX_PERCENTILE_DISC",
+        "CentroidAggregate",
+        "EnvelopeAggregate",
+        "ConvexHullAggregate"
+      ]
+    },
+    "advancedEditingCapabilities": {
+      "supportedSqlFormatsInCalculate": [
+        "standard"
+      ],
+      "supportsAsyncApplyEdits": true,
+      "supportsReturnEditResults": true,
+      "supportsApplyEditsbyUploadID": true,
+      "supportedApplyEditsUploadIDFormats": "JSON"
+    },
+    "infoInEstimates": [
+      "extent",
+      "count"
+    ],
+    "useStandardizedQueries": true,
+    "geometryType": "esriGeometryPolygon",
+    "minScale": 80000,
+    "maxScale": 6428,
+    "extent": {
+      "xmin": -179.343191463,
+      "ymin": 17.843922277,
+      "xmax": 179.829139477,
+      "ymax": 71.4084878180001,
+      "spatialReference": {
+        "wkid": 4269,
+        "latestWkid": 4269
+      }
+    },
+    "drawingInfo": {
+      "renderer": {
+        "type": "simple",
+        "symbol": {
+          "color": null,
+          "outline": {
+            "color": [255, 0, 0, 255],
+            "width": 1.5,
+            "type": "esriSLS",
+            "style": "esriSLSSolid"
+          },
+          "type": "esriSFS",
+          "style": "esriSFSSolid"
+        }
+      },
+      "labelingInfo": [
+        {
+          "labelExpression": null,
+          "labelExpressionInfo": {
+            "expression": "$feature[\"USNG\"]",
+            "value": "{USNG}"
+          },
+          "useCodedValues": true,
+          "maxScale": 4402,
+          "minScale": 86488,
+          "where": null,
+          "labelPlacement": "esriServerPolygonPlacementAlwaysHorizontal",
+          "symbol": {
+            "color": [255, 0, 0, 255],
+            "type": "esriTS",
+            "backgroundColor": null,
+            "borderLineColor": null,
+            "haloSize": 0.75,
+            "haloColor": [255, 255, 255, 255],
+            "horizontalAlignment": "center",
+            "rightToLeft": false,
+            "angle": 0,
+            "xoffset": 0,
+            "yoffset": 0,
+            "text": "",
+            "rotated": false,
+            "kerning": true,
+            "font": {
+              "size": 7.5,
+              "style": "normal",
+              "decoration": "none",
+              "weight": "normal",
+              "family": "Arial"
+            }
+          }
+        }
+      ],
+      "transparency": 0
+    },
+    "allowGeometryUpdates": true,
+    "supportedCurveTypes": [
+      "esriGeometryCircularArc"
+    ],
+    "allowTrueCurvesUpdates": true,
+    "onlyAllowTrueCurveUpdatesByTrueCurveClients": false,
+    "hasAttachments": false,
+    "viewSourceHasAttachments": false,
+    "htmlPopupType": "esriServerHTMLPopupTypeAsHTMLText",
+    "hasMetadata": true,
+    "hasM": false,
+    "hasZ": true,
+    "enableZDefaults": true,
+    "zDefault": 0,
+    "objectIdField": "OBJECTID",
+    "uniqueIdField": {
+      "name": "OBJECTID",
+      "isSystemMaintained": true
+    },
+    "globalIdField": "",
+    "typeIdField": "",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "alias": "Object ID",
+        "sqlType": "sqlTypeOther",
+        "nullable": false,
+        "editable": false,
+        "isViewOverride": true,
+        "domain": null,
+        "defaultValue": null,
+        "description": "{\"value\":\"Object ID\",\"fieldValueType\":\"uniqueIdentifier\"}"
+      },
+      {
+        "name": "GRID1MIL",
+        "type": "esriFieldTypeString",
+        "alias": "Grid - 1,000,000 (meters)",
+        "sqlType": "sqlTypeOther",
+        "length": 3,
+        "nullable": true,
+        "editable": true,
+        "isViewOverride": true,
+        "domain": null,
+        "defaultValue": null,
+        "description": "{\"value\":\"Grid - 1,000,000 (meters)\",\"fieldValueType\":\"uniqueIdentifier\"}"
+      },
+      {
+        "name": "GRID100K",
+        "type": "esriFieldTypeString",
+        "alias": "Grid - 100,000 (meters)",
+        "sqlType": "sqlTypeOther",
+        "length": 2,
+        "nullable": true,
+        "editable": true,
+        "isViewOverride": true,
+        "domain": null,
+        "defaultValue": null,
+        "description": "{\"value\":\"Grid - 100,000 (meters)\",\"fieldValueType\":\"uniqueIdentifier\"}"
+      },
+      {
+        "name": "USNG",
+        "type": "esriFieldTypeString",
+        "alias": "United States National Grid (USNG)",
+        "sqlType": "sqlTypeOther",
+        "length": 15,
+        "nullable": true,
+        "editable": true,
+        "isViewOverride": true,
+        "domain": null,
+        "defaultValue": null,
+        "description": "{\"value\":\"United States National Grid (USNG)\",\"fieldValueType\":\"uniqueIdentifier\"}"
+      },
+      {
+        "name": "UTM_Zone",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "Universal Transverse Mercator (UTM) Zone",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "isViewOverride": true,
+        "domain": null,
+        "defaultValue": null,
+        "description": "{\"value\":\"Universal Transverse Mercator (UTM) Zone\",\"fieldValueType\":\"typeOrCategory\"}"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "PK__US_NATIO__F4B70D855909B0E0",
+        "fields": "OBJECTID",
+        "isAscending": true,
+        "isUnique": true,
+        "description": "",
+        "indexType": "Attribute"
+      },
+      {
+        "name": "user_38067.US_NATIONAL_GRID_USNG_1000M_Shape_sidx",
+        "fields": "Shape",
+        "isAscending": true,
+        "isUnique": false,
+        "description": "",
+        "indexType": "Spatial"
+      },
+      {
+        "name": "IX_US_NATIONAL_GRID_USNG_1000M_USNG_ASC",
+        "fields": "USNG",
+        "isAscending": true,
+        "isUnique": false,
+        "description": "Layer settings",
+        "indexType": "Attribute"
+      },
+      {
+        "name": "IX_US_NATIONAL_GRID_USNG_1000M_UTM_Zone_ASC",
+        "fields": "UTM_Zone",
+        "isAscending": true,
+        "isUnique": false,
+        "description": "Layer settings",
+        "indexType": "Attribute"
+      },
+      {
+        "name": "IX_US_NATIONAL_GRID_USNG_1000M_GRID1MIL_ASC",
+        "fields": "GRID1MIL",
+        "isAscending": true,
+        "isUnique": false,
+        "description": "Layer settings",
+        "indexType": "Attribute"
+      },
+      {
+        "name": "IX_US_NATIONAL_GRID_USNG_1000M_GRID100K_ASC",
+        "fields": "GRID100K",
+        "isAscending": true,
+        "isUnique": false,
+        "description": "Layer settings",
+        "indexType": "Attribute"
+      }
+    ],
+    "dateFieldsTimeReference": {
+      "timeZone": "UTC",
+      "respectsDaylightSaving": false
+    },
+    "preferredTimeReference": null,
+    "types": [],
+    "templates": [
+      {
+        "name": "USNG 1000m",
+        "description": "",
+        "drawingTool": "esriFeatureEditToolPolygon",
+        "prototype": {
+          "attributes": {
+            "Status": 0,
+            "UTM_Zone": null,
+            "GRID1MIL": null,
+            "GRID100K": null,
+            "USNG": null
+          }
+        }
+      }
+    ],
+    "supportedQueryFormats": "JSON, geoJSON, PBF",
+    "supportedAppendFormats": "sqlite,geoPackage,shapefile,filegdb,featureCollection,geojson,csv,excel,jsonl,featureService,pbf",
+    "supportedAppendSourceFilterFormats": "sqlite,geoPackage,shapefile,filegdb,featureService",
+    "supportedExportFormats": "csv,shapefile,sqlite,geoPackage,filegdb,featureCollection,geojson,kml,excel",
+    "supportedConvertFileFormats": "JSON,PBF",
+    "supportedConvertContentFormats": "LayerEditCollection,FeatureCollection",
+    "supportedSpatialRelationships": [
+      "esriSpatialRelIntersects",
+      "esriSpatialRelContains",
+      "esriSpatialRelCrosses",
+      "esriSpatialRelEnvelopeIntersects",
+      "esriSpatialRelIndexIntersects",
+      "esriSpatialRelOverlaps",
+      "esriSpatialRelTouches",
+      "esriSpatialRelWithin",
+      "esriSpatialRelDisjoint",
+      "esriSpatialRelRelation"
+    ],
+    "supportedContingentValuesFormats": "JSON, PBF",
+    "supportedSyncDataOptions": 260,
+    "hasStaticData": true,
+    "maxRecordCount": 2000,
+    "standardMaxRecordCount": 4000,
+    "standardMaxRecordCountNoGeometry": 32000,
+    "tileMaxRecordCount": 4000,
+    "maxRecordCountFactor": 1,
+    "capabilities": "Query,Extract"
+  }

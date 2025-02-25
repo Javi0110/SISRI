@@ -33,6 +33,15 @@ import * as XLSX from 'xlsx'
 
 // Define available tables and their fields
 const tables = {
+  usng_search: {
+    name: "USNG Grid Search",
+    fields: [
+      { name: "usng", label: "USNG Grid", type: "string" },
+      { name: "properties", label: "Properties", type: "relation" },
+      { name: "events", label: "Events", type: "relation" },
+      { name: "incidents", label: "Incidents", type: "relation" }
+    ]
+  },
   propiedades: {
     name: "Properties",
     fields: [
@@ -42,6 +51,7 @@ const tables = {
       { name: "municipio", label: "Municipality", type: "relation" },
       { name: "barrio", label: "Neighborhood", type: "relation" },
       { name: "sector", label: "Sector", type: "relation" },
+      { name: "grid", label: "USNG Grid", type: "relation" },
     ]
   },
   eventos: {
@@ -117,6 +127,14 @@ const formatCellValue = (value: any): string => {
   return String(value)
 }
 
+// Add USNG specific interface
+interface USNGSearchResult {
+  usng: string;
+  properties: any[];
+  events: any[];
+  incidents: any[];
+}
+
 export function DataAnalytics() {
   const [selectedTable, setSelectedTable] = useState<string>("")
   const [filters, setFilters] = useState<Filter[]>([])
@@ -125,6 +143,7 @@ export function DataAnalytics() {
   const [loading, setLoading] = useState(false)
   const [selectedFields, setSelectedFields] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [usngResults, setUSNGResults] = useState<USNGSearchResult | null>(null);
 
   const handleSearch = async () => {
     if (!selectedTable || selectedFields.length === 0) {
@@ -187,8 +206,184 @@ export function DataAnalytics() {
     XLSX.writeFile(wb, `${selectedTable}_export.xlsx`)
   }
 
+  // Add USNG search function
+  const handleUSNGSearch = async (usngValue: string) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/analytics/usng-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          usng: usngValue
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setError(data.error);
+        setUSNGResults(null);
+      } else {
+        setUSNGResults(data);
+      }
+    } catch (error) {
+      setError('Failed to fetch USNG results. Please try again.');
+      console.error('USNG Search error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add USNG Results component
+  const USNGResultsView = ({ data }: { data: USNGSearchResult }) => {
+    return (
+      <Tabs defaultValue="properties" className="w-full">
+        <TabsList>
+          <TabsTrigger value="properties">
+            Properties ({data.properties.length})
+          </TabsTrigger>
+          <TabsTrigger value="events">
+            Events ({data.events.length})
+          </TabsTrigger>
+          <TabsTrigger value="incidents">
+            Incidents ({data.incidents.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="properties">
+          <Card>
+            <CardHeader>
+              <CardTitle>Properties in {data.usng}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Value</TableHead>
+                    <TableHead>Municipality</TableHead>
+                    <TableHead>Neighborhood</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.properties.map((prop) => (
+                    <TableRow key={prop.id}>
+                      <TableCell>{prop.id}</TableCell>
+                      <TableCell>{prop.tipo}</TableCell>
+                      <TableCell>{prop.valor}</TableCell>
+                      <TableCell>{prop.municipio}</TableCell>
+                      <TableCell>{prop.barrio}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="events">
+          <Card>
+            <CardHeader>
+              <CardTitle>Events in {data.usng}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell>{event.id}</TableCell>
+                      <TableCell>{event.name}</TableCell>
+                      <TableCell>{formatCellValue(event.date)}</TableCell>
+                      <TableCell>{event.status}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="incidents">
+          <Card>
+            <CardHeader>
+              <CardTitle>Incidents in {data.usng}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.incidents.map((incident) => (
+                    <TableRow key={incident.id}>
+                      <TableCell>{incident.id}</TableCell>
+                      <TableCell>{incident.type}</TableCell>
+                      <TableCell>{incident.description}</TableCell>
+                      <TableCell>{formatCellValue(incident.date)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {/* USNG Search Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>USNG Grid Search</CardTitle>
+          <CardDescription>
+            Search for all information within a specific USNG grid
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <Input
+              placeholder="Enter USNG grid code"
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleUSNGSearch(e.target.value);
+                }
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* USNG Results */}
+      {usngResults && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <USNGResultsView data={usngResults} />
+        </motion.div>
+      )}
+
       {/* Table Selection */}
       <Card>
         <CardHeader>
