@@ -14,6 +14,7 @@ import { motion } from "framer-motion"
 import EsriJSON from 'ol/format/EsriJSON'
 import { bbox } from 'ol/loadingstrategy'
 import { intersects } from 'ol/extent'
+import { defaults as defaultInteractions } from 'ol/interaction'
 
 // Declare global window type
 declare global {
@@ -58,12 +59,12 @@ const PUERTO_RICO_EXTENT = {
   spatialReference: { wkid: 3857 }
 }
 
-// Constants for USNG layer
+// Constants for USNG layer - optimized for full coverage
 const USNG_LAYER_CONFIG = {
-  BATCH_SIZE: 500,
-  BUFFER_SIZE: 200,
-  MIN_RESOLUTION: 50, // Adjust this value to control when labels appear
-  LABEL_MIN_ZOOM: 12  // Minimum zoom level for labels
+  BATCH_SIZE: 8000,
+  BUFFER_SIZE: 2000, // Significantly increased buffer
+  MIN_RESOLUTION: 40,
+  LABEL_MIN_ZOOM: 10
 }
 
 // Styles
@@ -72,302 +73,231 @@ const municipioStyle = new Style({
   stroke: new Stroke({ color: COLORS.MUNICIPIO.STROKE, width: 1 })
 })
 
-// Improved USNG style function
+// Improved USNG style function with better performance
 const createUSNGStyle = (feature: any, resolution: number) => {
   const usng = feature.get('USNG')
-  const styles = [
-    new Style({
+  
+  // Base style - always applied
+  const baseStyle = new Style({
       stroke: new Stroke({
         color: COLORS.USNG.STROKE,
-        width: 1
+      width: 1.5
       }),
       fill: new Fill({
         color: COLORS.USNG.FILL
       })
     })
-  ]
 
-  // Only add labels at certain zoom levels
+  // Only create text style at appropriate zoom levels
   if (resolution < USNG_LAYER_CONFIG.MIN_RESOLUTION) {
-    styles.push(new Style({
+    const textStyle = new Style({
       text: new Text({
         text: usng || '',
-        font: '10px Arial',
+        font: '11px Arial',
         fill: new Fill({ color: COLORS.USNG.TEXT }),
         stroke: new Stroke({
           color: COLORS.USNG.TEXT_STROKE,
-          width: 2
+          width: 2.5
         }),
         textAlign: 'center',
         textBaseline: 'middle',
         overflow: true,
-        scale: Math.min(1.5, 1 / (resolution * 0.1))
+        scale: Math.min(1.8, 1 / (resolution * 0.08))
       })
-    }))
+    })
+    
+    return [baseStyle, textStyle]
   }
 
-  return styles
+  return [baseStyle]
 }
 
-// Update the USNG Source configuration
+// Completely revised USNG Source configuration for full Puerto Rico coverage
 const usngSource = new VectorSource({
   format: new EsriJSON(),
   loader: async (extent, resolution, projection) => {
+    // Only load data at appropriate zoom levels
+    const view = window.mapInstance?.getView();
+    const zoom = view?.getZoom() || 0;
+    
+    if (zoom < ZOOM_LEVELS.USNG_MIN) return;
+    
     try {
-      // Define smaller chunks for Puerto Rico area
-      const chunks = [
-        // Row 1 (Far North)
-        {
-          xmin: -67.4,
-          ymin: 19.0,
-          xmax: -66.8,
-          ymax: 19.4
-        },
-        {
-          xmin: -67.4,
-          ymin: 19.0,
-          xmax: -66.8,
-          ymax: 19.4
-        },
-        {
-          xmin: -67.4,
-          ymin: 19.0,
-          xmax: -66.8,
-          ymax: 19.4
-        },
-        {
-          xmin: -66.8,
-          ymin: 19.0,
-          xmax: -66.2,
-          ymax: 19.4
-        },
-        {
-          xmin: -66.2,
-          ymin: 19.0,
-          xmax: -65.6,
-          ymax: 19.4
-        },
-        {
-          xmin: -65.6,
-          ymin: 19.0,
-          xmax: -65.0,
-          ymax: 19.4
-        },
-        // Row 2 (North)
-        {
-          xmin: -67.4,
-          ymin: 18.6,
-          xmax: -66.8,
-          ymax: 19.0
-        },
-        {
-          xmin: -67.4,
-          ymin: 18.6,
-          xmax: -66.8,
-          ymax: 19.0
-        },
-        {
-          xmin: -66.8,
-          ymin: 18.6,
-          xmax: -66.2,
-          ymax: 19.0
-        },
-        {
-          xmin: -66.2,
-          ymin: 18.6,
-          xmax: -65.6,
-          ymax: 19.0
-        },
-        {
-          xmin: -65.6,
-          ymin: 18.6,
-          xmax: -65.0,
-          ymax: 19.0
-        },
-        // Row 3 (Middle)
-        {
-          xmin: -67.4,
-          ymin: 18.2,
-          xmax: -66.8,
-          ymax: 18.6
-        },
-        {
-          xmin: -66.8,
-          ymin: 18.2,
-          xmax: -66.2,
-          ymax: 18.6
-        },
-        {
-          xmin: -66.2,
-          ymin: 18.2,
-          xmax: -65.6,
-          ymax: 18.6
-        },
-        {
-          xmin: -65.6,
-          ymin: 18.2,
-          xmax: -65.0,
-          ymax: 18.6
-        },
-        // Row 4 (South)
-        {
-          xmin: -67.4,
-          ymin: 17.8,
-          xmax: -66.8,
-          ymax: 18.2
-        },
-        {
-          xmin: -66.8,
-          ymin: 17.8,
-          xmax: -66.2,
-          ymax: 18.2
-        },
-        {
-          xmin: -66.2,
-          ymin: 17.8,
-          xmax: -65.6,
-          ymax: 18.2
-        },
-        {
-          xmin: -65.6,
-          ymin: 17.8,
-          xmax: -65.0,
-          ymax: 18.2
-        },
-        // Row 5 (Far South)
-        {
-          xmin: -67.4,
-          ymin: 17.4,
-          xmax: -66.8,
-          ymax: 17.8
-        },
-        {
-          xmin: -66.8,
-          ymin: 17.4,
-          xmax: -66.2,
-          ymax: 17.8
-        },
-        {
-          xmin: -66.2,
-          ymin: 17.4,
-          xmax: -65.6,
-          ymax: 17.8
-        },
-        {
-          xmin: -65.6,
-          ymin: 17.4,
-          xmax: -65.0,
-          ymax: 17.8
-        },
-        // Eastern areas (Vieques and Culebra)
-        {
-          xmin: -65.6,
-          ymin: 18.0,
-          xmax: -65.0,
-          ymax: 18.4
-        },
-        {
-          xmin: -65.4,
-          ymin: 18.2,
-          xmax: -64.8,
-          ymax: 18.6
-        },
-        {
-          xmin: -65.0,
-          ymin: 18.0,
-          xmax: -64.4,
-          ymax: 18.4
-        },
-        {
-          xmin: -65.0,
-          ymin: 18.4,
-          xmax: -64.4,
-          ymax: 18.8
-        },
-        // Additional Eastern chunks
-        {
-          xmin: -65.0,
-          ymin: 17.6,
-          xmax: -64.4,
-          ymax: 18.0
-        },
-        {
-          xmin: -64.8,
-          ymin: 18.2,
-          xmax: -64.2,
-          ymax: 18.6
-        },
-        // Far Eastern chunks
-        {
-          xmin: -64.4,
-          ymin: 18.0,
-          xmax: -63.8,
-          ymax: 18.4
-        },
-        {
-          xmin: -64.4,
-          ymin: 18.4,
-          xmax: -63.8,
-          ymax: 18.8
-        },
-        // Western extension
-        {
-          xmin: -67.8,
-          ymin: 18.0,
-          xmax: -67.2,
-          ymax: 18.4
-        },
-        {
-          xmin: -67.8,
-          ymin: 18.4,
-          xmax: -67.2,
-          ymax: 18.8
-        }
-      ];
-
-      for (const chunk of chunks) {
-        const url = '/api/usng/proxy?' + new URLSearchParams({
-          f: 'json',
-          returnGeometry: 'true',
-          spatialRel: 'esriSpatialRelIntersects',
-          where: "1=1",
-          outFields: '*',
-          outSR: '102100',
-          resultRecordCount: '8000',
-          geometryType: 'esriGeometryEnvelope',
-          geometry: JSON.stringify({
-            ...chunk,
-            spatialReference: { wkid: 4269 }
-          })
-        });
-
-        console.log('Fetching USNG features for chunk:', chunk);
-        const response = await fetch(url);
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Service error:', errorData);
-          continue; // Continue with next chunk even if this one fails
-        }
-        
-        const data = await response.json();
-        console.log('USNG Response for chunk:', {
-          chunk,
-          featureCount: data.features?.length || 0
-        });
-        
-        if (data.features?.length > 0) {
-          const features = new EsriJSON().readFeatures(data, {
+      // Track processed features to avoid duplicates
+      const processedIds = new Set();
+      
+      // Helper function to fetch and process USNG data
+      const fetchUSNGData = async (params, sectionName = "Unknown") => {
+        try {
+          const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params));
+          
+          if (!response.ok) {
+            console.error(`Service error for ${sectionName}`);
+            return 0;
+          }
+          
+          const data = await response.json();
+          
+          if (!data || !data.features?.length) return 0;
+          
+          // Filter out duplicates
+          const uniqueFeatures = data.features.filter(feature => {
+            const id = feature.attributes.OBJECTID;
+            if (processedIds.has(id)) return false;
+            processedIds.add(id);
+            return true;
+          });
+          
+          if (uniqueFeatures.length === 0) return 0;
+          
+          const uniqueData = { ...data, features: uniqueFeatures };
+          const features = new EsriJSON().readFeatures(uniqueData, {
             featureProjection: projection,
             dataProjection: 'EPSG:4269'
           });
+          
           usngSource.addFeatures(features);
+          console.log(`Added ${features.length} USNG features for ${sectionName}`);
+          return features.length;
+        } catch (error) {
+          console.error(`Error loading ${sectionName}:`, error);
+          return 0;
+        }
+      };
+      
+      // Common request parameters
+      const baseParams = {
+          f: 'json',
+          returnGeometry: 'true',
+          spatialRel: 'esriSpatialRelIntersects',
+        outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
+          outSR: '102100',
+          resultRecordCount: '8000',
+        geometryType: 'esriGeometryEnvelope'
+      };
+      
+      // Start with a single large request for the entire island
+      // This is the most efficient approach if the service can handle it
+      console.log("Starting with a single large request for the entire island");
+      
+      const fullIslandParams = {
+        ...baseParams,
+        where: "1=1",
+        geometry: JSON.stringify({
+          xmin: -67.5, // Extended west
+          ymin: 17.4,  // Extended south
+          xmax: -65.1, // Extended east
+          ymax: 18.7,  // Extended north
+          spatialReference: { wkid: 4269 }
+        })
+      };
+      
+      const fullIslandCount = await fetchUSNGData(fullIslandParams, "Full Island");
+      
+      // If the full island approach didn't return enough features, try with a grid of overlapping sections
+      if (fullIslandCount < 5000) {
+        console.log("Full island approach didn't return enough features, trying with overlapping sections");
+        
+        // Define a super-dense grid with maximum overlap to ensure no gaps
+        // Using a 0.3 degree grid with 0.2 degree overlap
+        const gridSize = 0.3;
+        const overlap = 0.2;
+        const sections = [];
+        
+        // Generate a dense grid covering the entire island
+        for (let lon = -67.5; lon < -65.0; lon += gridSize - overlap) {
+          for (let lat = 17.4; lat < 18.7; lat += gridSize - overlap) {
+            sections.push({
+              xmin: lon,
+              ymin: lat,
+              xmax: lon + gridSize,
+              ymax: lat + gridSize,
+              name: `Grid ${lon.toFixed(1)},${lat.toFixed(1)}`
+            });
+          }
+        }
+        
+        // Add specific sections for known problematic areas
+        const specificSections = [
+          // Western region
+          { xmin: -67.5, ymin: 17.9, xmax: -67.0, ymax: 18.5, name: "Northwest Special" },
+          { xmin: -67.5, ymin: 17.4, xmax: -67.0, ymax: 18.0, name: "Southwest Special" },
+          
+          // Central region
+          { xmin: -67.1, ymin: 17.9, xmax: -66.6, ymax: 18.5, name: "North-Central West Special" },
+          { xmin: -67.1, ymin: 17.4, xmax: -66.6, ymax: 18.0, name: "South-Central West Special" },
+          { xmin: -66.7, ymin: 17.9, xmax: -66.2, ymax: 18.5, name: "North-Central Special" },
+          { xmin: -66.7, ymin: 17.4, xmax: -66.2, ymax: 18.0, name: "South-Central Special" },
+          
+          // Eastern region
+          { xmin: -66.3, ymin: 17.9, xmax: -65.8, ymax: 18.5, name: "North-Central East Special" },
+          { xmin: -66.3, ymin: 17.4, xmax: -65.8, ymax: 18.0, name: "South-Central East Special" },
+          { xmin: -65.9, ymin: 17.9, xmax: -65.4, ymax: 18.5, name: "Northeast Special" },
+          { xmin: -65.9, ymin: 17.4, xmax: -65.4, ymax: 18.0, name: "Southeast Special" },
+          { xmin: -65.5, ymin: 17.9, xmax: -65.0, ymax: 18.5, name: "Far Northeast Special" },
+          { xmin: -65.5, ymin: 17.4, xmax: -65.0, ymax: 18.0, name: "Far Southeast Special" },
+          
+          // Islands
+          { xmin: -68.6, ymin: 17.9, xmax: -67.7, ymax: 18.4, name: "Mona Island Special" },
+          { xmin: -65.7, ymin: 17.9, xmax: -65.1, ymax: 18.4, name: "Vieques Special" },
+          { xmin: -65.5, ymin: 18.1, xmax: -64.9, ymax: 18.6, name: "Culebra Special" },
+          
+          // Extra coverage for visible gaps
+          { xmin: -67.2, ymin: 18.0, xmax: -66.7, ymax: 18.5, name: "Gap Fill 1" },
+          { xmin: -66.8, ymin: 18.0, xmax: -66.3, ymax: 18.5, name: "Gap Fill 2" },
+          { xmin: -66.4, ymin: 18.0, xmax: -65.9, ymax: 18.5, name: "Gap Fill 3" },
+          { xmin: -66.0, ymin: 18.0, xmax: -65.5, ymax: 18.5, name: "Gap Fill 4" },
+          { xmin: -67.2, ymin: 17.5, xmax: -66.7, ymax: 18.0, name: "Gap Fill 5" },
+          { xmin: -66.8, ymin: 17.5, xmax: -66.3, ymax: 18.0, name: "Gap Fill 6" },
+          { xmin: -66.4, ymin: 17.5, xmax: -65.9, ymax: 18.0, name: "Gap Fill 7" },
+          { xmin: -66.0, ymin: 17.5, xmax: -65.5, ymax: 18.0, name: "Gap Fill 8" }
+        ];
+        
+        // Combine the grid and specific sections
+        const allSections = [...sections, ...specificSections];
+      
+      // Process each section with a small delay between requests
+        for (const section of allSections) {
+        const sectionParams = {
+          ...baseParams,
+            where: "1=1",
+          geometry: JSON.stringify({
+            ...section,
+            spatialReference: { wkid: 4269 }
+          })
+        };
+        
+        await fetchUSNGData(sectionParams, section.name);
+          // Minimal delay to speed up loading
+          await new Promise(resolve => setTimeout(resolve, 10));
         }
       }
+      
+      // Try with UTM zones as a final approach
+      if (usngSource.getFeatures().length < 8000) {
+        console.log("Trying with UTM zones for complete coverage");
+        
+        // Puerto Rico spans UTM zones 19 and 20
+        for (const zone of [19, 20]) {
+          const utmParams = {
+            ...baseParams,
+            where: `UTM_Zone = ${zone}`,
+            // No geometry filter to get all features in the UTM zone
+          };
+          
+          await fetchUSNGData(utmParams, `UTM Zone ${zone} Complete`);
+        }
+      }
+      
+      console.log(`Total USNG features loaded: ${usngSource.getFeatures().length}`);
     } catch (error) {
       console.error('Error loading USNG features:', error);
     }
   },
-  strategy: bbox
+  strategy: () => [[
+    -7800000, 1800000, // Southwest corner in Web Mercator (greatly expanded)
+    -7000000, 2400000  // Northeast corner in Web Mercator (greatly expanded)
+  ]]
 });
 
 // Add click handler for USNG features
@@ -383,9 +313,9 @@ const usngLayer = new VectorLayer({
   style: (feature, resolution) => createUSNGStyle(feature, resolution),
   minZoom: ZOOM_LEVELS.USNG_MIN,
   maxZoom: ZOOM_LEVELS.USNG_MAX,
-  zIndex: 3,
-  updateWhileAnimating: true,
-  updateWhileInteracting: true,
+  zIndex: 5,
+  updateWhileAnimating: false,
+  updateWhileInteracting: false,
   renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
   declutter: true
 })
@@ -403,10 +333,10 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       zIndex: 0
     })
 
-    // Add USNG layer immediately
+    // Create map with better initial view
     const map = new Map({
       target: mapRef.current,
-      layers: [baseLayer, usngLayer], // Add USNG layer from the start
+      layers: [baseLayer],
       view: new View({
         center: fromLonLat(PUERTO_RICO_CENTER),
         zoom: ZOOM_LEVELS.INITIAL,
@@ -414,8 +344,23 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         minZoom: ZOOM_LEVELS.MIN,
         constrainResolution: true,
         projection: 'EPSG:3857'
+      }),
+      controls: [],
+      interactions: defaultInteractions({
+        mouseWheelZoom: true,
+        doubleClickZoom: true,
+        pinchZoom: true
       })
     })
+
+    // Helper function to load USNG data
+    const loadUSNGData = () => {
+      const extent = [
+        -7700000, 1850000,
+        -7100000, 2300000
+      ];
+      usngSource.loadFeatures(extent, map.getView().getResolution() || 1, map.getView().getProjection());
+    };
 
     // Update the municipios layer addition
     const addMunicipiosLayer = async () => {
@@ -440,13 +385,16 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         const vectorLayer = new VectorLayer({
           source: vectorSource,
           style: municipioStyle,
-          zIndex: 1 // Keep municipios below USNG
+          zIndex: 1
         })
 
         map.addLayer(vectorLayer)
       } catch (error) {
         console.error("Error fetching municipios:", error)
       } finally {
+        // Always add USNG layer and load data
+        map.addLayer(usngLayer)
+        loadUSNGData()
         setLoading(false)
       }
     }
@@ -459,9 +407,17 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       onMapInitialized(map)
     }
 
-    // Add click interaction
+    // Improved click interaction with better feature detection
     map.on('click', (event) => {
-      const feature = map.forEachFeatureAtPixel(event.pixel, (feature) => feature)
+      const feature = map.forEachFeatureAtPixel(
+        event.pixel, 
+        (feature) => feature,
+        {
+          layerFilter: (layer) => layer === usngLayer,
+          hitTolerance: 5
+        }
+      )
+      
       if (feature) {
         const usng = feature.get('USNG')
         if (usng) {
@@ -469,6 +425,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         }
       }
     })
+
+    // Simplified moveend event
+    map.on('moveend', () => {
+      const zoom = map.getView().getZoom() || 0;
+      if (zoom >= ZOOM_LEVELS.USNG_MIN && usngSource.getFeatures().length === 0) {
+        loadUSNGData();
+      }
+    });
 
     return () => {
       map.setTarget(undefined)

@@ -7,8 +7,8 @@ const tableMap: Record<string, keyof typeof prisma> = {
   propiedades: 'propiedades_Existentes',
   cuencas: 'cuenca',
   municipios: 'municipio',
-  eventos: 'evento',
-  incidentes: 'incidente'
+  eventos: 'eventos',
+  incidentes: 'incidentes'
 }
 
 // Add type definitions
@@ -28,7 +28,7 @@ interface SearchParams {
 
 export async function POST(request: Request) {
   try {
-    const params: SearchParams = await request.json()
+    const params = await request.json() as SearchParams
     const { table, filters, sorts, fields } = params
     
     // Validate required fields

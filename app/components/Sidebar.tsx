@@ -5,7 +5,13 @@ import MunicipiosList from "./MunicipiosList"
 import USNGList from "./USNGList"
 import PropertySearch from "./PropertySearch"
 
-export default function Sidebar({ onUSNGSelect }: { onUSNGSelect: (coords: number[], zoom: number) => void }) {
+export default function Sidebar({ 
+  onUSNGSelect, 
+  onMunicipioSelect 
+}: { 
+  onUSNGSelect: (coords: number[], zoom: number) => void,
+  onMunicipioSelect: (coords: number[], zoom: number) => void
+}) {
   return (
     <div className="w-80 bg-white shadow-md p-4 overflow-y-auto">
       <Tabs defaultValue="municipios">
@@ -15,7 +21,7 @@ export default function Sidebar({ onUSNGSelect }: { onUSNGSelect: (coords: numbe
           <TabsTrigger value="properties">Properties</TabsTrigger>
         </TabsList>
         <TabsContent value="municipios">
-          <MunicipiosList />
+          <MunicipiosList onMunicipioSelect={onMunicipioSelect} />
         </TabsContent>
         <TabsContent value="usng">
           <USNGList onUSNGSelect={onUSNGSelect} />

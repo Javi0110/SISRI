@@ -5,8 +5,9 @@ import Header from "./components/Header"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "SISRI-PR",
-  description: "Sistema de Información de Riesgos de Puerto Rico",
+  title: 'SISRI',
+  description: 'Sistema de Información de Riesgos',
+  viewport: 'width=device-width, initial-scale=1',
 }
 
 export default function RootLayout({

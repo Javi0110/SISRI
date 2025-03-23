@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
 import { Home, FileText, Map, Menu, X, BarChart2 } from "lucide-react"
 import { useState } from "react"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 const navigation = [
   { name: "Map", href: "/", icon: Map },

@@ -1,17 +1,27 @@
 import { NextResponse } from 'next/server';
 
-// Simpler cache with fixed expiry
+// Improved cache with better key generation and management
 const cache = new Map<string, { data: any, timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-// Simple cache key generator
+// Better cache key generator with more precise chunking
 const generateCacheKey = (geometry: string): string => {
   try {
     const { xmin, ymin, xmax, ymax } = JSON.parse(geometry);
-    // Round to larger grid cells for better cache hits
-    return `${Math.round(xmin/10000)},${Math.round(ymin/10000)},${Math.round(xmax/10000)},${Math.round(ymax/10000)}`;
+    // Round to 2 decimal places for better cache hits while maintaining precision
+    return `${xmin.toFixed(2)},${ymin.toFixed(2)},${xmax.toFixed(2)},${ymax.toFixed(2)}`;
   } catch {
     return geometry;
+  }
+};
+
+// Clean expired cache entries periodically
+const cleanCache = () => {
+  const now = Date.now();
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.timestamp > CACHE_DURATION) {
+      cache.delete(key);
+    }
   }
 };
 
@@ -23,6 +33,38 @@ export async function GET(request: Request) {
   const params = url.searchParams;
   
   try {
+    // Clean cache periodically
+    if (Math.random() < 0.1) { // 10% chance on each request
+      cleanCache();
+    }
+    
+    // Get geometry for cache key
+    const geometry = params.get('geometry');
+    if (!geometry) {
+      return new NextResponse(JSON.stringify({ 
+        error: 'Missing geometry parameter' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Check cache first
+    const cacheKey = generateCacheKey(geometry);
+    const cachedData = cache.get(cacheKey);
+    
+    if (cachedData && (Date.now() - cachedData.timestamp < CACHE_DURATION)) {
+      console.log('Cache hit for:', cacheKey);
+      return new NextResponse(JSON.stringify(cachedData.data), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Cache': 'HIT'
+        }
+      });
+    }
+    
     // Ensure all required parameters are present
     const requiredParams = {
       f: 'json',
@@ -32,8 +74,7 @@ export async function GET(request: Request) {
       geometryType: 'esriGeometryEnvelope',
       where: '1=1',
       resultRecordCount: '8000',
-      orderByFields: 'OBJECTID',
-      outFields: 'USNG,OBJECTID',
+      outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
     };
 
     // Add any missing required parameters
@@ -44,14 +85,20 @@ export async function GET(request: Request) {
     }
 
     const serviceUrl = `${USNG_SERVICE_URL}?${params.toString()}`;
-    console.log('Requesting from:', serviceUrl);
-
+    
+    // Add a timeout to the fetch request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     const response = await fetch(serviceUrl, {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
-      }
+      },
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       console.error('Service error:', {
@@ -63,17 +110,16 @@ export async function GET(request: Request) {
     }
 
     const data = await response.json();
-    console.log('Service response:', {
-      featureCount: data.features?.length || 0,
-      extent: data.extent,
-      exceededTransferLimit: data.exceededTransferLimit
-    });
+    
+    // Store in cache
+    cache.set(cacheKey, { data, timestamp: Date.now() });
 
     return new NextResponse(JSON.stringify(data), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600'
+        'Cache-Control': 'public, max-age=3600',
+        'X-Cache': 'MISS'
       }
     });
 

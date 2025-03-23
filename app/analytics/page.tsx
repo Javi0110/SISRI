@@ -1,6 +1,6 @@
 "use client"
 
-import { DataAnalytics } from "@/app/components/DataAnalytics"
+import { DataAnalytics } from "../components/DataAnalytics"
 
 export default function AnalyticsPage() {
   return (

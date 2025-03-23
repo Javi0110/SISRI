@@ -1,29 +1,47 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { useState, useEffect, useCallback } from "react"
+import Map from "./components/Map"
 import Sidebar from "./components/Sidebar"
-
-const Map = dynamic(() => import("./components/Map"), { ssr: false })
+import { View } from "ol"
+import { fromLonLat } from "ol/proj"
 
 export default function Home() {
-  const handleUSNGSelect = (coords: number[], zoom: number) => {
-    // This will be handled by the Map component
-    if (window.mapInstance) {
-      window.mapInstance.getView().animate({
-        center: coords,
-        zoom: zoom,
-        duration: 1000
-      })
-    }
-  }
+  const [map, setMap] = useState<any>(null)
+
+  // Use useCallback to memoize these functions
+  const handleMapInitialized = useCallback((mapInstance: any) => {
+    setMap(mapInstance)
+  }, [])
+
+  const handleUSNGSelect = useCallback((coords: number[], zoom: number) => {
+    if (!map) return
+    
+    map.getView().animate({
+      center: coords,
+      zoom: zoom,
+      duration: 500
+    })
+  }, [map])
+  
+  const handleMunicipioSelect = useCallback((coords: number[], zoom: number) => {
+    if (!map) return
+    
+    map.getView().animate({
+      center: coords,
+      zoom: zoom,
+      duration: 500
+    })
+  }, [map])
 
   return (
-    <div className="flex h-[calc(100vh-64px)]">
-      <Sidebar onUSNGSelect={handleUSNGSelect} />
-      <div className="flex-1">
-        <Map />
-      </div>
-    </div>
+    <main className="flex h-screen">
+      <Sidebar 
+        onUSNGSelect={handleUSNGSelect} 
+        onMunicipioSelect={handleMunicipioSelect}
+      />
+      <Map onMapInitialized={handleMapInitialized} />
+    </main>
   )
 }
 

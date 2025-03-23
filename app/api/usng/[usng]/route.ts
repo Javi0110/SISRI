@@ -41,20 +41,45 @@ export async function GET(
   { params }: { params: { usng: string } }
 ): Promise<NextResponse<USNGResponse | { error: string }>> {
   try {
+    // Decode and sanitize the USNG parameter
+    const sanitizedUsng = decodeURIComponent(params.usng).trim();
+    
+    // Use a more efficient query with specific field selection
     const usngSquare = await prisma.uSNGSquare.findFirst({
       where: { 
-        usng: decodeURIComponent(params.usng)
+        usng: sanitizedUsng
       },
-      include: {
-        properties: true,
-        cuencas: true,
+      select: {
+        usng: true,
+        latitudes: true,
+        longitudes: true,
+        properties: {
+          select: {
+            id: true,
+            tipo: true,
+            valor: true
+          }
+        },
+        cuencas: {
+          select: {
+            id: true,
+            nombre: true,
+            codigo_cuenca: true
+          }
+        },
         eventos: {
-          include: {
-            incidentes: true
+          select: {
+            incidentes: {
+              select: {
+                id: true,
+                tipo: true,
+                descripcion: true
+              }
+            }
           }
         }
       }
-    }) as USNGSquareWithRelations | null
+    }) as unknown as USNGSquareWithRelations | null
 
     if (!usngSquare) {
       return NextResponse.json(
@@ -63,17 +88,31 @@ export async function GET(
       )
     }
 
-    // Get first value from coordinates
-    const firstLat = usngSquare.latitudes.split(',')[0]
-    const firstLon = usngSquare.longitudes.split(',')[0]
-
-    // Convert to numbers
-    const centerLat = parseFloat(firstLat)
-    const centerLon = parseFloat(firstLon)
+    // Parse coordinates more safely
+    let centerLat = 0, centerLon = 0;
+    try {
+      const latitudes = usngSquare.latitudes.split(',');
+      const longitudes = usngSquare.longitudes.split(',');
+      
+      if (latitudes.length > 0 && longitudes.length > 0) {
+        centerLat = parseFloat(latitudes[0]);
+        centerLon = parseFloat(longitudes[0]);
+      }
+      
+      // Validate coordinates
+      if (isNaN(centerLat) || isNaN(centerLon)) {
+        throw new Error("Invalid coordinates");
+      }
+    } catch (error) {
+      console.error("Error parsing coordinates:", error);
+      // Fallback to Puerto Rico center if coordinates are invalid
+      centerLat = 18.2208;
+      centerLon = -66.5901;
+    }
 
     const response: USNGResponse = {
       usng: usngSquare.usng,
-      coordinates: [centerLon, centerLat], // Use first coordinates
+      coordinates: [centerLon, centerLat],
       properties: usngSquare.properties.map(prop => ({
         id: prop.id,
         tipo: prop.tipo,
@@ -93,7 +132,11 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(response)
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
+      }
+    })
   } catch (error) {
     console.error("Error fetching USNG details:", error)
     return NextResponse.json(

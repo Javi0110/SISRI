@@ -5,63 +5,12 @@ import fs from 'fs'
 import path from 'path'
 import mgrs from 'mgrs'
 import fetch from 'node-fetch'
+import { municipios } from './data/municipios'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const prisma = new PrismaClient()
-
-const municipios = [
-  {
-    nombre: "Adjuntas",
-    latitud: 18.1627,
-    longitud: -66.7222,
-    codigo_municipio: "001"
-  },
-  {
-    nombre: "Aguada",
-    latitud: 18.3788,
-    longitud: -67.1883,
-    codigo_municipio: "003"
-  },
-  {
-    nombre: "Aguadilla",
-    latitud: 18.4277,
-    longitud: -67.1547,
-    codigo_municipio: "005"
-  },
-  {
-    nombre: "Aguas Buenas",
-    latitud: 18.2569,
-    longitud: -66.1019,
-    codigo_municipio: "007"
-  },
-  {
-    nombre: "Aibonito",
-    latitud: 18.1400,
-    longitud: -66.2663,
-    codigo_municipio: "009"
-  },
-  {
-    nombre: "Añasco",
-    latitud: 18.2827,
-    longitud: -67.1396,
-    codigo_municipio: "011"
-  },
-  {
-    nombre: "Arecibo",
-    latitud: 18.4725,
-    longitud: -66.7156,
-    codigo_municipio: "013"
-  },
-  {
-    nombre: "Arroyo",
-    latitud: 17.9666,
-    longitud: -66.0613,
-    codigo_municipio: "015"
-  },
-  // ... Add all other municipalities
-]
 
 const property_types = ["Residential", "Commercial", "Industrial", "Agricultural"]
 
@@ -185,6 +134,20 @@ function generateRandomProperties(gridId: number, municipioId: number, barrioId:
   return properties
 }
 
+// List of all 78 Puerto Rico municipios
+const municipiosList = [
+  'Adjuntas', 'Aguada', 'Aguadilla', 'Aguas Buenas', 'Aibonito', 'Añasco', 'Arecibo', 'Arroyo',
+  'Barceloneta', 'Barranquitas', 'Bayamón', 'Cabo Rojo', 'Caguas', 'Camuy', 'Canóvanas', 'Carolina',
+  'Cataño', 'Cayey', 'Ceiba', 'Ciales', 'Cidra', 'Coamo', 'Comerío', 'Corozal',
+  'Culebra', 'Dorado', 'Fajardo', 'Florida', 'Guánica', 'Guayama', 'Guayanilla', 'Guaynabo',
+  'Gurabo', 'Hatillo', 'Hormigueros', 'Humacao', 'Isabela', 'Jayuya', 'Juana Díaz', 'Juncos',
+  'Lajas', 'Lares', 'Las Marías', 'Las Piedras', 'Loíza', 'Luquillo', 'Manatí', 'Maricao',
+  'Maunabo', 'Mayagüez', 'Moca', 'Morovis', 'Naguabo', 'Naranjito', 'Orocovis', 'Patillas',
+  'Peñuelas', 'Ponce', 'Quebradillas', 'Rincón', 'Río Grande', 'Sabana Grande', 'Salinas', 'San Germán',
+  'San Juan', 'San Lorenzo', 'San Sebastián', 'Santa Isabel', 'Toa Alta', 'Toa Baja', 'Trujillo Alto',
+  'Utuado', 'Vega Alta', 'Vega Baja', 'Vieques', 'Villalba', 'Yabucoa', 'Yauco'
+];
+
 async function main() {
   try {
     console.log('Starting database seeding...')
@@ -233,16 +196,7 @@ async function main() {
             }
           })
 
-          // Create corresponding kilometer grid
-          await prisma.kilometerGrid.create({
-            data: {
-              usngCode: usng,
-              geometria: {
-                type: "Point",
-                coordinates: [centerLon, centerLat]
-              }
-            }
-          })
+        
 
           processedUSNG.add(usng)
           
@@ -263,7 +217,7 @@ async function main() {
     console.log(`Completed seeding ${processedUSNG.size} USNG squares`)
 
     // Create properties and cuencas for each grid
-    const grids = await prisma.kilometerGrid.findMany()
+    const grids = await prisma.uSNGSquare.findMany()
 
     for (const grid of grids) {
       // Create properties
@@ -311,7 +265,18 @@ async function main() {
       }
     }
 
-    console.log('Database seeding completed successfully')
+    console.log('Starting to seed municipios...')
+    
+    // Clear existing municipios if needed
+    await prisma.municipio.deleteMany({})
+    
+    // Add all municipios
+    const created = await prisma.municipio.createMany({
+      data: municipios,
+      skipDuplicates: true, // Skip if nombre already exists
+    })
+    
+    console.log(`Successfully added ${created.count} municipios`)
   } catch (error) {
     console.error('Error seeding database:', error)
     throw error

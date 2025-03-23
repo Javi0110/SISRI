@@ -1,33 +1,47 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useForm } from "react-hook-form"
+import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Button } from "@/components/ui/button"
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
-import { format } from "date-fns"
-import { Calendar as CalendarIcon, Plus, Trash2, X } from "lucide-react"
 
+// Material UI imports
+import {
+  TextField,
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  FormHelperText,
+  InputLabel,
+  Typography,
+  Box,
+  Grid,
+  Paper,
+  Chip,
+  IconButton,
+  CircularProgress,
+  Divider,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Autocomplete
+} from "@mui/material"
+import {
+  Add as AddIcon, 
+  Delete as DeleteIcon, 
+  Close as CloseIcon, 
+  CalendarMonth as CalendarIcon,
+  Search as SearchIcon
+} from "@mui/icons-material"
+
+// Constants
 const incidentTypes = [
   "Hurricane",
   "Flood",
@@ -39,6 +53,17 @@ const incidentTypes = [
   "Coastal Erosion",
 ] as const
 
+const propertyTypes = [
+  "Residential",
+  "Commercial",
+  "Industrial",
+  "Agricultural",
+  "Government",
+  "Educational",
+  "Healthcare"
+] as const
+
+// Types
 interface Municipio {
   id_municipio: number
   nombre: string
@@ -58,21 +83,18 @@ interface Cuenca {
   codigo_cuenca: string
 }
 
-const propertyTypes = [
-  "Residential",
-  "Commercial",
-  "Industrial",
-  "Agricultural",
-  "Government",
-  "Educational",
-  "Healthcare"
-] as const
+interface USNG {
+  id: number
+  usng: string
+}
 
+// Form schema
 const formSchema = z.object({
   notificationNumber: z.string(),
   eventName: z.string().min(2, "Event name must be at least 2 characters"),
   date: z.date(),
   time: z.string(),
+  usngCode: z.string().min(1, "USNG code is required"),
   incidents: z.array(z.object({
     type: z.enum(incidentTypes),
     description: z.string(),
@@ -88,418 +110,714 @@ const formSchema = z.object({
   })).min(1, "At least one property must be added"),
 })
 
+// Generate notification number
+const generateNotificationNumber = () => 
+  `NOT-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`
+
+// Main component
 export function ReportForm() {
-  const [municipios, setMunicipios] = useState<Municipio[]>([])
+  // State
+  const [municipios, setMunicipios] = useState<Array<{ id_municipio: number; nombre: string }>>([])
   const [cuencas, setCuencas] = useState<Cuenca[]>([])
   const [selectedMunicipios, setSelectedMunicipios] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
+  const [isValidatingUsng, setIsValidatingUsng] = useState(false)
+  const [usngValidationResult, setUsngValidationResult] = useState<{valid: boolean, message?: string} | null>(null)
+  const [dataFetchError, setDataFetchError] = useState<string | null>(null)
+  const [usngSuggestions, setUsngSuggestions] = useState<USNG[]>([])
+  const [isLoadingUsngSuggestions, setIsLoadingUsngSuggestions] = useState(false)
+  const [isMunicipiosLoading, setIsMunicipiosLoading] = useState(true)
+  
+  // Debounce timer reference
+  const usngSearchTimerRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Initialize form
+  const defaultValues = useMemo(() => ({
+    notificationNumber: generateNotificationNumber(),
+    usngCode: "",
+    incidents: [{ type: incidentTypes[0], description: "" }],
+    properties: [{ type: propertyTypes[0], municipioId: "", address: "" }],
+    cuencaIds: [] as string[],
+  }), [])
+
+  const { 
+    control, 
+    handleSubmit, 
+    formState: { errors }, 
+    setValue, 
+    getValues,
+    watch
+  } = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues,
+  })
+
+  // Fetch only municipios and cuencas data
   useEffect(() => {
+    let isMounted = true
+    const controller = new AbortController()
+    
     const fetchFormData = async () => {
       try {
-        const response = await fetch('/api/form-data')
+        const response = await fetch('/api/form-data', {
+          signal: controller.signal,
+          cache: 'force-cache'
+        })
+        
+        if (!response.ok) throw new Error(`Failed to fetch form data: ${response.status}`)
+        
         const data = await response.json()
-        setMunicipios(data.municipios)
-        setCuencas(data.cuencas)
+        
+        if (isMounted) {
+          setMunicipios(data.municipios || [])
+          setCuencas(data.cuencas || [])
+          setLoading(false)
+        }
       } catch (error) {
         console.error("Error fetching form data:", error)
-      } finally {
+        if (isMounted) {
+          setDataFetchError("Failed to load form data. Please refresh the page.")
         setLoading(false)
+        }
       }
     }
 
     fetchFormData()
+    
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
   }, [])
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      notificationNumber: `NOT-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
-      incidents: [{ type: incidentTypes[0], description: "" }],
-      properties: [{ type: propertyTypes[0], municipioId: "", address: "" }],
-      cuencaIds: [],
-    },
-  })
+  // USNG validation - only when needed
+  const validateUsngCode = useCallback(async (code: string) => {
+    if (!code) {
+      setUsngValidationResult(null)
+      return false
+    }
+    
+    setIsValidatingUsng(true)
+    
+    try {
+      const response = await fetch(`/api/usng/validate?code=${encodeURIComponent(code)}`)
+      const data = await response.json()
+      
+      setUsngValidationResult({
+        valid: data.valid,
+        message: data.valid ? "Valid USNG code" : "Invalid USNG code"
+      })
+      
+      return data.valid
+    } catch (error) {
+      console.error("Error validating USNG code:", error)
+      setUsngValidationResult({
+        valid: false,
+        message: "Error validating USNG code"
+      })
+      return false
+    } finally {
+      setIsValidatingUsng(false)
+    }
+  }, [])
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  // Search for USNG suggestions - debounced
+  const searchUsngCodes = useCallback(async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setUsngSuggestions([])
+      return
+    }
+    
+    if (usngSearchTimerRef.current) {
+      clearTimeout(usngSearchTimerRef.current)
+    }
+    
+    usngSearchTimerRef.current = setTimeout(async () => {
+      setIsLoadingUsngSuggestions(true)
+      
+      try {
+        const url = `/api/usng/search?term=${encodeURIComponent(searchTerm)}&limit=10`
+        console.log('Calling USNG search API:', url)
+        
+        const response = await fetch(url)
+        
+        if (!response.ok) throw new Error(`Failed to search USNG codes: ${response.status}`)
+        
+        const data = await response.json()
+        console.log('USNG search results:', data)
+        
+        setUsngSuggestions(Array.isArray(data) ? data : [])
+      } catch (error) {
+        console.error("Error searching USNG codes:", error)
+        setUsngSuggestions([])
+      } finally {
+        setIsLoadingUsngSuggestions(false)
+      }
+    }, 300)
+  }, [])
+
+  // Form submission
+  const onSubmit = useCallback(async (values: z.infer<typeof formSchema>) => {
+    // Validate USNG code before submission
+    const isValidUsng = await validateUsngCode(values.usngCode)
+    if (!isValidUsng) {
+      return
+    }
+    
     console.log(values)
-    // Handle form submission
+    try {
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit report')
+      }
+      
+      alert('Report submitted successfully!')
+    } catch (error) {
+      console.error('Error submitting report:', error)
+      alert('Failed to submit report. Please try again.')
+    }
+  }, [validateUsngCode])
+
+  // Handlers
+  const handleAddIncident = useCallback(() => {
+    const currentIncidents = getValues("incidents")
+    setValue("incidents", [
+      ...currentIncidents,
+      { type: incidentTypes[0], description: "" }
+    ])
+  }, [getValues, setValue])
+
+  const handleAddProperty = useCallback(() => {
+    const currentProperties = getValues("properties")
+    setValue("properties", [
+      ...currentProperties,
+      { type: propertyTypes[0], municipioId: "", address: "" }
+    ])
+  }, [getValues, setValue])
+
+  const handleRemoveProperty = useCallback((index: number) => {
+    const currentProperties = getValues("properties")
+    setValue(
+      "properties",
+      currentProperties.filter((_, i) => i !== index)
+    )
+  }, [getValues, setValue])
+
+  const handleMunicipioSelect = useCallback((index: number, value: string) => {
+    setValue(`properties.${index}.municipioId`, value)
+    setSelectedMunicipios(prev => ({
+      ...prev,
+      [index]: Number(value)
+    }))
+  }, [setValue])
+
+  const handleCuencaSelect = useCallback((value: string) => {
+    const currentValues = getValues("cuencaIds")
+    if (!currentValues.includes(value)) {
+      setValue("cuencaIds", [...currentValues, value])
+    }
+  }, [getValues, setValue])
+
+  const handleRemoveCuenca = useCallback((cuencaId: string) => {
+    const currentValues = getValues("cuencaIds")
+    setValue("cuencaIds", currentValues.filter(id => id !== cuencaId))
+  }, [getValues, setValue])
+
+  const handleUsngInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    setValue("usngCode", value)
+    
+    // Clear validation result when typing
+    setUsngValidationResult(null)
+    
+    // Search for suggestions as user types
+    searchUsngCodes(value)
+  }, [setValue, searchUsngCodes])
+
+  // Watch for form values
+  const incidents = watch("incidents")
+  const properties = watch("properties")
+  const cuencaIds = watch("cuencaIds")
+
+  // Add this function to fetch municipios
+  const fetchMunicipios = async () => {
+    try {
+      const response = await fetch('/api/municipios', {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch municipios');
+      
+      const data = await response.json();
+      setMunicipios(data);
+    } catch (error) {
+      console.error('Error fetching municipios:', error);
+    } finally {
+      setIsMunicipiosLoading(false);
+    }
+  };
+
+  // Add this useEffect to load municipios when component mounts
+  useEffect(() => {
+    fetchMunicipios();
+  }, []);
+
+  // Loading state
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" p={4}>
+        <CircularProgress />
+        <Typography ml={2}>Loading form data...</Typography>
+      </Box>
+    )
   }
 
+  // Error state
+  if (dataFetchError) {
+    return (
+      <Box p={4} textAlign="center">
+        <Typography color="error" mb={2}>{dataFetchError}</Typography>
+        <Button variant="contained" onClick={() => window.location.reload()}>
+          Refresh Page
+        </Button>
+      </Box>
+    )
+  }
+
+  // Render form
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        <div className="grid grid-cols-2 gap-6">
-          {/* Notification Number */}
-          <FormField
-            control={form.control}
+    <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 2 }}>
+      {/* Basic Info Section */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Basic Information</Typography>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Controller
             name="notificationNumber"
+              control={control}
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Notification #</FormLabel>
-                <FormControl>
-                  <Input {...field} disabled />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          {/* Event Name */}
-          <FormField
-            control={form.control}
+                <TextField
+                  {...field}
+                  label="Notification #"
+                  variant="outlined"
+                  fullWidth
+                  disabled
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Controller
             name="eventName"
+              control={control}
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Event Name</FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="Event name..." />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          {/* Date */}
-          <FormField
-            control={form.control}
+                <TextField
+                  {...field}
+                  label="Event Name"
+                  variant="outlined"
+                  fullWidth
+                  error={!!errors.eventName}
+                  helperText={errors.eventName?.message}
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Controller
             name="date"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  type="date"
+                  label="Date"
+                  variant="outlined"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  error={!!errors.date}
+                  helperText={errors.date?.message}
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Controller
+              name="time"
+              control={control}
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Date</FormLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full pl-3 text-left font-normal",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        {field.value ? (
-                          format(field.value, "PPP")
-                        ) : (
-                          <span>Pick a date</span>
-                        )}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={field.onChange}
-                      disabled={(date) =>
-                        date > new Date() || date < new Date("1900-01-01")
+                <TextField
+                  {...field}
+                  type="time"
+                  label="Time"
+                  variant="outlined"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  error={!!errors.time}
+                  helperText={errors.time?.message}
+                />
+              )}
+            />
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* USNG Code Section */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>USNG Location</Typography>
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Controller
+              name="usngCode"
+              control={control}
+              render={({ field }) => (
+                <Autocomplete
+                  freeSolo
+                  options={usngSuggestions}
+                  getOptionLabel={(option) => 
+                    typeof option === 'string' ? option : option.usng
+                  }
+                  loading={isLoadingUsngSuggestions}
+                  onInputChange={(_, newValue) => {
+                    setValue("usngCode", newValue)
+                    searchUsngCodes(newValue)
+                  }}
+                  onChange={(_, newValue) => {
+                    const value = typeof newValue === 'string' 
+                      ? newValue 
+                      : newValue?.usng || ''
+                    setValue("usngCode", value)
+                    validateUsngCode(value)
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      {...field} 
+                      label="USNG Code"
+                      variant="outlined"
+                      fullWidth
+                      error={!!errors.usngCode}
+                      helperText={
+                        errors.usngCode?.message || 
+                        (usngValidationResult && (
+                          <Typography 
+                            component="span" 
+                            color={usngValidationResult.valid ? "success.main" : "error"}
+                          >
+                            {usngValidationResult.message}
+                          </Typography>
+                        ))
                       }
-                      initialFocus
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {isValidatingUsng || isLoadingUsngSuggestions ? (
+                              <CircularProgress color="inherit" size={20} />
+                            ) : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                      onChange={handleUsngInputChange}
+                      onBlur={() => {
+                        if (field.value) {
+                          validateUsngCode(field.value)
+                        }
+                      }}
                     />
-                  </PopoverContent>
-                </Popover>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  )}
+                />
+              )}
+            />
+          </Grid>
+        </Grid>
+      </Paper>
 
-          {/* Time */}
-          <FormField
-            control={form.control}
-            name="time"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Time</FormLabel>
-                <FormControl>
-                  <Input type="time" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        {/* Incidents */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <FormLabel>Incidents</FormLabel>
+      {/* Incidents Section */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">Incidents</Typography>
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const currentIncidents = form.getValues("incidents")
-                form.setValue("incidents", [
-                  ...currentIncidents,
-                  { type: incidentTypes[0], description: "" }
-                ])
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={handleAddIncident}
+            size="small"
+          >
               Add Incident
             </Button>
-          </div>
-          
-          {form.watch("incidents").map((_, index) => (
-            <div key={index} className="grid grid-cols-2 gap-4 p-4 border rounded-lg">
-              <FormField
-                control={form.control}
+        </Box>
+        
+        <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
+          {incidents.map((_, index) => (
+            <Card key={index} variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Controller
                 name={`incidents.${index}.type`}
+                      control={control}
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select incident type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
+                        <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
+                          <InputLabel>Incident Type</InputLabel>
+                          <Select
+                            {...field}
+                            label="Incident Type"
+                          >
                         {incidentTypes.map((type) => (
-                          <SelectItem key={type} value={type}>
+                              <MenuItem key={type} value={type}>
                             {type}
-                          </SelectItem>
+                              </MenuItem>
                         ))}
-                      </SelectContent>
                     </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
+                          {errors.incidents?.[index]?.type && (
+                            <FormHelperText>{errors.incidents[index]?.type?.message}</FormHelperText>
+                          )}
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Controller
                 name={`incidents.${index}.description`}
+                      control={control}
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} placeholder="Incident description..." />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                        <TextField
+                          {...field}
+                          label="Description"
+                          variant="outlined"
+                          fullWidth
+                          multiline
+                          rows={2}
+                          error={!!errors.incidents?.[index]?.description}
+                          helperText={errors.incidents?.[index]?.description?.message}
+                        />
+                      )}
+                    />
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
           ))}
-        </div>
+        </Box>
+        {errors.incidents && !Array.isArray(errors.incidents) && (
+          <Typography color="error" variant="body2" mt={1}>
+            {errors.incidents.message}
+          </Typography>
+        )}
+      </Paper>
 
         {/* Cuencas Selection */}
-        <div className="space-y-4">
-          <FormField
-            control={form.control}
-            name="cuencaIds"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Affected Cuencas</FormLabel>
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Affected Cuencas</Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <FormControl fullWidth error={!!errors.cuencaIds}>
+              <InputLabel>Select Cuencas</InputLabel>
                 <Select
-                  onValueChange={(value) => {
-                    const currentValues = field.value || []
-                    if (!currentValues.includes(value)) {
-                      field.onChange([...currentValues, value])
-                    }
-                  }}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select cuencas" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
+                label="Select Cuencas"
+                value=""
+                onChange={(e) => handleCuencaSelect(e.target.value as string)}
+              >
                     {cuencas.map((cuenca) => (
-                      <SelectItem key={cuenca.id} value={String(cuenca.id)}>
+                  <MenuItem key={cuenca.id} value={String(cuenca.id)}>
                         {cuenca.nombre} ({cuenca.codigo_cuenca})
-                      </SelectItem>
+                  </MenuItem>
                     ))}
-                  </SelectContent>
                 </Select>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {field.value?.map((cuencaId) => {
+              {errors.cuencaIds && (
+                <FormHelperText>{errors.cuencaIds.message}</FormHelperText>
+              )}
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
+              {cuencaIds?.map((cuencaId) => {
                     const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
                     return cuenca ? (
-                      <div
+                  <Chip
                         key={cuenca.id}
-                        className="flex items-center gap-2 bg-secondary px-3 py-1 rounded-full"
-                      >
-                        <span>{cuenca.nombre}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            field.onChange(field.value?.filter((id) => id !== cuencaId))
-                          }}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
+                    label={cuenca.nombre}
+                    onDelete={() => handleRemoveCuenca(cuencaId)}
+                    color="primary"
+                    variant="outlined"
+                  />
                     ) : null
                   })}
-                </div>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
 
-        {/* Properties */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <FormLabel>Affected Properties</FormLabel>
+      {/* Properties Section */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">Affected Properties</Typography>
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const currentProperties = form.getValues("properties")
-                form.setValue("properties", [
-                  ...currentProperties,
-                  { type: propertyTypes[0], municipioId: "", address: "" }
-                ])
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={handleAddProperty}
+            size="small"
+          >
               Add Property
             </Button>
-          </div>
+        </Box>
 
-          {form.watch("properties").map((_, index) => (
-            <div key={index} className="grid gap-4 p-4 border rounded-lg">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
+        <Box sx={{ maxHeight: 500, overflow: 'auto', pr: 1 }}>
+          {properties.map((_, index) => (
+            <Card key={index} variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Controller
                   name={`properties.${index}.type`}
+                      control={control}
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Property Type</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
+                        <FormControl fullWidth error={!!errors.properties?.[index]?.type}>
+                          <InputLabel>Property Type</InputLabel>
+                          <Select
+                            {...field}
+                            label="Property Type"
+                          >
                           {propertyTypes.map((type) => (
-                            <SelectItem key={type} value={type}>
+                              <MenuItem key={type} value={type}>
                               {type}
-                            </SelectItem>
+                              </MenuItem>
                           ))}
-                        </SelectContent>
                       </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name={`properties.${index}.municipioId`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Municipio</FormLabel>
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value)
-                          setSelectedMunicipios({
-                            ...selectedMunicipios,
-                            [index]: Number(value)
-                          })
-                        }}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select municipio" />
-                          </SelectTrigger>
+                          {errors.properties?.[index]?.type && (
+                            <FormHelperText>{errors.properties[index]?.type?.message}</FormHelperText>
+                          )}
                         </FormControl>
-                        <SelectContent>
-                          {municipios.map((municipio) => (
-                            <SelectItem
-                              key={municipio.id_municipio}
-                              value={String(municipio.id_municipio)}
-                            >
-                              {municipio.nombre}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                  name={`properties.${index}.municipioId`}
+                      control={control}
+                  render={({ field }) => (
+                        <FormControl fullWidth error={!!errors.properties?.[index]?.municipioId}>
+                          <InputLabel>Municipio</InputLabel>
+                      <Autocomplete
+                        value={municipios.find(m => m.id_municipio === field.value) || null}
+                        options={municipios}
+                        getOptionLabel={(option) => option.nombre}
+                        loading={isMunicipiosLoading}
+                        onChange={(_, newValue) => {
+                          field.onChange(newValue?.id_municipio || null)
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Municipio"
+                            error={!!errors.properties?.[index]?.municipioId}
+                            helperText={errors.properties?.[index]?.municipioId?.message}
+                            required
+                          />
+                        )}
+                        fullWidth
+                      />
+                          {errors.properties?.[index]?.municipioId && (
+                            <FormHelperText>{errors.properties[index]?.municipioId?.message}</FormHelperText>
+                          )}
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
 
-              {/* Barrio and Sector dropdowns (only show if municipio is selected) */}
               {selectedMunicipios[index] && (
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
+                    <>
+                      <Grid item xs={12} md={6}>
+                        <Controller
                     name={`properties.${index}.barrioId`}
+                          control={control}
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Barrio</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select barrio" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
+                            <FormControl fullWidth>
+                              <InputLabel>Barrio</InputLabel>
+                              <Select
+                                {...field}
+                                label="Barrio"
+                                value={field.value || ""}
+                              >
                             {municipios
                               .find((m) => m.id_municipio === selectedMunicipios[index])
                               ?.barrios.map((barrio) => (
-                                <SelectItem
+                                    <MenuItem
                                   key={barrio.id_barrio}
                                   value={String(barrio.id_barrio)}
                                 >
                                   {barrio.nombre}
-                                </SelectItem>
+                                    </MenuItem>
                               ))}
-                          </SelectContent>
                         </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
+                            </FormControl>
+                          )}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Controller
                     name={`properties.${index}.address`}
+                          control={control}
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Address</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Property address..." />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              )}
-
+                            <TextField
+                              {...field}
+                              label="Address"
+                              variant="outlined"
+                              fullWidth
+                              error={!!errors.properties?.[index]?.address}
+                              helperText={errors.properties?.[index]?.address?.message}
+                            />
+                          )}
+                        />
+                      </Grid>
+                    </>
+                  )}
+                  <Grid item xs={12}>
+                    <Box display="flex" justifyContent="flex-end">
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-2"
-                onClick={() => {
-                  const currentProperties = form.getValues("properties")
-                  form.setValue(
-                    "properties",
-                    currentProperties.filter((_, i) => i !== index)
-                  )
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
+                        variant="text"
+                        color="error"
+                        startIcon={<DeleteIcon />}
+                        onClick={() => handleRemoveProperty(index)}
+                        size="small"
+                      >
                 Remove Property
               </Button>
-            </div>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
           ))}
-        </div>
+        </Box>
+        {errors.properties && !Array.isArray(errors.properties) && (
+          <Typography color="error" variant="body2" mt={1}>
+            {errors.properties.message}
+          </Typography>
+        )}
+      </Paper>
 
-        <Button type="submit" className="w-full">Submit Report</Button>
-      </form>
-    </Form>
+      <Box display="flex" justifyContent="center" mt={4} mb={2}>
+        <Button 
+          type="submit" 
+          variant="contained" 
+          color="primary" 
+          size="large"
+          sx={{ minWidth: 200 }}
+        >
+          Submit Report
+        </Button>
+      </Box>
+    </Box>
   )
 } 
