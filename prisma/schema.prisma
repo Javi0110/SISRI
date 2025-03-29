@@ -115,4 +115,40 @@ model Cuenca {
   geometria      Json
   grid           USNGSquare @relation(fields: [gridId], references: [id])
   incidentes     Incidentes[]
+  reports        Report[]
+}
+
+model Report {
+  id                String     @id @default(cuid())
+  notificationNumber String
+  eventName         String
+  date              DateTime
+  time              String
+  usngCode          String
+  incidents         Incident[]
+  properties        Property[]
+  cuencas           Cuenca[]
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Incident {
+  id          String   @id @default(cuid())
+  type        String
+  description String
+  reportId    String
+  report      Report   @relation(fields: [reportId], references: [id])
+}
+
+model Property {
+  id          String   @id @default(cuid())
+  type        String
+  municipioId Int
+  barrioId    Int?
+  sectorId    Int?
+  address     String
+  value       String?
+  location    Json?
+  reportId    String
+  report      Report   @relation(fields: [reportId], references: [id])
 }

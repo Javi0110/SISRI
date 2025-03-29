@@ -1,28 +1,20 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { motion } from "framer-motion"
 import Map from "ol/Map"
 import View from "ol/View"
-import TileLayer from "ol/layer/Tile"
-import OSM from "ol/source/OSM"
-import { fromLonLat } from "ol/proj"
-import VectorLayer from "ol/layer/Vector"
-import VectorSource from "ol/source/Vector"
-import GeoJSON from "ol/format/GeoJSON"
-import { Style, Fill, Stroke, Text } from "ol/style"
-import { motion } from "framer-motion"
 import EsriJSON from 'ol/format/EsriJSON'
-import { bbox } from 'ol/loadingstrategy'
-import { intersects } from 'ol/extent'
+import GeoJSON from "ol/format/GeoJSON"
 import { defaults as defaultInteractions } from 'ol/interaction'
+import TileLayer from "ol/layer/Tile"
+import VectorLayer from "ol/layer/Vector"
+import { fromLonLat } from "ol/proj"
+import OSM from "ol/source/OSM"
+import VectorSource from "ol/source/Vector"
+import { Fill, Stroke, Style, Text } from "ol/style"
+import { useCallback, useEffect, useRef, useState } from "react"
 
-// Declare global window type
-declare global {
-  interface Window {
-    mapInstance?: Map
-  }
-}
-
+// Remove global window declaration - we'll use refs instead
 interface MapComponentProps {
   onMapInitialized?: (map: Map) => void
 }
@@ -47,17 +39,13 @@ const COLORS = {
   MUNICIPIO: {
     STROKE: '#4444FF',
     FILL: 'rgba(68, 68, 255, 0.1)'
+  },
+  WATER: {
+    STROKE: '#0077be',
+    FILL: 'rgba(0, 119, 190, 0.3)'
   }
 }
 
-// Constants for Puerto Rico extent in Web Mercator (EPSG:3857)
-const PUERTO_RICO_EXTENT = {
-  xmin: -7526593.264043136,
-  ymin: 1941281.9702659545,
-  xmax: -7250000.369888829,
-  ymax: 2213831.9532818417,
-  spatialReference: { wkid: 3857 }
-}
 
 // Constants for USNG layer - optimized for full coverage
 const USNG_LAYER_CONFIG = {
@@ -71,6 +59,11 @@ const USNG_LAYER_CONFIG = {
 const municipioStyle = new Style({
   fill: new Fill({ color: COLORS.MUNICIPIO.FILL }),
   stroke: new Stroke({ color: COLORS.MUNICIPIO.STROKE, width: 1 })
+})
+
+const waterBodyStyle = new Style({
+  fill: new Fill({ color: COLORS.WATER.FILL }),
+  stroke: new Stroke({ color: COLORS.WATER.STROKE, width: 1 })
 })
 
 // Improved USNG style function with better performance
@@ -115,19 +108,54 @@ const createUSNGStyle = (feature: any, resolution: number) => {
 // Completely revised USNG Source configuration for full Puerto Rico coverage
 const usngSource = new VectorSource({
   format: new EsriJSON(),
-  loader: async (extent, resolution, projection) => {
-    // Only load data at appropriate zoom levels
-    const view = window.mapInstance?.getView();
-    const zoom = view?.getZoom() || 0;
-    
-    if (zoom < ZOOM_LEVELS.USNG_MIN) return;
-    
+  // The loader will be set in the component
+  strategy: () => [[
+    -7800000, 1800000, // Southwest corner in Web Mercator (greatly expanded)
+    -7000000, 2400000  // Northeast corner in Web Mercator (greatly expanded)
+  ]]
+});
+
+// Add click handler for USNG features
+const handleUSNGClick = (feature: any) => {
+  const usng = feature.get('USNG')
+  // You can dispatch an event or update state to show property information
+  console.log(`USNG Grid clicked: ${usng}`)
+}
+
+// Improved USNG Layer configuration
+const usngLayer = new VectorLayer({
+  source: usngSource,
+  style: (feature, resolution) => createUSNGStyle(feature, resolution),
+  minZoom: ZOOM_LEVELS.USNG_MIN,
+  maxZoom: ZOOM_LEVELS.USNG_MAX,
+  zIndex: 5,
+  updateWhileAnimating: false,
+  updateWhileInteracting: false,
+  renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
+  declutter: true
+})
+
+export default function MapComponent({ onMapInitialized }: MapComponentProps) {
+  const mapRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<Map | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Move the loader logic into a memoized function inside the component
+  const handleLoadUSNGData = useCallback(async (projection: any) => {
+    const mapInstance = mapInstanceRef.current
+    if (!mapInstance) return
+
+    const view = mapInstance.getView()
+    const zoom = view.getZoom() || 0
+
+    if (zoom < ZOOM_LEVELS.USNG_MIN) return
+
     try {
       // Track processed features to avoid duplicates
       const processedIds = new Set();
       
       // Helper function to fetch and process USNG data
-      const fetchUSNGData = async (params, sectionName = "Unknown") => {
+      const fetchUSNGData = async (params: any, sectionName = "Unknown") => {
         try {
           const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params));
           
@@ -136,7 +164,7 @@ const usngSource = new VectorSource({
             return 0;
           }
           
-          const data = await response.json();
+          const data = await response.json() as { features?: Array<{ attributes: { OBJECTID: number } }> };
           
           if (!data || !data.features?.length) return 0;
           
@@ -293,36 +321,7 @@ const usngSource = new VectorSource({
     } catch (error) {
       console.error('Error loading USNG features:', error);
     }
-  },
-  strategy: () => [[
-    -7800000, 1800000, // Southwest corner in Web Mercator (greatly expanded)
-    -7000000, 2400000  // Northeast corner in Web Mercator (greatly expanded)
-  ]]
-});
-
-// Add click handler for USNG features
-const handleUSNGClick = (feature: any) => {
-  const usng = feature.get('USNG')
-  // You can dispatch an event or update state to show property information
-  console.log(`USNG Grid clicked: ${usng}`)
-}
-
-// Improved USNG Layer configuration
-const usngLayer = new VectorLayer({
-  source: usngSource,
-  style: (feature, resolution) => createUSNGStyle(feature, resolution),
-  minZoom: ZOOM_LEVELS.USNG_MIN,
-  maxZoom: ZOOM_LEVELS.USNG_MAX,
-  zIndex: 5,
-  updateWhileAnimating: false,
-  updateWhileInteracting: false,
-  renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
-  declutter: true
-})
-
-export default function MapComponent({ onMapInitialized }: MapComponentProps) {
-  const mapRef = useRef<HTMLDivElement>(null)
-  const [loading, setLoading] = useState(true)
+  }, [])
 
   useEffect(() => {
     if (!mapRef.current) return
@@ -353,6 +352,9 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       })
     })
 
+    // Store map in ref
+    mapInstanceRef.current = map;
+
     // Helper function to load USNG data
     const loadUSNGData = () => {
       const extent = [
@@ -366,7 +368,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     const addMunicipiosLayer = async () => {
       try {
         const response = await fetch("/api/municipios")
-        const data = await response.json()
+        const data = await response.json() as any[]
         
         const vectorSource = new VectorSource({
           features: new GeoJSON().readFeatures(
@@ -399,10 +401,46 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       }
     }
 
+    const addWaterBodiesLayer = async (map: Map) => {
+      try {
+        const waterSource = new VectorSource({
+          format: new EsriJSON(),
+          url: (_extent, _resolution, _projection) => {
+            return '/api/water/proxy?' + new URLSearchParams({
+              f: 'json',
+              returnGeometry: 'true',
+              spatialRel: 'esriSpatialRelIntersects',
+              outFields: '*',
+              outSR: '102100',
+              where: '1=1',
+              geometryType: 'esriGeometryEnvelope',
+              geometry: JSON.stringify({
+                xmin: -67.5,
+                ymin: 17.4,
+                xmax: -65.1,
+                ymax: 18.7,
+                spatialReference: { wkid: 4269 }
+              })
+            })
+          }
+        })
+
+        const waterLayer = new VectorLayer({
+          source: waterSource,
+          style: waterBodyStyle,
+          zIndex: 2, // Above municipios but below USNG grid
+        })
+
+        map.addLayer(waterLayer)
+      } catch (error) {
+        console.error("Error adding water bodies layer:", error)
+      }
+    }
+
     addMunicipiosLayer()
+    addWaterBodiesLayer(map)
     
-    // Initialize map instance
-    window.mapInstance = map
+    // Notify parent component
     if (onMapInitialized) {
       onMapInitialized(map)
     }
@@ -434,11 +472,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       }
     });
 
+    // Update the source to use the new loader
+    usngSource.setLoader(handleLoadUSNGData)
+
     return () => {
       map.setTarget(undefined)
-      window.mapInstance = undefined
+      mapInstanceRef.current = null
     }
-  }, [onMapInitialized])
+  }, [handleLoadUSNGData, onMapInitialized])
 
   return (
     <motion.div

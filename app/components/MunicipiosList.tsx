@@ -66,12 +66,15 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
     setSelectedMunicipio(municipio.nombre === selectedMunicipio ? null : municipio.nombre)
     
     // Convert coordinates and zoom to the municipio
-    // Use center as fallback if latitud/longitud are not available
-    const coords = municipio.latitud && municipio.longitud 
-      ? fromLonLat([municipio.longitud, municipio.latitud])
-      : fromLonLat(municipio.center)
+    // Use default coordinates for Puerto Rico if latitud/longitud are not available
+    let coordinates: [number, number] = [-66.4, 18.2] // Default coordinates for Puerto Rico
     
-    onMunicipioSelect(coords, 12) // Zoom level 12 is good for municipios
+    if (municipio.latitud && municipio.longitud) {
+      coordinates = [municipio.longitud, municipio.latitud]
+    }
+    
+    const transformedCoords = fromLonLat(coordinates)
+    onMunicipioSelect(transformedCoords as [number, number], 12) // Zoom level 12 is good for municipios
   }
 
   if (loading) return <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div>

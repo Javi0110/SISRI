@@ -1,7 +1,7 @@
-import { PrismaClient, Propiedades_Existentes, Cuenca, Eventos, Incidentes } from '@prisma/client'
+import { Cuenca, Eventos, Incidentes, PrismaClient, Propiedades_Existentes } from '@prisma/client'
 import { NextResponse } from "next/server"
 
-const prisma = new PrismaClient()
+const prismaClient = new PrismaClient()
 
 // Define types for the response data
 interface USNGResponse {
@@ -37,15 +37,24 @@ type USNGSquareWithRelations = {
 }
 
 export async function GET(
-  request: Request, 
+  _: Request,
   { params }: { params: { usng: string } }
 ): Promise<NextResponse<USNGResponse | { error: string }>> {
   try {
+    const { usng } = params
+    
+    if (!usng) {
+      return NextResponse.json(
+        { error: "USNG parameter is required" },
+        { status: 400 }
+      )
+    }
+
     // Decode and sanitize the USNG parameter
-    const sanitizedUsng = decodeURIComponent(params.usng).trim();
+    const sanitizedUsng = decodeURIComponent(usng).trim();
     
     // Use a more efficient query with specific field selection
-    const usngSquare = await prisma.uSNGSquare.findFirst({
+    const usngSquare = await prismaClient.uSNGSquare.findFirst({
       where: { 
         usng: sanitizedUsng
       },
@@ -138,12 +147,12 @@ export async function GET(
       }
     })
   } catch (error) {
-    console.error("Error fetching USNG details:", error)
+    console.error("Error fetching USNG data:", error)
     return NextResponse.json(
-      { error: "Failed to fetch USNG details" }, 
+      { error: "Failed to fetch USNG data" },
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
+    await prismaClient.$disconnect()
   }
 } 

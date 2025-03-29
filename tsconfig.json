@@ -4,7 +4,8 @@
     "module": "commonjs",
     "lib": [
       "es2017",
-      "esnext.asynciterable"
+      "esnext.asynciterable",
+      "dom"
     ],
     "skipLibCheck": true,
     "sourceMap": true,
@@ -42,6 +43,11 @@
   ],
   "include": [
     "./prisma/**/*",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "app/**/*",
+    "components/**/*",
+    "lib/**/*",
+    "public/**/*",
+    "styles/**/*"
   ]
 }

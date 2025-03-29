@@ -75,13 +75,14 @@ export async function GET(request: Request) {
     ] : null
 
     return NextResponse.json({
-      usng,
-      coordinates,
-      properties,
-      cuencas,
-      incidents
+      data: {
+        usng,
+        coordinates,
+        properties,
+        cuencas,
+        incidents
+      }
     })
-
   } catch (error) {
     console.error('Error searching USNG:', error)
     return NextResponse.json(

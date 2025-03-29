@@ -1,45 +1,32 @@
 "use client"
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react"
-import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Controller, useForm } from "react-hook-form"
 import * as z from "zod"
 
 // Material UI imports
 import {
-  TextField,
-  Button,
-  Select,
-  MenuItem,
-  FormControl,
-  FormHelperText,
-  InputLabel,
-  Typography,
+  Add as AddIcon
+} from "@mui/icons-material"
+import {
+  Autocomplete,
   Box,
-  Grid,
-  Paper,
-  Chip,
-  IconButton,
-  CircularProgress,
-  Divider,
+  Button,
   Card,
   CardContent,
-  List,
-  ListItem,
-  ListItemText,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Autocomplete
+  Chip,
+  CircularProgress,
+  FormControl,
+  FormHelperText,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Typography
 } from "@mui/material"
-import {
-  Add as AddIcon, 
-  Delete as DeleteIcon, 
-  Close as CloseIcon, 
-  CalendarMonth as CalendarIcon,
-  Search as SearchIcon
-} from "@mui/icons-material"
 
 // Constants
 const incidentTypes = [
@@ -67,14 +54,18 @@ const propertyTypes = [
 interface Municipio {
   id_municipio: number
   nombre: string
-  barrios: {
-    id_barrio: number
-    nombre: string
-    sectores: {
-      id_sector: number
-      nombre: string
-    }[]
-  }[]
+  barrios?: Barrio[]
+}
+
+interface Barrio {
+  id_barrio: number
+  nombre: string
+  sectores?: Sector[]
+}
+
+interface Sector {
+  id_sector: number
+  nombre: string
 }
 
 interface Cuenca {
@@ -92,7 +83,7 @@ interface USNG {
 const formSchema = z.object({
   notificationNumber: z.string(),
   eventName: z.string().min(2, "Event name must be at least 2 characters"),
-  date: z.date(),
+  date: z.string(),
   time: z.string(),
   usngCode: z.string().min(1, "USNG code is required"),
   incidents: z.array(z.object({
@@ -107,6 +98,10 @@ const formSchema = z.object({
     sectorId: z.string().optional(),
     address: z.string(),
     value: z.string().optional(),
+    location: z.object({
+      lat: z.number().optional(),
+      lng: z.number().optional(),
+    }).optional(),
   })).min(1, "At least one property must be added"),
 })
 
@@ -117,7 +112,7 @@ const generateNotificationNumber = () =>
 // Main component
 export function ReportForm() {
   // State
-  const [municipios, setMunicipios] = useState<Array<{ id_municipio: number; nombre: string }>>([])
+  const [municipios, setMunicipios] = useState<Municipio[]>([])
   const [cuencas, setCuencas] = useState<Cuenca[]>([])
   const [selectedMunicipios, setSelectedMunicipios] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
@@ -127,6 +122,7 @@ export function ReportForm() {
   const [usngSuggestions, setUsngSuggestions] = useState<USNG[]>([])
   const [isLoadingUsngSuggestions, setIsLoadingUsngSuggestions] = useState(false)
   const [isMunicipiosLoading, setIsMunicipiosLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
   // Debounce timer reference
   const usngSearchTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -134,9 +130,14 @@ export function ReportForm() {
   // Initialize form
   const defaultValues = useMemo(() => ({
     notificationNumber: generateNotificationNumber(),
+    date: new Date().toISOString().split('T')[0],
     usngCode: "",
     incidents: [{ type: incidentTypes[0], description: "" }],
-    properties: [{ type: propertyTypes[0], municipioId: "", address: "" }],
+    properties: [{ 
+      type: propertyTypes[0], 
+      municipioId: "", 
+      address: "",
+    }],
     cuencaIds: [] as string[],
   }), [])
 
@@ -152,7 +153,7 @@ export function ReportForm() {
     defaultValues,
   })
 
-  // Fetch only municipios and cuencas data
+  // Fetch municipios and cuencas data
   useEffect(() => {
     let isMounted = true
     const controller = new AbortController()
@@ -161,23 +162,30 @@ export function ReportForm() {
       try {
         const response = await fetch('/api/form-data', {
           signal: controller.signal,
-          cache: 'force-cache'
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
         })
         
         if (!response.ok) throw new Error(`Failed to fetch form data: ${response.status}`)
         
-        const data = await response.json()
+        const data = await response.json() as { municipios: Municipio[], cuencas: Cuenca[] }
         
         if (isMounted) {
           setMunicipios(data.municipios || [])
           setCuencas(data.cuencas || [])
           setLoading(false)
+          setIsMunicipiosLoading(false)
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching form data:", error)
-        if (isMounted) {
+        // Don't set error state if it was an abort error (from cleanup)
+        if (isMounted && error.name !== 'AbortError') {
           setDataFetchError("Failed to load form data. Please refresh the page.")
-        setLoading(false)
+        }
+        if (isMounted) {
+          setLoading(false)
+          setIsMunicipiosLoading(false)
         }
       }
     }
@@ -201,7 +209,7 @@ export function ReportForm() {
     
     try {
       const response = await fetch(`/api/usng/validate?code=${encodeURIComponent(code)}`)
-      const data = await response.json()
+      const data = await response.json() as { valid: boolean, message?: string }
       
       setUsngValidationResult({
         valid: data.valid,
@@ -243,7 +251,7 @@ export function ReportForm() {
         
         if (!response.ok) throw new Error(`Failed to search USNG codes: ${response.status}`)
         
-        const data = await response.json()
+        const data = await response.json() as USNG[]
         console.log('USNG search results:', data)
         
         setUsngSuggestions(Array.isArray(data) ? data : [])
@@ -256,34 +264,122 @@ export function ReportForm() {
     }, 300)
   }, [])
 
-  // Form submission
+  // Watch for form values
+  const incidents = watch("incidents")
+  const properties = watch("properties")
+  const cuencaIds = watch("cuencaIds")
+
+  // Add state to track selected barrios
+  const [selectedBarrios, setSelectedBarrios] = useState<Record<number, number>>({})
+  
+  // Enhance the municipio selection handler
+  const handleMunicipioSelect = useCallback((index: number, value: string) => {
+    setValue(`properties.${index}.municipioId`, value)
+    // Reset barrio and sector when municipio changes
+    setValue(`properties.${index}.barrioId`, "")
+    setValue(`properties.${index}.sectorId`, "")
+    setSelectedMunicipios(prev => ({
+      ...prev,
+      [index]: Number(value)
+    }))
+  }, [setValue])
+  
+  // Add barrio selection handler
+  const handleBarrioSelect = useCallback((index: number, value: string) => {
+    setValue(`properties.${index}.barrioId`, value)
+    // Reset sector when barrio changes
+    setValue(`properties.${index}.sectorId`, "")
+    setSelectedBarrios(prev => ({
+      ...prev,
+      [index]: Number(value)
+    }))
+  }, [setValue])
+  
+  // Update the onSubmit function
   const onSubmit = useCallback(async (values: z.infer<typeof formSchema>) => {
-    // Validate USNG code before submission
-    const isValidUsng = await validateUsngCode(values.usngCode)
-    if (!isValidUsng) {
-      return
-    }
-    
-    console.log(values)
     try {
-      const response = await fetch('/api/reports', {
+      setIsSubmitting(true)
+      
+      // Validate USNG code before submission
+      const isValidUsng = await validateUsngCode(values.usngCode)
+      if (!isValidUsng) {
+        window.alert('Please enter a valid USNG code')
+        return
+      }
+      
+      // Format the data to match Prisma schema
+      const formattedData = {
+        notificacionId: parseInt(values.notificationNumber.split('-')[2]),
+        titulo: values.eventName,
+        descripcion: values.incidents[0].description,
+        fecha: new Date(values.date).toISOString(),
+        gridId: values.usngCode,
+        // Format incidents with cuenca
+        incidentes: values.incidents.map(incident => ({
+          tipo: incident.type,
+          descripcion: incident.description,
+          cuencaId: values.cuencaIds.length > 0 ? parseInt(values.cuencaIds[0]) : 1
+        })),
+        // Format properties with required fields
+        propiedades_afectadas: values.properties.map(property => ({
+          daños: property.value || "No damage reported",
+          propiedad: {
+            create: {
+              tipo: property.type,
+              valor: property.value ? parseFloat(property.value) : 0,
+              id_municipio: parseInt(property.municipioId),
+              id_barrio: property.barrioId ? parseInt(property.barrioId) : 1, // Default barrio ID
+              id_sector: property.sectorId ? parseInt(property.sectorId) : 1, // Default sector ID
+              direccion: property.address,
+              gridId: 0, // Will be set by API
+              geometria: property.location || {}
+            }
+          }
+        }))
+      }
+      
+      console.log('Submitting formatted data:', formattedData)
+
+      const response = await fetch('/api/eventos', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify(formattedData),
       })
       
       if (!response.ok) {
-        throw new Error('Failed to submit report')
+        const errorData = await response.json()
+        throw new Error(errorData.message || `Server responded with ${response.status}`)
       }
       
-      alert('Report submitted successfully!')
+      const responseData = await response.json()
+      console.log('Event submitted successfully:', responseData)
+      
+      // Show success message
+      window.alert('Event submitted successfully!')
+      
+      // Reset form to default values
+      setValue("notificationNumber", generateNotificationNumber())
+      setValue("eventName", "")
+      setValue("date", new Date().toISOString().split('T')[0])
+      setValue("time", "")
+      setValue("usngCode", "")
+      setValue("incidents", [{ type: incidentTypes[0], description: "" }])
+      setValue("properties", [{ type: propertyTypes[0], municipioId: "", address: "" }])
+      setValue("cuencaIds", [])
+      
+      // Reset selected states
+      setSelectedMunicipios({})
+      setSelectedBarrios({})
+      
     } catch (error) {
-      console.error('Error submitting report:', error)
-      alert('Failed to submit report. Please try again.')
+      console.error('Error submitting event:', error)
+      window.alert(`Failed to submit event: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsSubmitting(false)
     }
-  }, [validateUsngCode])
+  }, [validateUsngCode, setValue])
 
   // Handlers
   const handleAddIncident = useCallback(() => {
@@ -302,22 +398,6 @@ export function ReportForm() {
     ])
   }, [getValues, setValue])
 
-  const handleRemoveProperty = useCallback((index: number) => {
-    const currentProperties = getValues("properties")
-    setValue(
-      "properties",
-      currentProperties.filter((_, i) => i !== index)
-    )
-  }, [getValues, setValue])
-
-  const handleMunicipioSelect = useCallback((index: number, value: string) => {
-    setValue(`properties.${index}.municipioId`, value)
-    setSelectedMunicipios(prev => ({
-      ...prev,
-      [index]: Number(value)
-    }))
-  }, [setValue])
-
   const handleCuencaSelect = useCallback((value: string) => {
     const currentValues = getValues("cuencaIds")
     if (!currentValues.includes(value)) {
@@ -332,6 +412,7 @@ export function ReportForm() {
 
   const handleUsngInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value
+    
     setValue("usngCode", value)
     
     // Clear validation result when typing
@@ -341,36 +422,14 @@ export function ReportForm() {
     searchUsngCodes(value)
   }, [setValue, searchUsngCodes])
 
-  // Watch for form values
-  const incidents = watch("incidents")
-  const properties = watch("properties")
-  const cuencaIds = watch("cuencaIds")
-
-  // Add this function to fetch municipios
-  const fetchMunicipios = async () => {
-    try {
-      const response = await fetch('/api/municipios', {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch municipios');
-      
-      const data = await response.json();
-      setMunicipios(data);
-    } catch (error) {
-      console.error('Error fetching municipios:', error);
-    } finally {
-      setIsMunicipiosLoading(false);
-    }
-  };
-
-  // Add this useEffect to load municipios when component mounts
+  // Add this near the top of your component
   useEffect(() => {
-    fetchMunicipios();
-  }, []);
+    // Log when form values change
+    const subscription = watch((value) => {
+      console.log('Form values changed:', value)
+    })
+    return () => subscription.unsubscribe()
+  }, [watch])
 
   // Loading state
   if (loading) {
@@ -387,7 +446,10 @@ export function ReportForm() {
     return (
       <Box p={4} textAlign="center">
         <Typography color="error" mb={2}>{dataFetchError}</Typography>
-        <Button variant="contained" onClick={() => window.location.reload()}>
+        <Button 
+          variant="contained" 
+          onClick={() => window.location.reload()}
+        >
           Refresh Page
         </Button>
       </Box>
@@ -403,9 +465,9 @@ export function ReportForm() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Controller
-            name="notificationNumber"
+              name="notificationNumber"
               control={control}
-            render={({ field }) => (
+              render={({ field }) => (
                 <TextField
                   {...field}
                   label="Notification #"
@@ -418,9 +480,9 @@ export function ReportForm() {
           </Grid>
           <Grid item xs={12} md={6}>
             <Controller
-            name="eventName"
+              name="eventName"
               control={control}
-            render={({ field }) => (
+              render={({ field }) => (
                 <TextField
                   {...field}
                   label="Event Name"
@@ -434,11 +496,15 @@ export function ReportForm() {
           </Grid>
           <Grid item xs={12} md={6}>
             <Controller
-            name="date"
+              name="date"
               control={control}
-              render={({ field }) => (
+              render={({ field: { value, onChange, ...field } }) => (
                 <TextField
                   {...field}
+                  value={value || ''}
+                  onChange={(e) => {
+                    onChange(e.target.value)
+                  }}
                   type="date"
                   label="Date"
                   variant="outlined"
@@ -454,7 +520,7 @@ export function ReportForm() {
             <Controller
               name="time"
               control={control}
-            render={({ field }) => (
+              render={({ field }) => (
                 <TextField
                   {...field}
                   type="time"
@@ -548,11 +614,11 @@ export function ReportForm() {
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h6">Incidents</Typography>
             <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={handleAddIncident}
-            size="small"
-          >
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={handleAddIncident}
+              size="small"
+            >
               Add Incident
             </Button>
         </Box>
@@ -564,23 +630,25 @@ export function ReportForm() {
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
                     <Controller
-                name={`incidents.${index}.type`}
+                      name={`incidents.${index}.type`}
                       control={control}
-                render={({ field }) => (
+                      render={({ field }) => (
                         <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
                           <InputLabel>Incident Type</InputLabel>
                           <Select
                             {...field}
                             label="Incident Type"
                           >
-                        {incidentTypes.map((type) => (
+                            {incidentTypes.map((type) => (
                               <MenuItem key={type} value={type}>
-                            {type}
+                                {type}
                               </MenuItem>
-                        ))}
-                    </Select>
+                            ))}
+                          </Select>
                           {errors.incidents?.[index]?.type && (
-                            <FormHelperText>{errors.incidents[index]?.type?.message}</FormHelperText>
+                            <FormHelperText>
+                              {String(errors.incidents[index]?.type || "Invalid type")}
+                            </FormHelperText>
                           )}
                         </FormControl>
                       )}
@@ -588,9 +656,9 @@ export function ReportForm() {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Controller
-                name={`incidents.${index}.description`}
+                      name={`incidents.${index}.description`}
                       control={control}
-                render={({ field }) => (
+                      render={({ field }) => (
                         <TextField
                           {...field}
                           label="Description"
@@ -616,24 +684,27 @@ export function ReportForm() {
         )}
       </Paper>
 
-        {/* Cuencas Selection */}
+      {/* Cuencas Selection */}
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>Affected Cuencas</Typography>
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <FormControl fullWidth error={!!errors.cuencaIds}>
               <InputLabel>Select Cuencas</InputLabel>
-                <Select
+              <Select
                 label="Select Cuencas"
                 value=""
-                onChange={(e) => handleCuencaSelect(e.target.value as string)}
+                onChange={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  handleCuencaSelect(target.value);
+                }}
               >
-                    {cuencas.map((cuenca) => (
+                {cuencas.map((cuenca) => (
                   <MenuItem key={cuenca.id} value={String(cuenca.id)}>
-                        {cuenca.nombre} ({cuenca.codigo_cuenca})
+                    {cuenca.nombre} ({cuenca.codigo_cuenca})
                   </MenuItem>
-                    ))}
-                </Select>
+                ))}
+              </Select>
               {errors.cuencaIds && (
                 <FormHelperText>{errors.cuencaIds.message}</FormHelperText>
               )}
@@ -642,17 +713,17 @@ export function ReportForm() {
           <Grid item xs={12}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
               {cuencaIds?.map((cuencaId) => {
-                    const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
-                    return cuenca ? (
+                const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
+                return cuenca ? (
                   <Chip
-                        key={cuenca.id}
+                    key={cuenca.id}
                     label={cuenca.nombre}
                     onDelete={() => handleRemoveCuenca(cuencaId)}
                     color="primary"
                     variant="outlined"
                   />
-                    ) : null
-                  })}
+                ) : null
+              })}
             </Box>
           </Grid>
         </Grid>
@@ -662,14 +733,14 @@ export function ReportForm() {
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h6">Affected Properties</Typography>
-            <Button
+          <Button
             variant="outlined"
             startIcon={<AddIcon />}
             onClick={handleAddProperty}
             size="small"
           >
-              Add Property
-            </Button>
+            Add Property
+          </Button>
         </Box>
 
         <Box sx={{ maxHeight: 500, overflow: 'auto', pr: 1 }}>
@@ -679,23 +750,25 @@ export function ReportForm() {
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
                     <Controller
-                  name={`properties.${index}.type`}
+                      name={`properties.${index}.type`}
                       control={control}
-                  render={({ field }) => (
+                      render={({ field }) => (
                         <FormControl fullWidth error={!!errors.properties?.[index]?.type}>
                           <InputLabel>Property Type</InputLabel>
                           <Select
                             {...field}
                             label="Property Type"
                           >
-                          {propertyTypes.map((type) => (
+                            {propertyTypes.map((type) => (
                               <MenuItem key={type} value={type}>
-                              {type}
+                                {type}
                               </MenuItem>
-                          ))}
-                      </Select>
+                            ))}
+                          </Select>
                           {errors.properties?.[index]?.type && (
-                            <FormHelperText>{errors.properties[index]?.type?.message}</FormHelperText>
+                            <FormHelperText>
+                              {String(errors.properties[index]?.type || "Invalid type")}
+                            </FormHelperText>
                           )}
                         </FormControl>
                       )}
@@ -703,72 +776,108 @@ export function ReportForm() {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Controller
-                  name={`properties.${index}.municipioId`}
+                      name={`properties.${index}.municipioId`}
                       control={control}
-                  render={({ field }) => (
+                      render={({ field }) => (
                         <FormControl fullWidth error={!!errors.properties?.[index]?.municipioId}>
-                          <InputLabel>Municipio</InputLabel>
-                      <Autocomplete
-                        value={municipios.find(m => m.id_municipio === field.value) || null}
-                        options={municipios}
-                        getOptionLabel={(option) => option.nombre}
-                        loading={isMunicipiosLoading}
-                        onChange={(_, newValue) => {
-                          field.onChange(newValue?.id_municipio || null)
-                        }}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Municipio"
-                            error={!!errors.properties?.[index]?.municipioId}
-                            helperText={errors.properties?.[index]?.municipioId?.message}
-                            required
+                          <Autocomplete
+                            value={municipios.find(m => String(m.id_municipio) === field.value) || null}
+                            options={municipios}
+                            getOptionLabel={(option) => option.nombre}
+                            loading={isMunicipiosLoading}
+                            onChange={(_, newValue) => {
+                              const municipioId = newValue ? String(newValue.id_municipio) : "";
+                              field.onChange(municipioId);
+                              handleMunicipioSelect(index, municipioId);
+                            }}
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                label="Municipio"
+                                error={!!errors.properties?.[index]?.municipioId}
+                                helperText={errors.properties?.[index]?.municipioId?.message}
+                                required
+                              />
+                            )}
                           />
-                        )}
-                        fullWidth
-                      />
-                          {errors.properties?.[index]?.municipioId && (
-                            <FormHelperText>{errors.properties[index]?.municipioId?.message}</FormHelperText>
-                          )}
                         </FormControl>
                       )}
                     />
                   </Grid>
 
-              {selectedMunicipios[index] && (
+                  {selectedMunicipios[index] && (
                     <>
                       <Grid item xs={12} md={6}>
                         <Controller
-                    name={`properties.${index}.barrioId`}
+                          name={`properties.${index}.barrioId`}
                           control={control}
-                    render={({ field }) => (
+                          render={({ field }) => (
                             <FormControl fullWidth>
                               <InputLabel>Barrio</InputLabel>
                               <Select
                                 {...field}
                                 label="Barrio"
                                 value={field.value || ""}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  handleBarrioSelect(index, e.target.value as string);
+                                }}
+                                disabled={!selectedMunicipios[index]}
                               >
-                            {municipios
-                              .find((m) => m.id_municipio === selectedMunicipios[index])
-                              ?.barrios.map((barrio) => (
+                                {municipios
+                                  .find((m) => m.id_municipio === selectedMunicipios[index])
+                                  ?.barrios?.map((barrio) => (
                                     <MenuItem
-                                  key={barrio.id_barrio}
-                                  value={String(barrio.id_barrio)}
-                                >
-                                  {barrio.nombre}
+                                      key={barrio.id_barrio}
+                                      value={String(barrio.id_barrio)}
+                                    >
+                                      {barrio.nombre}
                                     </MenuItem>
-                              ))}
-                        </Select>
+                                  )) || []}
+                              </Select>
                             </FormControl>
                           )}
                         />
                       </Grid>
+                      
+                      {/* Add sector selection if barrio is selected */}
+                      {selectedBarrios[index] && (
+                        <Grid item xs={12} md={6}>
+                          <Controller
+                            name={`properties.${index}.sectorId`}
+                            control={control}
+                            render={({ field }) => (
+                              <FormControl fullWidth>
+                                <InputLabel>Sector</InputLabel>
+                                <Select
+                                  {...field}
+                                  label="Sector"
+                                  value={field.value || ""}
+                                  disabled={!selectedBarrios[index]}
+                                >
+                                  {municipios
+                                    .find((m) => m.id_municipio === selectedMunicipios[index])
+                                    ?.barrios?.find((b) => b.id_barrio === selectedBarrios[index])
+                                    ?.sectores?.map((sector) => (
+                                      <MenuItem
+                                        key={sector.id_sector}
+                                        value={String(sector.id_sector)}
+                                      >
+                                        {sector.nombre}
+                                      </MenuItem>
+                                    )) || []}
+                                </Select>
+                              </FormControl>
+                            )}
+                          />
+                        </Grid>
+                      )}
+                      
                       <Grid item xs={12} md={6}>
                         <Controller
-                    name={`properties.${index}.address`}
+                          name={`properties.${index}.address`}
                           control={control}
-                    render={({ field }) => (
+                          render={({ field }) => (
                             <TextField
                               {...field}
                               label="Address"
@@ -782,42 +891,26 @@ export function ReportForm() {
                       </Grid>
                     </>
                   )}
-                  <Grid item xs={12}>
-                    <Box display="flex" justifyContent="flex-end">
-              <Button
-                        variant="text"
-                        color="error"
-                        startIcon={<DeleteIcon />}
-                        onClick={() => handleRemoveProperty(index)}
-                        size="small"
-                      >
-                Remove Property
-              </Button>
-                    </Box>
-                  </Grid>
                 </Grid>
               </CardContent>
             </Card>
           ))}
         </Box>
-        {errors.properties && !Array.isArray(errors.properties) && (
-          <Typography color="error" variant="body2" mt={1}>
-            {errors.properties.message}
-          </Typography>
-        )}
       </Paper>
 
-      <Box display="flex" justifyContent="center" mt={4} mb={2}>
-        <Button 
-          type="submit" 
-          variant="contained" 
-          color="primary" 
+      {/* Submit Button */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+        <Button
+          type="submit"
+          variant="contained"
+          color="primary"
           size="large"
-          sx={{ minWidth: 200 }}
+          disabled={isSubmitting}
+          startIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : null}
         >
-          Submit Report
+          {isSubmitting ? 'Submitting...' : 'Submit Report'}
         </Button>
       </Box>
     </Box>
-  )
-} 
+  );
+}

@@ -1,15 +1,25 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "../../components/ui/button"
-import { Input } from "../../components/ui/input"
+import { motion } from "framer-motion";
+import { Download, Filter, Search, Table as TableIcon, X } from "lucide-react";
+import { useState } from "react";
+import * as XLSX from "xlsx";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../components/ui/select"
+} from "../../components/ui/select";
 import {
   Table,
   TableBody,
@@ -17,19 +27,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../../components/ui/table"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../components/ui/card"
-import { Badge } from "../../components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs"
-import { motion, AnimatePresence } from "framer-motion"
-import { Download, Filter, Search, Table as TableIcon, X } from "lucide-react"
-import * as XLSX from 'xlsx'
+} from "../../components/ui/table";
 
 // Define available tables and their fields
 const tables = {
@@ -39,8 +37,8 @@ const tables = {
       { name: "usng", label: "USNG Grid", type: "string" },
       { name: "properties", label: "Properties", type: "relation" },
       { name: "events", label: "Events", type: "relation" },
-      { name: "incidents", label: "Incidents", type: "relation" }
-    ]
+      { name: "incidents", label: "Incidents", type: "relation" },
+    ],
   },
   propiedades: {
     name: "Properties",
@@ -52,7 +50,7 @@ const tables = {
       { name: "barrio", label: "Neighborhood", type: "relation" },
       { name: "sector", label: "Sector", type: "relation" },
       { name: "grid", label: "USNG Grid", type: "relation" },
-    ]
+    ],
   },
   eventos: {
     name: "Events",
@@ -63,7 +61,7 @@ const tables = {
       { name: "date", label: "Date", type: "date" },
       { name: "status", label: "Status", type: "string" },
       { name: "description", label: "Description", type: "string" },
-    ]
+    ],
   },
   incidentes: {
     name: "Incidents",
@@ -73,7 +71,7 @@ const tables = {
       { name: "description", label: "Description", type: "string" },
       { name: "event_id", label: "Event ID", type: "number" },
       { name: "date", label: "Date", type: "date" },
-    ]
+    ],
   },
   cuencas: {
     name: "Watersheds",
@@ -81,309 +79,155 @@ const tables = {
       { name: "id", label: "ID", type: "number" },
       { name: "nombre", label: "Name", type: "string" },
       { name: "codigo_cuenca", label: "Code", type: "string" },
-    ]
+    ],
   },
   municipios: {
     name: "Municipalities",
     fields: [
       { name: "id_municipio", label: "ID", type: "number" },
       { name: "nombre", label: "Name", type: "string" },
-    ]
+    ],
   },
   // Add more tables as needed
-}
+};
 
 interface Filter {
-  field: string
-  operator: string
-  value: string
+  field: string;
+  operator: string;
+  value: string;
 }
 
 interface Sort {
-  field: string
-  direction: 'asc' | 'desc'
+  field: string;
+  direction: "asc" | "desc";
 }
 
-// Move interfaces to a shared types file
+// Update your SearchResponse interface to match the actual API response
 interface SearchResponse {
-  data: any[]
-  count: number
-  error?: string
+  data: {
+    usng: string;
+    coordinates: [number, number] | null;
+    properties: Array<{
+      id: number;
+      tipo: string;
+      valor: number;
+    }>;
+    cuencas: Array<{
+      id: number;
+      nombre: string;
+      codigo_cuenca: string;
+    }>;
+    incidents: Array<{
+      id: number;
+      tipo: string;
+      descripcion: string;
+    }>;
+  };
+  error?: string;
 }
 
 // Add a helper function to format cell values
 const formatCellValue = (value: any): string => {
   if (value === null || value === undefined) {
-    return ''
+    return "";
   }
-  if (typeof value === 'object') {
+  if (typeof value === "object") {
     // Handle Date objects
     if (value instanceof Date) {
-      return value.toLocaleDateString()
+      return value.toLocaleDateString();
     }
     // Handle other objects by showing their primary identifier or stringified version
-    return value.id || value.name || JSON.stringify(value)
+    return value.id || value.name || JSON.stringify(value);
   }
-  return String(value)
-}
+  return String(value);
+};
 
 // Add USNG specific interface
-interface USNGSearchResult {
-  usng: string;
-  properties: any[];
-  events: any[];
-  incidents: any[];
-}
 
 export function DataAnalytics() {
-  const [selectedTable, setSelectedTable] = useState<string>("")
-  const [filters, setFilters] = useState<Filter[]>([])
-  const [sorts, setSorts] = useState<Sort[]>([])
-  const [results, setResults] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [selectedFields, setSelectedFields] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [usngResults, setUSNGResults] = useState<USNGSearchResult | null>(null);
+  const [selectedTable, setSelectedTable] = useState<string>("");
+  const [filters, setFilters] = useState<Filter[]>([]);
+  const [sorts, setSorts] = useState<Sort[]>([]);
+  const [results, setResults] = useState<
+    {
+      usng: string;
+      coordinates: [number, number] | null;
+      properties: { id: number; tipo: string; valor: number }[];
+      cuencas: { id: number; nombre: string; codigo_cuenca: string }[];
+      incidents: { id: number; tipo: string; descripcion: string }[];
+    }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSearch = async () => {
     if (!selectedTable || selectedFields.length === 0) {
-      setError("Please select a table and at least one field")
-      return
+      setError("Please select a table and at least one field");
+      return;
     }
 
-    setError(null)
-    setLoading(true)
-    
+    setError(null);
+    setLoading(true);
+
     try {
-      const response = await fetch('/api/analytics/search', {
-        method: 'POST',
+      const response = await fetch("/api/analytics/search", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           table: selectedTable,
-          filters: filters.filter(f => f.field && f.operator && f.value), // Only send complete filters
-          sorts: sorts.filter(s => s.field && s.direction), // Only send complete sorts
+          filters: filters.filter((f) => f.field && f.operator && f.value), // Only send complete filters
+          sorts: sorts.filter((s) => s.field && s.direction), // Only send complete sorts
           fields: selectedFields,
         }),
-      })
-      
-      const data: SearchResponse = await response.json()
-      
-      if (data.error) {
-        setError(data.error)
-        setResults([])
-      } else {
-        setResults(data.data)
-      }
-    } catch (error) {
-      setError('Failed to fetch results. Please try again.')
-      console.error('Search error:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Add reset function
-  const resetSearch = () => {
-    setFilters([])
-    setSorts([])
-    setResults([])
-    setError(null)
-  }
-
-  // Add field selection validation
-  const handleTableChange = (newTable: string) => {
-    setSelectedTable(newTable)
-    setSelectedFields([])
-    resetSearch()
-  }
-
-  const exportToExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(results)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Data')
-    XLSX.writeFile(wb, `${selectedTable}_export.xlsx`)
-  }
-
-  // Add USNG search function
-  const handleUSNGSearch = async (usngValue: string) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('/api/analytics/usng-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          usng: usngValue
-        }),
       });
-      
-      const data = await response.json();
-      
+
+      const data: SearchResponse = (await response.json()) as SearchResponse;
+
       if (data.error) {
         setError(data.error);
-        setUSNGResults(null);
+        setResults([]);
       } else {
-        setUSNGResults(data);
+        setResults([data.data]);
       }
     } catch (error) {
-      setError('Failed to fetch USNG results. Please try again.');
-      console.error('USNG Search error:', error);
+      setError("Failed to fetch results. Please try again.");
+      console.error("Search error:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Add USNG Results component
-  const USNGResultsView = ({ data }: { data: USNGSearchResult }) => {
-    return (
-      <Tabs defaultValue="properties" className="w-full">
-        <TabsList>
-          <TabsTrigger value="properties">
-            Properties ({data.properties.length})
-          </TabsTrigger>
-          <TabsTrigger value="events">
-            Events ({data.events.length})
-          </TabsTrigger>
-          <TabsTrigger value="incidents">
-            Incidents ({data.incidents.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="properties">
-          <Card>
-            <CardHeader>
-              <CardTitle>Properties in {data.usng}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Municipality</TableHead>
-                    <TableHead>Neighborhood</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.properties.map((prop) => (
-                    <TableRow key={prop.id}>
-                      <TableCell>{prop.id}</TableCell>
-                      <TableCell>{prop.tipo}</TableCell>
-                      <TableCell>{prop.valor}</TableCell>
-                      <TableCell>{prop.municipio}</TableCell>
-                      <TableCell>{prop.barrio}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="events">
-          <Card>
-            <CardHeader>
-              <CardTitle>Events in {data.usng}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell>{event.id}</TableCell>
-                      <TableCell>{event.name}</TableCell>
-                      <TableCell>{formatCellValue(event.date)}</TableCell>
-                      <TableCell>{event.status}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="incidents">
-          <Card>
-            <CardHeader>
-              <CardTitle>Incidents in {data.usng}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.incidents.map((incident) => (
-                    <TableRow key={incident.id}>
-                      <TableCell>{incident.id}</TableCell>
-                      <TableCell>{incident.type}</TableCell>
-                      <TableCell>{incident.description}</TableCell>
-                      <TableCell>{formatCellValue(incident.date)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    );
+  // Add reset function
+  const resetSearch = () => {
+    setFilters([]);
+    setSorts([]);
+    setResults([]);
+    setError(null);
   };
+
+  // Add field selection validation
+  const handleTableChange = (newTable: string) => {
+    setSelectedTable(newTable);
+    setSelectedFields([]);
+    resetSearch();
+  };
+
+  const exportToExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(results);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    XLSX.writeFile(wb, `${selectedTable}_export.xlsx`);
+  };
+
+  // Add USNG search function
+  
+  // Add USNG Results component
 
   return (
     <div className="space-y-6">
-      {/* USNG Search Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>USNG Grid Search</CardTitle>
-          <CardDescription>
-            Search for all information within a specific USNG grid
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <Input
-              placeholder="Enter USNG grid code"
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleUSNGSearch(e.target.value);
-                }
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* USNG Results */}
-      {usngResults && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <USNGResultsView data={usngResults} />
-        </motion.div>
-      )}
-
       {/* Table Selection */}
       <Card>
         <CardHeader>
@@ -412,26 +256,34 @@ export function DataAnalytics() {
           <Card>
             <CardHeader>
               <CardTitle>2. Select Fields</CardTitle>
-              <CardDescription>Choose which fields to include in the results</CardDescription>
+              <CardDescription>
+                Choose which fields to include in the results
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {tables[selectedTable as keyof typeof tables].fields.map((field) => (
-                  <Badge
-                    key={field.name}
-                    variant={selectedFields.includes(field.name) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setSelectedFields(prev =>
-                        prev.includes(field.name)
-                          ? prev.filter(f => f !== field.name)
-                          : [...prev, field.name]
-                      )
-                    }}
-                  >
-                    {field.label}
-                  </Badge>
-                ))}
+                {tables[selectedTable as keyof typeof tables].fields.map(
+                  (field) => (
+                    <Badge
+                      key={field.name}
+                      variant={
+                        selectedFields.includes(field.name)
+                          ? "default"
+                          : "outline"
+                      }
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setSelectedFields((prev) =>
+                          prev.includes(field.name)
+                            ? prev.filter((f) => f !== field.name)
+                            : [...prev, field.name]
+                        );
+                      }}
+                    >
+                      {field.label}
+                    </Badge>
+                  )
+                )}
               </div>
             </CardContent>
           </Card>
@@ -440,7 +292,9 @@ export function DataAnalytics() {
           <Card>
             <CardHeader>
               <CardTitle>3. Add Filters</CardTitle>
-              <CardDescription>Define conditions for your search</CardDescription>
+              <CardDescription>
+                Define conditions for your search
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -455,16 +309,18 @@ export function DataAnalytics() {
                     <Select
                       value={filter.field}
                       onValueChange={(value) => {
-                        const newFilters = [...filters]
-                        newFilters[index].field = value
-                        setFilters(newFilters)
+                        const newFilters = [...filters];
+                        newFilters[index].field = value;
+                        setFilters(newFilters);
                       }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Field" />
                       </SelectTrigger>
                       <SelectContent>
-                        {tables[selectedTable as keyof typeof tables].fields.map((field) => (
+                        {tables[
+                          selectedTable as keyof typeof tables
+                        ].fields.map((field) => (
                           <SelectItem key={field.name} value={field.name}>
                             {field.label}
                           </SelectItem>
@@ -475,9 +331,9 @@ export function DataAnalytics() {
                     <Select
                       value={filter.operator}
                       onValueChange={(value) => {
-                        const newFilters = [...filters]
-                        newFilters[index].operator = value
-                        setFilters(newFilters)
+                        const newFilters = [...filters];
+                        newFilters[index].operator = value;
+                        setFilters(newFilters);
                       }}
                     >
                       <SelectTrigger>
@@ -491,21 +347,11 @@ export function DataAnalytics() {
                       </SelectContent>
                     </Select>
 
-                    <Input
-                      placeholder="Value"
-                      value={filter.value}
-                      onChange={(e) => {
-                        const newFilters = [...filters]
-                        newFilters[index].value = e.target.value
-                        setFilters(newFilters)
-                      }}
-                    />
-
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => {
-                        setFilters(filters.filter((_, i) => i !== index))
+                        setFilters(filters.filter((_, i) => i !== index));
                       }}
                     >
                       <X className="h-4 w-4" />
@@ -516,7 +362,10 @@ export function DataAnalytics() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setFilters([...filters, { field: "", operator: "", value: "" }])
+                    setFilters([
+                      ...filters,
+                      { field: "", operator: "", value: "" },
+                    ]);
                   }}
                 >
                   <Filter className="h-4 w-4 mr-2" />
@@ -530,7 +379,9 @@ export function DataAnalytics() {
           <Card>
             <CardHeader>
               <CardTitle>4. Sort Results</CardTitle>
-              <CardDescription>Define the order of your results</CardDescription>
+              <CardDescription>
+                Define the order of your results
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -545,16 +396,18 @@ export function DataAnalytics() {
                     <Select
                       value={sort.field}
                       onValueChange={(value) => {
-                        const newSorts = [...sorts]
-                        newSorts[index].field = value
-                        setSorts(newSorts)
+                        const newSorts = [...sorts];
+                        newSorts[index].field = value;
+                        setSorts(newSorts);
                       }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Field" />
                       </SelectTrigger>
                       <SelectContent>
-                        {tables[selectedTable as keyof typeof tables].fields.map((field) => (
+                        {tables[
+                          selectedTable as keyof typeof tables
+                        ].fields.map((field) => (
                           <SelectItem key={field.name} value={field.name}>
                             {field.label}
                           </SelectItem>
@@ -564,10 +417,10 @@ export function DataAnalytics() {
 
                     <Select
                       value={sort.direction}
-                      onValueChange={(value: 'asc' | 'desc') => {
-                        const newSorts = [...sorts]
-                        newSorts[index].direction = value
-                        setSorts(newSorts)
+                      onValueChange={(value: "asc" | "desc") => {
+                        const newSorts = [...sorts];
+                        newSorts[index].direction = value;
+                        setSorts(newSorts);
                       }}
                     >
                       <SelectTrigger>
@@ -583,7 +436,7 @@ export function DataAnalytics() {
                       variant="ghost"
                       size="icon"
                       onClick={() => {
-                        setSorts(sorts.filter((_, i) => i !== index))
+                        setSorts(sorts.filter((_, i) => i !== index));
                       }}
                     >
                       <X className="h-4 w-4" />
@@ -594,7 +447,7 @@ export function DataAnalytics() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setSorts([...sorts, { field: "", direction: 'asc' }])
+                    setSorts([...sorts, { field: "", direction: "asc" }]);
                   }}
                 >
                   <TableIcon className="h-4 w-4 mr-2" />
@@ -620,10 +473,7 @@ export function DataAnalytics() {
             </Button>
 
             {results.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={exportToExcel}
-              >
+              <Button variant="outline" onClick={exportToExcel}>
                 <Download className="h-4 w-4 mr-2" />
                 Export to Excel
               </Button>
@@ -646,7 +496,11 @@ export function DataAnalytics() {
                       <TableRow>
                         {selectedFields.map((field) => (
                           <TableHead key={field}>
-                            {tables[selectedTable as keyof typeof tables].fields.find(f => f.name === field)?.label}
+                            {
+                              tables[
+                                selectedTable as keyof typeof tables
+                              ].fields.find((f) => f.name === field)?.label
+                            }
                           </TableHead>
                         ))}
                       </TableRow>
@@ -656,7 +510,7 @@ export function DataAnalytics() {
                         <TableRow key={i}>
                           {selectedFields.map((field) => (
                             <TableCell key={field}>
-                              {formatCellValue(row[field])}
+                              {formatCellValue(row[field as keyof typeof row])}
                             </TableCell>
                           ))}
                         </TableRow>
@@ -677,5 +531,5 @@ export function DataAnalytics() {
         </div>
       )}
     </div>
-  )
-} 
+  );
+}

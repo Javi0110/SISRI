@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo, useCallback } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Loader2, ChevronRight, ChevronDown, Home, Droplets, Wrench } from "lucide-react"
 import { Input } from "./ui/input"

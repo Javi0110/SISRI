@@ -46,7 +46,3 @@ const ScrollBar = React.forwardRef<
 ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName
 
 export { ScrollArea, ScrollBar }
-
-// If you want to use Material UI version:
-export { Box as ScrollArea } from "@mui/material"
-export { Box as ScrollBar } from "@mui/material"

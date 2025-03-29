@@ -1,10 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useCallback, useState } from "react"
 import Map from "./components/Map"
 import Sidebar from "./components/Sidebar"
-import { View } from "ol"
-import { fromLonLat } from "ol/proj"
 
 export default function Home() {
   const [map, setMap] = useState<any>(null)

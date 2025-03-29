@@ -1,44 +1,30 @@
-import { PrismaClient } from '@prisma/client'
-import { NextResponse } from 'next/server'
-
-const prisma = new PrismaClient()
+import { NextResponse } from "next/server"
 
 export async function GET(
+  _: Request,
   { params }: { params: { usng: string } }
 ) {
-  const usng = params.usng
-
-  if (!usng) {
-    return NextResponse.json(
-      { error: 'USNG parameter is required' }, 
-      { status: 400 }
-    )
-  }
-
   try {
-    const properties = await prisma.propiedades_Existentes.findMany({
+    const { usng } = params
+    
+    if (!usng) {
+      return NextResponse.json(
+        { error: "USNG parameter is required" },
+        { status: 400 }
+      )
+    }
+
+    const properties = await prisma.propiedad.findMany({
       where: {
-        grid: {
-          usng: usng
-        }
-      },
-      select: {
-        id: true,
-        tipo: true,
-        valor: true,
-        municipio: {
-          select: {
-            nombre: true
-          }
-        }
+        usng_code: usng
       }
     })
 
     return NextResponse.json(properties)
   } catch (error) {
-    console.error('Error fetching properties:', error)
+    console.error("Error fetching properties:", error)
     return NextResponse.json(
-      { error: 'Failed to fetch properties' },
+      { error: "Failed to fetch properties" },
       { status: 500 }
     )
   }
