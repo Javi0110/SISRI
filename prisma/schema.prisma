@@ -1,10 +1,12 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["sisri"]
 }
 
 model Municipio {
@@ -15,6 +17,7 @@ model Municipio {
   codigo_municipio String   @unique
   barrios          Barrio[]
   propiedades      Propiedades_Existentes[]
+  @@schema("sisri")
 }
 
 model Barrio {
@@ -25,6 +28,7 @@ model Barrio {
   municipio      Municipio  @relation(fields: [id_municipio], references: [id_municipio])
   sectores       Sector[]
   propiedades    Propiedades_Existentes[]
+  @@schema("sisri")
 }
 
 model Sector {
@@ -34,6 +38,7 @@ model Sector {
   id_barrio     Int
   barrio        Barrio   @relation(fields: [id_barrio], references: [id_barrio])
   propiedades   Propiedades_Existentes[]
+  @@schema("sisri")
 }
 
 model Propiedades_Existentes {
@@ -51,6 +56,7 @@ model Propiedades_Existentes {
   geometria    Json
   eventos      EventosPropiedades[]
   incidentes   Incidentes[]
+  @@schema("sisri")
 }
 
 model Eventos {
@@ -66,6 +72,7 @@ model Eventos {
   propiedades_afectadas EventosPropiedades[]
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  @@schema("sisri")
 }
 
 model Incidentes {
@@ -79,12 +86,14 @@ model Incidentes {
   cuenca          Cuenca   @relation(fields: [cuencaId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  @@schema("sisri")
 }
 
 model Notificacion {
   id        Int       @id @default(autoincrement())
   eventos   Eventos[]
   createdAt DateTime  @default(now())
+  @@schema("sisri")
 }
 
 model EventosPropiedades {
@@ -94,6 +103,7 @@ model EventosPropiedades {
   propiedad   Propiedades_Existentes @relation(fields: [propiedadId], references: [id])
   daños       String?
   @@id([eventoId, propiedadId])
+  @@schema("sisri")
 }
 
 model USNGSquare {
@@ -105,6 +115,7 @@ model USNGSquare {
   properties  Propiedades_Existentes[]
   cuencas     Cuenca[]
   eventos     Eventos[]
+  @@schema("sisri")
 }
 
 model Cuenca {
@@ -116,6 +127,7 @@ model Cuenca {
   grid           USNGSquare @relation(fields: [gridId], references: [id])
   incidentes     Incidentes[]
   reports        Report[]
+  @@schema("sisri")
 }
 
 model Report {
@@ -130,6 +142,7 @@ model Report {
   cuencas           Cuenca[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
+  @@schema("sisri")
 }
 
 model Incident {
@@ -138,6 +151,7 @@ model Incident {
   description String
   reportId    String
   report      Report   @relation(fields: [reportId], references: [id])
+  @@schema("sisri")
 }
 
 model Property {
@@ -151,4 +165,5 @@ model Property {
   location    Json?
   reportId    String
   report      Report   @relation(fields: [reportId], references: [id])
+  @@schema("sisri")
 }
