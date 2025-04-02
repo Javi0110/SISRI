@@ -1,8 +1,9 @@
+import prisma from "lib/prisma"
 import { NextResponse } from "next/server"
 
 export async function GET(
   _: Request,
-  { params }: { params: { usng: string } }
+  { params }: { params: { usng: number } }
 ) {
   try {
     const { usng } = params
@@ -14,9 +15,9 @@ export async function GET(
       )
     }
 
-    const properties = await prisma.propiedad.findMany({
+    const properties = await prisma.propiedades_Existentes.findMany({
       where: {
-        usng_code: usng
+        gridId: usng
       }
     })
 
