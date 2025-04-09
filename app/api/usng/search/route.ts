@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Search for USNG codes that contain the search term
-    const usngCodes = await prisma.uSNGSquare.findMany({
+    const usngCodes = await prisma.usngsquare.findMany({
       where: {
         usng: {
           contains: term,

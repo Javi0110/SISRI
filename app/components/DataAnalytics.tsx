@@ -29,66 +29,108 @@ import {
   TableRow,
 } from "../../components/ui/table";
 
-// Define available tables and their fields
+// Update available tables and their fields
 const tables = {
-  usng_search: {
-    name: "USNG Grid Search",
+  usng_grid: {
+    name: "USNG Grid",
     fields: [
-      { name: "usng", label: "USNG Grid", type: "string" },
+      { name: "id", label: "ID", type: "number" },
+      { name: "usng", label: "USNG Code", type: "string" },
+      { name: "latitudes", label: "Latitudes", type: "string" },
+      { name: "longitudes", label: "Longitudes", type: "string" },
       { name: "properties", label: "Properties", type: "relation" },
-      { name: "events", label: "Events", type: "relation" },
-      { name: "incidents", label: "Incidents", type: "relation" },
+      { name: "cuencas", label: "Watersheds", type: "relation" },
     ],
   },
-  propiedades: {
+  propiedad: {
     name: "Properties",
     fields: [
       { name: "id", label: "ID", type: "number" },
       { name: "tipo", label: "Type", type: "string" },
       { name: "valor", label: "Value", type: "number" },
-      { name: "municipio", label: "Municipality", type: "relation" },
-      { name: "barrio", label: "Neighborhood", type: "relation" },
-      { name: "sector", label: "Sector", type: "relation" },
-      { name: "grid", label: "USNG Grid", type: "relation" },
+      { name: "direccion", label: "Address", type: "string" },
+      { name: "id_municipio", label: "Municipality ID", type: "number" },
+      { name: "id_barrio", label: "Neighborhood ID", type: "number" },
+      { name: "id_sector", label: "Sector ID", type: "number" },
+      { name: "gridId", label: "USNG Grid ID", type: "number" },
+      { name: "createdAt", label: "Created At", type: "datetime" },
+      { name: "updatedAt", label: "Updated At", type: "datetime" },
     ],
   },
-  eventos: {
+  evento: {
     name: "Events",
     fields: [
       { name: "id", label: "ID", type: "number" },
-      { name: "notification_number", label: "Notification #", type: "string" },
-      { name: "name", label: "Event Name", type: "string" },
-      { name: "date", label: "Date", type: "date" },
-      { name: "status", label: "Status", type: "string" },
-      { name: "description", label: "Description", type: "string" },
+      { name: "titulo", label: "Title", type: "string" },
+      { name: "descripcion", label: "Description", type: "string" },
+      { name: "fecha", label: "Date", type: "datetime" },
+      { name: "tipo", label: "Type", type: "string" },
+      { name: "severidad", label: "Severity", type: "string" },
+      { name: "estado", label: "Status", type: "string" },
+      { name: "id_usng", label: "USNG Grid ID", type: "number" },
+      { name: "notificacionId", label: "Notification ID", type: "number" },
+      { name: "createdAt", label: "Created At", type: "datetime" },
+      { name: "updatedAt", label: "Updated At", type: "datetime" },
     ],
   },
-  incidentes: {
+  incidente: {
     name: "Incidents",
     fields: [
       { name: "id", label: "ID", type: "number" },
-      { name: "type", label: "Type", type: "string" },
-      { name: "description", label: "Description", type: "string" },
-      { name: "event_id", label: "Event ID", type: "number" },
-      { name: "date", label: "Date", type: "date" },
+      { name: "tipo", label: "Type", type: "string" },
+      { name: "descripcion", label: "Description", type: "string" },
+      { name: "severidad", label: "Severity", type: "string" },
+      { name: "estado", label: "Status", type: "string" },
+      { name: "eventoId", label: "Event ID", type: "number" },
+      { name: "propiedadId", label: "Property ID", type: "number" },
+      { name: "cuencaId", label: "Watershed ID", type: "number" },
+      { name: "createdAt", label: "Created At", type: "datetime" },
+      { name: "updatedAt", label: "Updated At", type: "datetime" },
     ],
   },
-  cuencas: {
+  notificacion: {
+    name: "Notifications",
+    fields: [
+      { name: "id", label: "ID", type: "number" },
+      { name: "tipo", label: "Type", type: "string" },
+      { name: "titulo", label: "Title", type: "string" },
+      { name: "descripcion", label: "Description", type: "string" },
+      { name: "estado", label: "Status", type: "string" },
+      { name: "fecha_creacion", label: "Created At", type: "datetime" },
+    ],
+  },
+  cuenca: {
     name: "Watersheds",
     fields: [
       { name: "id", label: "ID", type: "number" },
       { name: "nombre", label: "Name", type: "string" },
       { name: "codigo_cuenca", label: "Code", type: "string" },
+      { name: "gridId", label: "USNG Grid ID", type: "number" },
     ],
   },
-  municipios: {
+  municipio: {
     name: "Municipalities",
     fields: [
       { name: "id_municipio", label: "ID", type: "number" },
       { name: "nombre", label: "Name", type: "string" },
     ],
   },
-  // Add more tables as needed
+  barrio: {
+    name: "Neighborhoods",
+    fields: [
+      { name: "id_barrio", label: "ID", type: "number" },
+      { name: "nombre", label: "Name", type: "string" },
+      { name: "id_municipio", label: "Municipality ID", type: "number" },
+    ],
+  },
+  sector: {
+    name: "Sectors",
+    fields: [
+      { name: "id_sector", label: "ID", type: "number" },
+      { name: "nombre", label: "Name", type: "string" },
+      { name: "id_barrio", label: "Neighborhood ID", type: "number" },
+    ],
+  },
 };
 
 interface Filter {
@@ -102,28 +144,36 @@ interface Sort {
   direction: "asc" | "desc";
 }
 
-// Update your SearchResponse interface to match the actual API response
+// Update SearchResponse interface
 interface SearchResponse {
   data: {
-    usng: string;
-    coordinates: [number, number] | null;
+    usng: string
+    coordinates: [number, number] | null
     properties: Array<{
-      id: number;
-      tipo: string;
-      valor: number;
-    }>;
+      id: number
+      tipo: string
+      valor: number
+      direccion: string
+      municipio: { nombre: string }
+      barrio?: { nombre: string }
+      sector?: { nombre: string }
+    }>
     cuencas: Array<{
-      id: number;
-      nombre: string;
-      codigo_cuenca: string;
-    }>;
-    incidents: Array<{
-      id: number;
-      tipo: string;
-      descripcion: string;
-    }>;
-  };
-  error?: string;
+      id: number
+      nombre: string
+      codigo_cuenca: string
+    }>
+    incidentes: Array<{
+      id: number
+      tipo: string
+      descripcion: string
+      evento: {
+        titulo: string
+        fecha: string
+      }
+    }>
+  }
+  error?: string
 }
 
 // Add a helper function to format cell values

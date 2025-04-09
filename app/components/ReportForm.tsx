@@ -50,6 +50,27 @@ const propertyTypes = [
   "Healthcare"
 ] as const
 
+const eventStatus = [
+  "pending",
+  "active",
+  "resolved"
+] as const
+
+// Add habitantes related constants
+const habitanteCategories = [
+  "Adulto",
+  "Niño",
+  "Anciano",
+  "Discapacitado"
+] as const
+
+const habitanteRoles = [
+  "Residente",
+  "Propietario",
+  "Inquilino",
+  "Visitante"
+] as const
+
 // Types
 interface Municipio {
   id_municipio: number
@@ -79,18 +100,67 @@ interface USNG {
   usng: string
 }
 
-// Form schema
+// Update types to match new schema
+interface Propiedad {
+  id: number
+  tipo: string
+  valor: number
+  municipio: Municipio
+  barrio?: Barrio
+  sector?: Sector
+  direccion: string
+  gridId: number
+  geometria?: any
+}
+
+interface Evento {
+  id: number
+  titulo: string
+  descripcion: string
+  fecha: Date
+  tipo: string
+  severidad: string
+  estado: string
+  id_usng: number
+  notificacionId: number
+  incidentes: Incidente[]
+  evento_propiedad: PropiedadAfectada[]
+}
+
+interface Incidente {
+  id: number
+  tipo: string
+  descripcion: string
+  severidad: string
+  estado: string
+  eventoId: number
+  propiedadId: number
+  cuencaId: number
+}
+
+interface PropiedadAfectada {
+  id: number
+  daños: string
+  eventoId: number
+  propiedadId: number
+  propiedad: Propiedad
+}
+
+// Update form schema
 const formSchema = z.object({
   notificationNumber: z.string(),
   eventName: z.string().min(2, "Event name must be at least 2 characters"),
   date: z.string(),
   time: z.string(),
   usngCode: z.string().min(1, "USNG code is required"),
+  tipo: z.enum(incidentTypes),
+  estado: z.enum(eventStatus),
   incidents: z.array(z.object({
     type: z.enum(incidentTypes),
     description: z.string(),
+    cuencaId: z.string().optional(),
   })).min(1, "At least one incident is required"),
-  cuencaIds: z.array(z.string()).min(1, "At least one cuenca must be selected"),
+  cuencaIds: z.array(z.string()).optional().default([]),
   properties: z.array(z.object({
     type: z.enum(propertyTypes),
     municipioId: z.string(),
@@ -102,6 +172,15 @@ const formSchema = z.object({
       lat: z.number().optional(),
       lng: z.number().optional(),
     }).optional(),
+    habitantes: z.array(z.object({
+      nombre: z.string(),
+      categoria: z.enum(habitanteCategories),
+      rol: z.enum(habitanteRoles),
+      edad: z.string(),
+      limitacion: z.string().optional(),
+      condicion: z.string().optional(),
+      disposicion: z.string().optional(),
+    })).optional().default([]),
   })).min(1, "At least one property must be added"),
 })
 
@@ -132,11 +211,14 @@ export function ReportForm() {
     notificationNumber: generateNotificationNumber(),
     date: new Date().toISOString().split('T')[0],
     usngCode: "",
-    incidents: [{ type: incidentTypes[0], description: "" }],
+    tipo: incidentTypes[0],
+    estado: "pending" as const,
+    incidents: [{ type: incidentTypes[0], description: "", cuencaId: "" }],
     properties: [{ 
       type: propertyTypes[0], 
       municipioId: "", 
       address: "",
+      habitantes: [],
     }],
     cuencaIds: [] as string[],
   }), [])
@@ -307,32 +389,53 @@ export function ReportForm() {
         return
       }
       
-      // Format the data to match Prisma schema
+      // Format the data to match new Prisma schema
       const formattedData = {
         notificacionId: parseInt(values.notificationNumber.split('-')[2]),
         titulo: values.eventName,
         descripcion: values.incidents[0].description,
         fecha: new Date(values.date).toISOString(),
-        gridId: values.usngCode,
+        tipo: values.tipo,
+        estado: values.estado,
+        usngId: values.usngCode,
+        // Fix notification message
+        notificacion: {
+          create: {
+            tipo: values.tipo,
+            mensaje: `${values.eventName} - ${values.incidents[0].description}`,
+            estado: values.estado,
+            fecha_creacion: new Date()
+          }
+        },
         // Format incidents with cuenca
         incidentes: values.incidents.map(incident => ({
           tipo: incident.type,
           descripcion: incident.description,
-          cuencaId: values.cuencaIds.length > 0 ? parseInt(values.cuencaIds[0]) : 1
+          cuencaId: incident.cuencaId ? parseInt(incident.cuencaId) : parseInt(values.cuencaIds[0])
         })),
-        // Format properties with required fields
+        // Format properties with required fields and habitantes
         propiedades_afectadas: values.properties.map(property => ({
           daños: property.value || "No damage reported",
           propiedad: {
             create: {
               tipo: property.type,
-              valor: property.value ? parseFloat(property.value) : 0,
               id_municipio: parseInt(property.municipioId),
-              id_barrio: property.barrioId ? parseInt(property.barrioId) : 1, // Default barrio ID
-              id_sector: property.sectorId ? parseInt(property.sectorId) : 1, // Default sector ID
+              id_barrio: property.barrioId ? parseInt(property.barrioId) : undefined,
+              id_sector: property.sectorId ? parseInt(property.sectorId) : undefined,
               direccion: property.address,
               gridId: 0, // Will be set by API
-              geometria: property.location || {}
+              geometria: property.location || null,
+              habitantes: {
+                create: property.habitantes?.map(habitante => ({
+                  nombre: habitante.nombre,
+                  categoria: habitante.categoria,
+                  rol: habitante.rol,
+                  edad: parseInt(habitante.edad),
+                  limitacion: habitante.limitacion,
+                  condicion: habitante.condicion,
+                  disposicion: habitante.disposicion,
+                })) || []
+              }
             }
           }
         }))
@@ -365,8 +468,10 @@ export function ReportForm() {
       setValue("date", new Date().toISOString().split('T')[0])
       setValue("time", "")
       setValue("usngCode", "")
-      setValue("incidents", [{ type: incidentTypes[0], description: "" }])
-      setValue("properties", [{ type: propertyTypes[0], municipioId: "", address: "" }])
+      setValue("tipo", incidentTypes[0])
+      setValue("estado", "pending")
+      setValue("incidents", [{ type: incidentTypes[0], description: "", cuencaId: "" }])
+      setValue("properties", [{ type: propertyTypes[0], municipioId: "", address: "", habitantes: [] }])
       setValue("cuencaIds", [])
       
       // Reset selected states
@@ -386,7 +491,7 @@ export function ReportForm() {
     const currentIncidents = getValues("incidents")
     setValue("incidents", [
       ...currentIncidents,
-      { type: incidentTypes[0], description: "" }
+      { type: incidentTypes[0], description: "", cuencaId: "" }
     ])
   }, [getValues, setValue])
 
@@ -394,7 +499,7 @@ export function ReportForm() {
     const currentProperties = getValues("properties")
     setValue("properties", [
       ...currentProperties,
-      { type: propertyTypes[0], municipioId: "", address: "" }
+      { type: propertyTypes[0], municipioId: "", address: "", habitantes: [] }
     ])
   }, [getValues, setValue])
 
@@ -531,6 +636,58 @@ export function ReportForm() {
                   error={!!errors.time}
                   helperText={errors.time?.message}
                 />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Controller
+              name="tipo"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.tipo}>
+                  <InputLabel>Event Type</InputLabel>
+                  <Select
+                    {...field}
+                    label="Event Type"
+                  >
+                    {incidentTypes.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {type}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.tipo && (
+                    <FormHelperText>
+                      {errors.tipo.message}
+                    </FormHelperText>
+                  )}
+                </FormControl>
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Controller
+              name="estado"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.estado}>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    {...field}
+                    label="Status"
+                  >
+                    {eventStatus.map((status) => (
+                      <MenuItem key={status} value={status}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.estado && (
+                    <FormHelperText>
+                      {errors.estado.message}
+                    </FormHelperText>
+                  )}
+                </FormControl>
               )}
             />
           </Grid>
@@ -686,10 +843,10 @@ export function ReportForm() {
 
       {/* Cuencas Selection */}
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Affected Cuencas</Typography>
+        <Typography variant="h6" gutterBottom>Affected Cuencas (Optional)</Typography>
         <Grid container spacing={2}>
           <Grid item xs={12}>
-            <FormControl fullWidth error={!!errors.cuencaIds}>
+            <FormControl fullWidth>
               <InputLabel>Select Cuencas</InputLabel>
               <Select
                 label="Select Cuencas"
@@ -705,9 +862,6 @@ export function ReportForm() {
                   </MenuItem>
                 ))}
               </Select>
-              {errors.cuencaIds && (
-                <FormHelperText>{errors.cuencaIds.message}</FormHelperText>
-              )}
             </FormControl>
           </Grid>
           <Grid item xs={12}>
@@ -891,6 +1045,155 @@ export function ReportForm() {
                       </Grid>
                     </>
                   )}
+
+                  {/* Habitantes Section */}
+                  <Box mt={2}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Habitantes
+                      <Button
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                          const currentProperties = getValues("properties");
+                          const currentHabitantes = currentProperties[index].habitantes || [];
+                          setValue(`properties.${index}.habitantes`, [
+                            ...currentHabitantes,
+                            {
+                              nombre: "",
+                              categoria: habitanteCategories[0],
+                              rol: habitanteRoles[0],
+                              edad: "",
+                              limitacion: "",
+                              condicion: "",
+                              disposicion: "",
+                            }
+                          ]);
+                        }}
+                        sx={{ ml: 1 }}
+                      >
+                        Add Habitante
+                      </Button>
+                    </Typography>
+                    
+                    <Controller
+                      name={`properties.${index}.habitantes`}
+                      control={control}
+                      defaultValue={[]}
+                      render={({ field }) => (
+                        <Box sx={{ mt: 1 }}>
+                          {field.value?.map((_, habitanteIndex) => (
+                            <Card key={habitanteIndex} variant="outlined" sx={{ mb: 2, p: 2 }}>
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} md={6}>
+                                  <TextField
+                                    fullWidth
+                                    label="Nombre"
+                                    value={field.value[habitanteIndex].nombre}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].nombre = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <FormControl fullWidth>
+                                    <InputLabel>Categoría</InputLabel>
+                                    <Select
+                                      value={field.value[habitanteIndex].categoria}
+                                      onChange={(e) => {
+                                        const newHabitantes = [...field.value];
+                                        const value = e.target.value;
+                                        if (habitanteCategories.includes(value as any)) {
+                                          newHabitantes[habitanteIndex].categoria = value as (typeof habitanteCategories)[number];
+                                          field.onChange(newHabitantes);
+                                        }
+                                      }}
+                                      label="Categoría"
+                                    >
+                                      {habitanteCategories.map((cat) => (
+                                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <FormControl fullWidth>
+                                    <InputLabel>Rol</InputLabel>
+                                    <Select
+                                      value={field.value[habitanteIndex].rol}
+                                      onChange={(e) => {
+                                        const newHabitantes = [...field.value];
+                                        const value = e.target.value;
+                                        if (habitanteRoles.includes(value as any)) {
+                                          newHabitantes[habitanteIndex].rol = value as (typeof habitanteRoles)[number];
+                                          field.onChange(newHabitantes);
+                                        }
+                                      }}
+                                      label="Rol"
+                                    >
+                                      {habitanteRoles.map((rol) => (
+                                        <MenuItem key={rol} value={rol}>{rol}</MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <TextField
+                                    fullWidth
+                                    label="Edad"
+                                    type="number"
+                                    value={field.value[habitanteIndex].edad}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].edad = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <TextField
+                                    fullWidth
+                                    label="Limitación"
+                                    value={field.value[habitanteIndex].limitacion}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].limitacion = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <TextField
+                                    fullWidth
+                                    label="Condición"
+                                    value={field.value[habitanteIndex].condicion}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].condicion = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    fullWidth
+                                    label="Disposición"
+                                    value={field.value[habitanteIndex].disposicion}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].disposicion = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                  />
+                                </Grid>
+                              </Grid>
+                            </Card>
+                          ))}
+                        </Box>
+                      )}
+                    />
+                  </Box>
                 </Grid>
               </CardContent>
             </Card>

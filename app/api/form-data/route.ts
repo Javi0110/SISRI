@@ -3,26 +3,36 @@ import { NextResponse } from "next/server"
 
 const prisma = new PrismaClient()
 
-
 export async function GET() {
   try {
-    const [municipios, cuencas] = await Promise.all([
+    const [municipios, barrios, sectores, cuencas] = await Promise.all([
       prisma.municipio.findMany({
         select: {
           id_municipio: true,
           nombre: true,
-          barrios: {
-            select: {
-              id_barrio: true,
-              nombre: true,
-              sectores: {
-                select: {
-                  id_sector: true,
-                  nombre: true
-                }
-              }
-            }
-          }
+          codigo_municipio: true
+        },
+        orderBy: {
+          nombre: 'asc'
+        }
+      }),
+      prisma.barrio.findMany({
+        select: {
+          id_barrio: true,
+          nombre: true,
+          codigo_barrio: true,
+          id_municipio: true
+        },
+        orderBy: {
+          nombre: 'asc'
+        }
+      }),
+      prisma.sector.findMany({
+        select: {
+          id_sector: true,
+          nombre: true,
+          codigo_sector: true,
+          id_barrio: true
         },
         orderBy: {
           nombre: 'asc'
@@ -32,7 +42,7 @@ export async function GET() {
         select: {
           id: true,
           nombre: true,
-          codigo_cuenca: true
+          codigo_cuenca: true,
         },
         orderBy: {
           nombre: 'asc'
@@ -40,12 +50,19 @@ export async function GET() {
       })
     ])
 
-    return NextResponse.json({ municipios, cuencas })
+    return NextResponse.json({
+      municipios,
+      barrios,
+      sectores,
+      cuencas
+    })
   } catch (error) {
     console.error("Error fetching form data:", error)
     return NextResponse.json(
       { error: "Error fetching form data" },
       { status: 500 }
     )
+  } finally {
+    await prisma.$disconnect()
   }
 } 

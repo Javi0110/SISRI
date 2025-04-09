@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 
 export async function GET() {
   try {
-    const usngSquares = await prisma.uSNGSquare.findMany({
+    const usngSquares = await prisma.usngsquare.findMany({
       select: { usng: true },
       orderBy: { usng: 'asc' }
     })

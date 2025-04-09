@@ -1,169 +1,219 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  schemas  = ["sisri"]
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["sisri"]
 }
 
-model Municipio {
-  id_municipio     Int      @id @default(autoincrement())
-  nombre           String
-  latitud          Float
-  longitud         Float
-  codigo_municipio String   @unique
-  barrios          Barrio[]
-  propiedades      Propiedades_Existentes[]
+model barrio {
+  id_barrio     Int     @id
+  nombre        String? @db.VarChar(50)
+  codigo_barrio Int?
+  id_municipio  Int?
+  
+  // Relations
+  municipio     municipio? @relation(fields: [id_municipio], references: [id_municipio])
+  sectores      sector[]
+  propiedades   propiedades_existentes[]
+  habitantes    habitantes[]
+  cuencas       cuenca[]
+
   @@schema("sisri")
 }
 
-model Barrio {
-  id_barrio      Int        @id @default(autoincrement())
-  nombre         String
-  codigo_barrio  String
-  id_municipio   Int
-  municipio      Municipio  @relation(fields: [id_municipio], references: [id_municipio])
-  sectores       Sector[]
-  propiedades    Propiedades_Existentes[]
+model cuenca {
+  id            Int     @id
+  nombre        String? @db.VarChar(50)
+  codigo_cuenca String? @db.VarChar(50)
+  geometria     String? @db.VarChar(128)
+  
+  // Foreign keys
+  id_municipio  Int?
+  id_barrio     Int?
+  id_sector     Int?
+  usngId        Int?
+
+  // Relations
+  municipio     municipio? @relation(fields: [id_municipio], references: [id_municipio])
+  barrio        barrio? @relation(fields: [id_barrio], references: [id_barrio])
+  sector        sector? @relation(fields: [id_sector], references: [id_sector])
+  usngsquare    usngsquare? @relation(fields: [usngId], references: [id])
+  eventos       eventos[]
+
   @@schema("sisri")
 }
 
-model Sector {
-  id_sector     Int      @id @default(autoincrement())
-  nombre        String
-  codigo_sector String
-  id_barrio     Int
-  barrio        Barrio   @relation(fields: [id_barrio], references: [id_barrio])
-  propiedades   Propiedades_Existentes[]
+model eventos {
+  id             Int      @id @default(autoincrement())
+  titulo         String?  @db.VarChar(100)
+  descripcion    String?  @db.Text
+  fecha          DateTime @default(now())
+  tipo           String?  @db.VarChar(50)  // Hurricane, Flood, etc.
+  estado         String?  @db.VarChar(50)  @default("pending") // pending, active, resolved
+  
+  // USNG relation
+  usngId         Int?
+  usngsquare     usngsquare? @relation(fields: [usngId], references: [id])
+  
+  // Optional Cuenca relation
+  cuencaId       Int?
+  cuenca         cuenca? @relation(fields: [cuencaId], references: [id])
+  
+  // Notifications
+  notificaciones notificacion[]
+  
+  // Properties affected by this event
+  propiedades_afectadas propiedades_afectadas[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   @@schema("sisri")
 }
 
-model Propiedades_Existentes {
-  id           Int      @id @default(autoincrement())
-  valor        Float
-  tipo         String
-  id_municipio Int
-  id_barrio    Int
-  id_sector    Int
-  municipio    Municipio @relation(fields: [id_municipio], references: [id_municipio])
-  barrio       Barrio    @relation(fields: [id_barrio], references: [id_barrio])
-  sector       Sector    @relation(fields: [id_sector], references: [id_sector])
-  gridId       Int
-  grid         USNGSquare @relation(fields: [gridId], references: [id])
-  geometria    Json
-  eventos      EventosPropiedades[]
-  incidentes   Incidentes[]
+model incidentes {
+  id          Int     @id
+  eventoid    Int?
+  tipo        String? @db.VarChar(50)
+  descripcion String? @db.VarChar(50)
+  cuencaid    Int?
+  createdat   String? @db.VarChar(50)
+  updatedat   String? @db.VarChar(50)
+
   @@schema("sisri")
 }
 
-model Eventos {
-  id                    Int      @id @default(autoincrement())
-  notificacionId        Int
-  notificacion          Notificacion @relation(fields: [notificacionId], references: [id])
-  titulo                String
-  descripcion           String
-  fecha                 DateTime
-  incidentes            Incidentes[]
-  gridId                Int
-  grid                  USNGSquare @relation(fields: [gridId], references: [id])
-  propiedades_afectadas EventosPropiedades[]
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+model municipio {
+  id_municipio     Int     @id
+  nombre           String? @db.VarChar(50)
+  latitud          Float?  @db.Real
+  longitud         Float?  @db.Real
+  codigo_municipio Int?
+  
+  // Relations
+  barrios          barrio[]
+  propiedades      propiedades_existentes[]
+  habitantes       habitantes[]
+  cuencas          cuenca[]
+
   @@schema("sisri")
 }
 
-model Incidentes {
+model notificacion {
   id              Int      @id @default(autoincrement())
   eventoId        Int
-  evento          Eventos  @relation(fields: [eventoId], references: [id])
-  tipo            String
-  descripcion     String
-  propiedades     Propiedades_Existentes[]
-  cuencaId        Int
-  cuenca          Cuenca   @relation(fields: [cuencaId], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  tipo            String   @db.VarChar(255)
+  mensaje         String   @db.Text
+  fecha_creacion  DateTime @default(now())
+  estado          String?  @default("pendiente") @db.VarChar(50)
+  
+  // Relation
+  evento          eventos  @relation(fields: [eventoId], references: [id])
+
   @@schema("sisri")
 }
 
-model Notificacion {
-  id        Int       @id @default(autoincrement())
-  eventos   Eventos[]
-  createdAt DateTime  @default(now())
+model propiedades_existentes {
+  id           Int     @id @default(autoincrement())
+  tipo         String? @db.VarChar(50)
+  gridId       Int?
+  geometria    String? @db.VarChar(128)
+  
+  // Location relations
+  usngId       Int?
+  id_municipio Int?
+  id_barrio    Int?
+  id_sector    Int?
+  
+  // Relations
+  municipio    municipio? @relation(fields: [id_municipio], references: [id_municipio])
+  barrio       barrio? @relation(fields: [id_barrio], references: [id_barrio])
+  sector       sector? @relation(fields: [id_sector], references: [id_sector])
+  usngsquare   usngsquare? @relation(fields: [usngId], references: [id])
+  
+  // Relation to eventos through propiedades_afectadas
+  eventos_afectados propiedades_afectadas[]
+  
+  // Habitantes living in this property
+  habitantes   habitantes[]
+
   @@schema("sisri")
 }
 
-model EventosPropiedades {
-  eventoId    Int
-  evento      Eventos     @relation(fields: [eventoId], references: [id])
-  propiedadId Int
-  propiedad   Propiedades_Existentes @relation(fields: [propiedadId], references: [id])
-  daños       String?
-  @@id([eventoId, propiedadId])
+model sector {
+  id_sector     Int     @id
+  nombre        String? @db.VarChar(50)
+  codigo_sector Int?
+  id_barrio     Int?
+  
+  // Relations
+  barrio        barrio? @relation(fields: [id_barrio], references: [id_barrio])
+  propiedades   propiedades_existentes[]
+  habitantes    habitantes[]
+  cuencas       cuenca[]
+
   @@schema("sisri")
 }
 
-model USNGSquare {
+model usngsquare {
+  id          Int     @id
+  usng        String? @db.VarChar(50)
+  geometry    String? @db.VarChar(256)
+  latitudes   String? @db.VarChar(128)
+  longitudes  String? @db.VarChar(128)
+  
+  // Relations
+  propiedades propiedades_existentes[]
+  habitantes  habitantes[]
+  eventos     eventos[]
+  cuencas     cuenca[]
+
+  @@schema("sisri")
+}
+
+model habitantes {
+  id              Int      @id @default(autoincrement())
+  nombre          String?  @db.VarChar(100)
+  categoria       String?  @db.VarChar(50)
+  rol             String?  @db.VarChar(50)
+  edad            Int?
+  limitacion      String?  @db.VarChar(100)
+  condicion       String?  @db.VarChar(100)
+  disposicion     String?  @db.VarChar(100)
+  
+  // Foreign keys
+  propiedad_id    Int?
+  id_municipio    Int?
+  id_barrio       Int?
+  id_sector       Int?
+  usngId          Int?
+
+  // Relations
+  propiedad       propiedades_existentes? @relation(fields: [propiedad_id], references: [id])
+  municipio       municipio? @relation(fields: [id_municipio], references: [id_municipio])
+  barrio          barrio? @relation(fields: [id_barrio], references: [id_barrio])
+  sector          sector? @relation(fields: [id_sector], references: [id_sector])
+  usngsquare      usngsquare? @relation(fields: [usngId], references: [id])
+
+  @@schema("sisri")
+}
+
+// Join table for eventos and properties
+model propiedades_afectadas {
   id          Int      @id @default(autoincrement())
-  usng        String   @unique
-  geometry    Json
-  latitudes   String   // Store as comma-separated values
-  longitudes  String   // Store as comma-separated values
-  properties  Propiedades_Existentes[]
-  cuencas     Cuenca[]
-  eventos     Eventos[]
-  @@schema("sisri")
-}
+  eventoId    Int
+  propiedadId Int
+  daños       String?  @db.Text
+  fecha       DateTime @default(now())
+  
+  // Relations
+  evento      eventos               @relation(fields: [eventoId], references: [id])
+  propiedad   propiedades_existentes @relation(fields: [propiedadId], references: [id])
 
-model Cuenca {
-  id             Int        @id @default(autoincrement())
-  nombre         String
-  codigo_cuenca  String     @unique
-  gridId         Int
-  geometria      Json
-  grid           USNGSquare @relation(fields: [gridId], references: [id])
-  incidentes     Incidentes[]
-  reports        Report[]
-  @@schema("sisri")
-}
-
-model Report {
-  id                String     @id @default(cuid())
-  notificationNumber String
-  eventName         String
-  date              DateTime
-  time              String
-  usngCode          String
-  incidents         Incident[]
-  properties        Property[]
-  cuencas           Cuenca[]
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  @@schema("sisri")
-}
-
-model Incident {
-  id          String   @id @default(cuid())
-  type        String
-  description String
-  reportId    String
-  report      Report   @relation(fields: [reportId], references: [id])
-  @@schema("sisri")
-}
-
-model Property {
-  id          String   @id @default(cuid())
-  type        String
-  municipioId Int
-  barrioId    Int?
-  sectorId    Int?
-  address     String
-  value       String?
-  location    Json?
-  reportId    String
-  report      Report   @relation(fields: [reportId], references: [id])
   @@schema("sisri")
 }

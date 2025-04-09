@@ -1,5 +1,5 @@
-import { Cuenca, Eventos, Incidentes, PrismaClient, Propiedades_Existentes } from '@prisma/client'
-import { NextResponse } from "next/server"
+import { PrismaClient } from '@prisma/client';
+import { NextResponse } from "next/server";
 
 const prismaClient = new PrismaClient()
 
@@ -29,11 +29,16 @@ type USNGSquareWithRelations = {
   usng: string
   latitudes: string
   longitudes: string
-  properties: Propiedades_Existentes[]
-  cuencas: Cuenca[]
-  eventos: (Eventos & {
-    incidentes: Incidentes[]
-  })[]
+  propiedades: {
+    id: number
+    tipo: string
+    gridId: number
+  }[]
+  cuencas: {
+    id: number
+    nombre: string
+    codigo_cuenca: string
+  }[]
 }
 
 export async function GET(
@@ -54,7 +59,7 @@ export async function GET(
     const sanitizedUsng = decodeURIComponent(usng).trim();
     
     // Use a more efficient query with specific field selection
-    const usngSquare = await prismaClient.uSNGSquare.findFirst({
+    const usngSquare = await prismaClient.usngsquare.findFirst({
       where: { 
         usng: sanitizedUsng
       },
@@ -62,11 +67,11 @@ export async function GET(
         usng: true,
         latitudes: true,
         longitudes: true,
-        properties: {
+        propiedades: {
           select: {
             id: true,
             tipo: true,
-            valor: true
+            gridId: true
           }
         },
         cuencas: {
@@ -74,17 +79,6 @@ export async function GET(
             id: true,
             nombre: true,
             codigo_cuenca: true
-          }
-        },
-        eventos: {
-          select: {
-            incidentes: {
-              select: {
-                id: true,
-                tipo: true,
-                descripcion: true
-              }
-            }
           }
         }
       }
@@ -100,8 +94,8 @@ export async function GET(
     // Parse coordinates more safely
     let centerLat = 0, centerLon = 0;
     try {
-      const latitudes = usngSquare.latitudes.split(',');
-      const longitudes = usngSquare.longitudes.split(',');
+      const latitudes = usngSquare.latitudes?.split(',') || [];
+      const longitudes = usngSquare.longitudes?.split(',') || [];
       
       if (latitudes.length > 0 && longitudes.length > 0) {
         centerLat = parseFloat(latitudes[0]);
@@ -120,25 +114,19 @@ export async function GET(
     }
 
     const response: USNGResponse = {
-      usng: usngSquare.usng,
+      usng: usngSquare.usng || '',
       coordinates: [centerLon, centerLat],
-      properties: usngSquare.properties.map(prop => ({
+      properties: usngSquare.propiedades.map(prop => ({
         id: prop.id,
-        tipo: prop.tipo,
-        valor: prop.valor
+        tipo: prop.tipo || '',
+        valor: prop.gridId || 0
       })),
       cuencas: usngSquare.cuencas.map(cuenca => ({
         id: cuenca.id,
-        nombre: cuenca.nombre,
-        codigo_cuenca: cuenca.codigo_cuenca
+        nombre: cuenca.nombre || '',
+        codigo_cuenca: cuenca.codigo_cuenca || ''
       })),
-      tools: usngSquare.eventos.flatMap(evento => 
-        evento.incidentes.map(incidente => ({
-          id: incidente.id,
-          tipo: incidente.tipo,
-          estado: incidente.descripcion
-        }))
-      )
+      tools: []
     }
 
     return NextResponse.json(response, {

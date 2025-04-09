@@ -6,7 +6,7 @@ export async function POST(request: Request) {
     const data = await request.json()
     
     // Get USNG grid reference first
-    const grid = await prisma.uSNGSquare.findFirst({
+    const grid = await prisma.usng_grid.findFirst({
       where: { usng: data.usngCode }
     })
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
         titulo: data.eventName,
         descripcion: data.incidents[0].description, // Using first incident description
         fecha: new Date(data.date),
-        gridId: grid.id,
+        id_usng: grid.id,
         // Create incidents with cuenca relationships
         incidentes: {
           create: data.incidents.map((incident: any) => ({
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
           })),
         },
         // Create property relationships
-        propiedades_afectadas: {
+        evento_propiedad: {
           create: data.properties.map((property: any) => ({
             daños: property.value,
             propiedad: {
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
                 id_municipio: parseInt(property.municipioId),
                 id_barrio: property.barrioId ? parseInt(property.barrioId) : null,
                 id_sector: property.sectorId ? parseInt(property.sectorId) : null,
-                gridId: grid.id,
+                id_usng: grid.id,
                 geometria: property.location || {}, // Default empty object if no location
               }
             }
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
             cuenca: true
           }
         },
-        propiedades_afectadas: {
+        evento_propiedad: {
           include: {
             propiedad: true
           }

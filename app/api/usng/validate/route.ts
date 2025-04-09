@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Check if the USNG code exists in the database
-    const usngRecord = await prisma.uSNGSquare.findFirst({
+    const usngRecord = await prisma.usngsquare.findFirst({
       where: {
         usng: code
       }

@@ -248,9 +248,9 @@ export default function USNGList({ onUSNGSelect }: { onUSNGSelect: (coords: numb
 
                         <div>
                           <h4 className="font-semibold flex items-center gap-2">
-                            <Wrench className="h-4 w-4" /> Tools ({details.tools.length})
+                            <Wrench className="h-4 w-4" /> Tools ({details?.tools?.length || 0})
                           </h4>
-                          {details.tools.length > 0 ? (
+                          {(details?.tools?.length || 0) > 0 ? (
                             details.tools.map(tool => (
                               <Badge key={tool.id} variant="outline" className="mr-2 mb-2">
                                 {tool.tipo}
