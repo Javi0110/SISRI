@@ -100,52 +100,6 @@ interface USNG {
   usng: string
 }
 
-// Update types to match new schema
-interface Propiedad {
-  id: number
-  tipo: string
-  valor: number
-  municipio: Municipio
-  barrio?: Barrio
-  sector?: Sector
-  direccion: string
-  gridId: number
-  geometria?: any
-}
-
-interface Evento {
-  id: number
-  titulo: string
-  descripcion: string
-  fecha: Date
-  tipo: string
-  severidad: string
-  estado: string
-  id_usng: number
-  notificacionId: number
-  incidentes: Incidente[]
-  evento_propiedad: PropiedadAfectada[]
-}
-
-interface Incidente {
-  id: number
-  tipo: string
-  descripcion: string
-  severidad: string
-  estado: string
-  eventoId: number
-  propiedadId: number
-  cuencaId: number
-}
-
-interface PropiedadAfectada {
-  id: number
-  daños: string
-  eventoId: number
-  propiedadId: number
-  propiedad: Propiedad
-}
-
 // Update form schema
 const formSchema = z.object({
   notificationNumber: z.string(),

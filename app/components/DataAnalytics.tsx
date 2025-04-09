@@ -240,7 +240,7 @@ export function DataAnalytics() {
         setError(data.error);
         setResults([]);
       } else {
-        setResults([data.data]);
+        setResults([]);
       }
     } catch (error) {
       setError("Failed to fetch results. Please try again.");

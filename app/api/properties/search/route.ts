@@ -12,13 +12,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const properties = await prisma.propiedades_Existentes.findMany({
+    const properties = await prisma.propiedades_existentes.findMany({
       where: {
         OR: [
           { tipo: { contains: query } },
-          { valor: { 
-            gte: 0,
-          }},
         ],
       },
       include: {
