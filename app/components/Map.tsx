@@ -8,11 +8,11 @@ import GeoJSON from "ol/format/GeoJSON"
 import { defaults as defaultInteractions } from 'ol/interaction'
 import TileLayer from "ol/layer/Tile"
 import VectorLayer from "ol/layer/Vector"
-import { fromLonLat } from "ol/proj"
+import { fromLonLat, transform } from "ol/proj"
 import OSM from "ol/source/OSM"
 import VectorSource from "ol/source/Vector"
 import { Fill, Stroke, Style, Text } from "ol/style"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 
 // Remove global window declaration - we'll use refs instead
 interface MapComponentProps {
@@ -25,7 +25,7 @@ const ZOOM_LEVELS = {
   MIN: 6,
   MAX: 19,
   INITIAL: 8,
-  USNG_MIN: 8,
+  USNG_MIN: 11,
   USNG_MAX: 19
 }
 
@@ -105,13 +105,12 @@ const createUSNGStyle = (feature: any, resolution: number) => {
   return [baseStyle]
 }
 
-// Completely revised USNG Source configuration for full Puerto Rico coverage
+// Update the USNG source configuration with wider boundaries
 const usngSource = new VectorSource({
   format: new EsriJSON(),
-  // The loader will be set in the component
   strategy: () => [[
-    -7800000, 1800000, // Southwest corner in Web Mercator (greatly expanded)
-    -7000000, 2400000  // Northeast corner in Web Mercator (greatly expanded)
+    -7900000, 1700000, // Southwest corner in Web Mercator (expanded further west)
+    -6900000, 2500000  // Northeast corner in Web Mercator (expanded further east)
   ]]
 });
 
@@ -132,44 +131,66 @@ const usngLayer = new VectorLayer({
   updateWhileAnimating: false,
   updateWhileInteracting: false,
   renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
-  declutter: true
+  declutter: true,
+  visible: true // Ensure layer is visible
 })
+
+interface USNGFeature {
+  attributes: {
+    OBJECTID: number;
+    USNG: string;
+    UTM_Zone: number;
+    GRID1MIL: string;
+  };
+}
+
+// Utility function outside component
+const createDebounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return function executedFunction(...args: any[]) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
 
 export default function MapComponent({ onMapInitialized }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<Map | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Move the loader logic into a memoized function inside the component
-  const handleLoadUSNGData = useCallback(async (projection: any) => {
-    const mapInstance = mapInstanceRef.current
-    if (!mapInstance) return
+  const handleLoadUSNGData = useCallback(async (map: Map) => {
+    if (!map) return;
 
-    const view = mapInstance.getView()
-    const zoom = view.getZoom() || 0
+    const view = map.getView();
+    const zoom = view.getZoom() || 0;
 
-    if (zoom < ZOOM_LEVELS.USNG_MIN) return
+    if (zoom < ZOOM_LEVELS.USNG_MIN) {
+      return;
+    }
 
     try {
-      // Track processed features to avoid duplicates
       const processedIds = new Set();
       
-      // Helper function to fetch and process USNG data
-      const fetchUSNGData = async (params: any, sectionName = "Unknown") => {
+      const fetchUSNGData = async (params: any) => {
         try {
           const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params));
           
           if (!response.ok) {
-            console.error(`Service error for ${sectionName}`);
+            console.error('Service error:', await response.text());
             return 0;
           }
           
-          const data = await response.json() as { features?: Array<{ attributes: { OBJECTID: number } }> };
+          const data = await response.json();
           
-          if (!data || !data.features?.length) return 0;
+          if (!data || !data.features?.length) {
+            return 0;
+          }
           
-          // Filter out duplicates
-          const uniqueFeatures = data.features.filter(feature => {
+          const uniqueFeatures = data.features.filter((feature: USNGFeature) => {
             const id = feature.attributes.OBJECTID;
             if (processedIds.has(id)) return false;
             processedIds.add(id);
@@ -180,155 +201,93 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           
           const uniqueData = { ...data, features: uniqueFeatures };
           const features = new EsriJSON().readFeatures(uniqueData, {
-            featureProjection: projection,
+            featureProjection: 'EPSG:3857',
             dataProjection: 'EPSG:4269'
           });
           
           usngSource.addFeatures(features);
-          console.log(`Added ${features.length} USNG features for ${sectionName}`);
           return features.length;
         } catch (error) {
-          console.error(`Error loading ${sectionName}:`, error);
+          console.error('Error loading features:', error);
           return 0;
         }
       };
+
+      // Get current viewport extent
+      const extent = view.calculateExtent();
+      const [minx, miny, maxx, maxy] = extent;
       
-      // Common request parameters
-      const baseParams = {
+      // Convert to lat/lon coordinates
+      const [x1, y1] = transform([minx, miny], 'EPSG:3857', 'EPSG:4326');
+      const [x2, y2] = transform([maxx, maxy], 'EPSG:3857', 'EPSG:4326');
+
+      // Calculate grid dimensions
+      const width = Math.abs(x2 - x1);
+      const height = Math.abs(y2 - y1);
+      
+      // Split into smaller sections if area is large
+      const numSections = width * height > 0.5 ? 4 : 1;
+      const sections = [];
+      
+      if (numSections === 1) {
+        sections.push({
+          xmin: Math.min(x1, x2),
+          ymin: Math.min(y1, y2),
+          xmax: Math.max(x1, x2),
+          ymax: Math.max(y1, y2)
+        });
+      } else {
+        // Split into quadrants
+        const xMid = (x1 + x2) / 2;
+        const yMid = (y1 + y2) / 2;
+        sections.push(
+          { xmin: x1, ymin: y1, xmax: xMid, ymax: yMid },
+          { xmin: xMid, ymin: y1, xmax: x2, ymax: yMid },
+          { xmin: x1, ymin: yMid, xmax: xMid, ymax: y2 },
+          { xmin: xMid, ymin: yMid, xmax: x2, ymax: y2 }
+        );
+      }
+
+      // Add buffer to each section
+      const buffer = 0.1;
+      let totalFeatures = 0;
+
+      for (const section of sections) {
+        const params = {
           f: 'json',
           returnGeometry: 'true',
           spatialRel: 'esriSpatialRelIntersects',
           outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
           outSR: '102100',
-          resultRecordCount: '2000', // Reduced from 8000 to 2000
-          geometryType: 'esriGeometryEnvelope'
-      };
-      
-      // Start with a single large request for the entire island
-      // This is the most efficient approach if the service can handle it
-      console.log("Starting with a single large request for the entire island");
-      
-      const fullIslandParams = {
-        ...baseParams,
-        where: "1=1",
-        geometry: JSON.stringify({
-          xmin: -67.5, // Extended west
-          ymin: 17.4,  // Extended south
-          xmax: -65.1, // Extended east
-          ymax: 18.7,  // Extended north
-          spatialReference: { wkid: 4269 }
-        })
-      };
-      
-      const fullIslandCount = await fetchUSNGData(fullIslandParams, "Full Island");
-      
-      // If the full island approach didn't return enough features, try with a grid of overlapping sections
-      if (fullIslandCount < 5000) {
-        console.log("Full island approach didn't return enough features, trying with overlapping sections");
-        
-        // Define a super-dense grid with maximum overlap to ensure no gaps
-        // Using a 0.3 degree grid with 0.2 degree overlap
-        const gridSize = 0.3;
-        const overlap = 0.2;
-        const sections = [];
-        
-        // Generate a dense grid covering the entire island
-        for (let lon = -67.5; lon < -65.0; lon += gridSize - overlap) {
-          for (let lat = 17.4; lat < 18.7; lat += gridSize - overlap) {
-            sections.push({
-              xmin: lon,
-              ymin: lat,
-              xmax: lon + gridSize,
-              ymax: lat + gridSize,
-              name: `Grid ${lon.toFixed(1)},${lat.toFixed(1)}`
-            });
-          }
-        }
-        
-        // Add specific sections for known problematic areas
-        const specificSections = [
-          // Western region
-          { xmin: -67.5, ymin: 17.9, xmax: -67.0, ymax: 18.5, name: "Northwest Special" },
-          { xmin: -67.5, ymin: 17.4, xmax: -67.0, ymax: 18.0, name: "Southwest Special" },
-          
-          // Central region
-          { xmin: -67.1, ymin: 17.9, xmax: -66.6, ymax: 18.5, name: "North-Central West Special" },
-          { xmin: -67.1, ymin: 17.4, xmax: -66.6, ymax: 18.0, name: "South-Central West Special" },
-          { xmin: -66.7, ymin: 17.9, xmax: -66.2, ymax: 18.5, name: "North-Central Special" },
-          { xmin: -66.7, ymin: 17.4, xmax: -66.2, ymax: 18.0, name: "South-Central Special" },
-          
-          // Eastern region
-          { xmin: -66.3, ymin: 17.9, xmax: -65.8, ymax: 18.5, name: "North-Central East Special" },
-          { xmin: -66.3, ymin: 17.4, xmax: -65.8, ymax: 18.0, name: "South-Central East Special" },
-          { xmin: -65.9, ymin: 17.9, xmax: -65.4, ymax: 18.5, name: "Northeast Special" },
-          { xmin: -65.9, ymin: 17.4, xmax: -65.4, ymax: 18.0, name: "Southeast Special" },
-          { xmin: -65.5, ymin: 17.9, xmax: -65.0, ymax: 18.5, name: "Far Northeast Special" },
-          { xmin: -65.5, ymin: 17.4, xmax: -65.0, ymax: 18.0, name: "Far Southeast Special" },
-          
-          // Islands
-          { xmin: -68.6, ymin: 17.9, xmax: -67.7, ymax: 18.4, name: "Mona Island Special" },
-          { xmin: -65.7, ymin: 17.9, xmax: -65.1, ymax: 18.4, name: "Vieques Special" },
-          { xmin: -65.5, ymin: 18.1, xmax: -64.9, ymax: 18.6, name: "Culebra Special" },
-          
-          // Extra coverage for visible gaps
-          { xmin: -67.2, ymin: 18.0, xmax: -66.7, ymax: 18.5, name: "Gap Fill 1" },
-          { xmin: -66.8, ymin: 18.0, xmax: -66.3, ymax: 18.5, name: "Gap Fill 2" },
-          { xmin: -66.4, ymin: 18.0, xmax: -65.9, ymax: 18.5, name: "Gap Fill 3" },
-          { xmin: -66.0, ymin: 18.0, xmax: -65.5, ymax: 18.5, name: "Gap Fill 4" },
-          { xmin: -67.2, ymin: 17.5, xmax: -66.7, ymax: 18.0, name: "Gap Fill 5" },
-          { xmin: -66.8, ymin: 17.5, xmax: -66.3, ymax: 18.0, name: "Gap Fill 6" },
-          { xmin: -66.4, ymin: 17.5, xmax: -65.9, ymax: 18.0, name: "Gap Fill 7" },
-          { xmin: -66.0, ymin: 17.5, xmax: -65.5, ymax: 18.0, name: "Gap Fill 8" }
-        ];
-        
-        // Combine the grid and specific sections
-        const allSections = [...sections, ...specificSections];
-      
-      // Process each section with a small delay between requests
-        for (const section of allSections) {
-        const sectionParams = {
-          ...baseParams,
-            where: "1=1",
+          resultRecordCount: '2000',
+          geometryType: 'esriGeometryEnvelope',
+          where: "1=1",
           geometry: JSON.stringify({
-            ...section,
-            spatialReference: { wkid: 4269 }
+            xmin: section.xmin - buffer,
+            ymin: section.ymin - buffer,
+            xmax: section.xmax + buffer,
+            ymax: section.ymax + buffer,
+            spatialReference: { wkid: 4326 }
           })
         };
-        
-        await fetchUSNGData(sectionParams, section.name);
-          // Minimal delay to speed up loading
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
+
+        const featureCount = await fetchUSNGData(params);
+        totalFeatures += featureCount;
       }
-      
-      // Try with UTM zones as a final approach
-      if (usngSource.getFeatures().length < 8000) {
-        console.log("Trying with UTM zones for complete coverage");
-        
-        // Puerto Rico spans UTM zones 19 and 20
-        for (const zone of [19, 20]) {
-          const utmParams = {
-            ...baseParams,
-            where: `UTM_Zone = ${zone}`,
-          };
-          
-          try {
-            await fetchUSNGData(utmParams, `UTM Zone ${zone}`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          } catch (error) {
-            console.error(`Error loading UTM zone ${zone}:`, error);
-          }
-        }
-      }
-      
-      console.log(`Total USNG features loaded: ${usngSource.getFeatures().length}`);
+
+      console.log(`Total USNG features loaded: ${totalFeatures}`);
     } catch (error) {
-      console.error('Error loading USNG features:', error);
+      console.error('Error in USNG loading process:', error);
     }
-  }, [])
+  }, []);
+
+  const debouncedLoadUSNGData = useMemo(
+    () => createDebounce((map: Map) => handleLoadUSNGData(map), 300),
+    [handleLoadUSNGData]
+  );
 
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!mapRef.current) return;
 
     // Create base map layer
     const baseLayer = new TileLayer({ 
@@ -339,7 +298,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     // Create map with better initial view
     const map = new Map({
       target: mapRef.current,
-      layers: [baseLayer],
+      layers: [baseLayer, usngLayer], // Add USNG layer immediately
       view: new View({
         center: fromLonLat(PUERTO_RICO_CENTER),
         zoom: ZOOM_LEVELS.INITIAL,
@@ -359,14 +318,45 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     // Store map in ref
     mapInstanceRef.current = map;
 
-    // Helper function to load USNG data
-    const loadUSNGData = () => {
-      const extent = [
-        -7700000, 1850000,
-        -7100000, 2300000
-      ];
-      usngSource.loadFeatures(extent, map.getView().getResolution() || 1, map.getView().getProjection());
+    // Initial load of USNG data when map is created
+    const initialLoadUSNG = () => {
+      const zoom = map.getView().getZoom() || 0;
+      console.log('Initial map zoom:', zoom);
+      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
+        console.log('Loading initial USNG grid');
+        handleLoadUSNGData(map);
+      }
     };
+
+    // Set up event listeners
+    const handleMoveEnd = () => {
+      const zoom = map.getView().getZoom() || 0;
+      console.log('Move ended, current zoom:', zoom);
+      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
+        console.log('Loading USNG grid at zoom level:', zoom);
+        usngSource.clear();
+        debouncedLoadUSNGData(map);
+      } else {
+        console.log('Zoom level too low for USNG grid:', zoom);
+        usngSource.clear();
+      }
+    };
+
+    // Add event listeners
+    map.on('moveend', handleMoveEnd);
+
+    // Set up zoom change listener
+    map.getView().on('change:resolution', () => {
+      const zoom = map.getView().getZoom() || 0;
+      console.log('Zoom changed:', zoom);
+      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
+        console.log('Loading USNG grid after zoom change');
+        handleLoadUSNGData(map);
+      }
+    });
+
+    // Initial load attempt
+    initialLoadUSNG();
 
     // Update the municipios layer addition
     const addMunicipiosLayer = async () => {
@@ -398,9 +388,6 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       } catch (error) {
         console.error("Error fetching municipios:", error)
       } finally {
-        // Always add USNG layer and load data
-        map.addLayer(usngLayer)
-        loadUSNGData()
         setLoading(false)
       }
     }
@@ -468,22 +455,12 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       }
     })
 
-    // Simplified moveend event
-    map.on('moveend', () => {
-      const zoom = map.getView().getZoom() || 0;
-      if (zoom >= ZOOM_LEVELS.USNG_MIN && usngSource.getFeatures().length === 0) {
-        loadUSNGData();
-      }
-    });
-
-    // Update the source to use the new loader
-    usngSource.setLoader(handleLoadUSNGData)
-
     return () => {
+      map.un('moveend', handleMoveEnd);
       map.setTarget(undefined)
       mapInstanceRef.current = null
     }
-  }, [handleLoadUSNGData, onMapInitialized])
+  }, [handleLoadUSNGData, onMapInitialized, debouncedLoadUSNGData])
 
   return (
     <motion.div

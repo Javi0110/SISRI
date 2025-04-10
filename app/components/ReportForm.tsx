@@ -120,6 +120,10 @@ const formSchema = z.object({
     municipioId: z.string(),
     barrioId: z.string().optional(),
     sectorId: z.string().optional(),
+    newBarrioName: z.string().optional(),
+    newBarrioCode: z.string().optional(),
+    newSectorName: z.string().optional(),
+    newSectorCode: z.string().optional(),
     address: z.string(),
     value: z.string().optional(),
     location: z.object({
@@ -921,6 +925,8 @@ export function ReportForm() {
                           control={control}
                           render={({ field }) => (
                             <FormControl fullWidth>
+                              <Box sx={{ display: 'flex', gap: 1 }}>
+                            <FormControl fullWidth>
                               <InputLabel>Barrio</InputLabel>
                               <Select
                                 {...field}
@@ -932,6 +938,7 @@ export function ReportForm() {
                                 }}
                                 disabled={!selectedMunicipios[index]}
                               >
+                                    <MenuItem value="new">+ Add New Barrio</MenuItem>
                                 {municipios
                                   .find((m) => m.id_municipio === selectedMunicipios[index])
                                   ?.barrios?.map((barrio) => (
@@ -943,18 +950,99 @@ export function ReportForm() {
                                     </MenuItem>
                                   )) || []}
                               </Select>
+                                </FormControl>
+                              </Box>
                             </FormControl>
                           )}
                         />
+                        {/* New Barrio Form */}
+                        {getValues(`properties.${index}.barrioId`) === "new" && (
+                          <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                            <Typography variant="subtitle2" gutterBottom>Add New Barrio</Typography>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12}>
+                                <TextField
+                                  fullWidth
+                                  label="Barrio Name"
+                                  onChange={(e) => {
+                                    setValue(`properties.${index}.newBarrioName`, e.target.value);
+                                  }}
+                        />
+                      </Grid>
+                              <Grid item xs={12}>
+                                <TextField
+                                  fullWidth
+                                  label="Código Barrio (Optional)"
+                                  type="number"
+                                  onChange={(e) => {
+                                    setValue(`properties.${index}.newBarrioCode`, e.target.value);
+                                  }}
+                                />
+                              </Grid>
+                              <Grid item xs={12}>
+                                <Button
+                                  fullWidth
+                                  variant="contained"
+                                  disabled={!getValues(`properties.${index}.newBarrioName`)}
+                                  onClick={async () => {
+                                    const nombre = getValues(`properties.${index}.newBarrioName`);
+                                    const codigo = getValues(`properties.${index}.newBarrioCode`);
+                                    
+                                    if (nombre) {
+                                      try {
+                                        const response = await fetch('/api/barrios', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            nombre,
+                                            codigo_barrio: codigo,
+                                            id_municipio: selectedMunicipios[index]
+                                          })
+                                        });
+                                        
+                                        if (!response.ok) throw new Error('Failed to create barrio');
+                                        
+                                        const newBarrio = await response.json();
+                                        // Update municipios state to include new barrio
+                                        setMunicipios(prev => prev.map(mun => {
+                                          if (mun.id_municipio === selectedMunicipios[index]) {
+                                            return {
+                                              ...mun,
+                                              barrios: [...(mun.barrios || []), newBarrio]
+                                            };
+                                          }
+                                          return mun;
+                                        }));
+                                        // Set the new barrio as selected
+                                        setValue(`properties.${index}.barrioId`, String(newBarrio.id_barrio));
+                                        handleBarrioSelect(index, String(newBarrio.id_barrio));
+                                        // Clear the form
+                                        setValue(`properties.${index}.newBarrioName`, "");
+                                        setValue(`properties.${index}.newBarrioCode`, "");
+                                      } catch (error) {
+                                        console.error('Error creating barrio:', error);
+                                        alert('Failed to create barrio');
+                                      }
+                                    }
+                                  }}
+                                >
+                                  Create Barrio
+                                </Button>
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        )}
                       </Grid>
                       
-                      {/* Add sector selection if barrio is selected */}
+                      {/* Sector Selection with Add New Option */}
                       {selectedBarrios[index] && (
                         <Grid item xs={12} md={6}>
                           <Controller
                             name={`properties.${index}.sectorId`}
                             control={control}
                             render={({ field }) => (
+                              <FormControl fullWidth>
+                                <Box sx={{ display: 'flex', gap: 1 }}>
                               <FormControl fullWidth>
                                 <InputLabel>Sector</InputLabel>
                                 <Select
@@ -963,6 +1051,7 @@ export function ReportForm() {
                                   value={field.value || ""}
                                   disabled={!selectedBarrios[index]}
                                 >
+                                      <MenuItem value="new">+ Add New Sector</MenuItem>
                                   {municipios
                                     .find((m) => m.id_municipio === selectedMunicipios[index])
                                     ?.barrios?.find((b) => b.id_barrio === selectedBarrios[index])
@@ -975,9 +1064,95 @@ export function ReportForm() {
                                       </MenuItem>
                                     )) || []}
                                 </Select>
+                                  </FormControl>
+                                </Box>
                               </FormControl>
                             )}
                           />
+                          {/* New Sector Form */}
+                          {getValues(`properties.${index}.sectorId`) === "new" && (
+                            <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                              <Typography variant="subtitle2" gutterBottom>Add New Sector</Typography>
+                              <Grid container spacing={2}>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    fullWidth
+                                    label="Sector Name"
+                                    onChange={(e) => {
+                                      setValue(`properties.${index}.newSectorName`, e.target.value);
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    fullWidth
+                                    label="Código Sector (Optional)"
+                                    type="number"
+                                    onChange={(e) => {
+                                      setValue(`properties.${index}.newSectorCode`, e.target.value);
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <Button
+                                    fullWidth
+                                    variant="contained"
+                                    disabled={!getValues(`properties.${index}.newSectorName`)}
+                                    onClick={async () => {
+                                      const nombre = getValues(`properties.${index}.newSectorName`);
+                                      const codigo = getValues(`properties.${index}.newSectorCode`);
+                                      
+                                      if (nombre) {
+                                        try {
+                                          const response = await fetch('/api/sectores', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                              nombre,
+                                              codigo_sector: codigo,
+                                              id_barrio: selectedBarrios[index]
+                                            })
+                                          });
+                                          
+                                          if (!response.ok) throw new Error('Failed to create sector');
+                                          
+                                          const newSector = await response.json();
+                                          // Update municipios state to include new sector
+                                          setMunicipios(prev => prev.map(mun => {
+                                            if (mun.id_municipio === selectedMunicipios[index]) {
+                                              return {
+                                                ...mun,
+                                                barrios: mun.barrios?.map(bar => {
+                                                  if (bar.id_barrio === selectedBarrios[index]) {
+                                                    return {
+                                                      ...bar,
+                                                      sectores: [...(bar.sectores || []), newSector]
+                                                    };
+                                                  }
+                                                  return bar;
+                                                })
+                                              };
+                                            }
+                                            return mun;
+                                          }));
+                                          // Set the new sector as selected
+                                          setValue(`properties.${index}.sectorId`, String(newSector.id_sector));
+                                          // Clear the form
+                                          setValue(`properties.${index}.newSectorName`, "");
+                                          setValue(`properties.${index}.newSectorCode`, "");
+                                        } catch (error) {
+                                          console.error('Error creating sector:', error);
+                                          alert('Failed to create sector');
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    Create Sector
+                                  </Button>
+                                </Grid>
+                              </Grid>
+                            </Box>
+                          )}
                         </Grid>
                       )}
                       
