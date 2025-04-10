@@ -18,7 +18,6 @@ export default function Sidebar({
         <TabsList className="w-full">
           <TabsTrigger value="municipios">Municipios</TabsTrigger>
           <TabsTrigger value="usng">USNG</TabsTrigger>
-          <TabsTrigger value="properties">Properties</TabsTrigger>
         </TabsList>
         <TabsContent value="municipios">
           <MunicipiosList onMunicipioSelect={onMunicipioSelect} />

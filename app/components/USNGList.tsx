@@ -58,10 +58,10 @@ export default function USNGList({ onUSNGSelect }: { onUSNGSelect: (coords: numb
         }
         
         // Fetch from API if not cached
-        const response = await fetch("/api/usng/list")
+        const response = await fetch("/api/list")
         if (!response.ok) throw new Error(`Failed to fetch USNG list: ${response.status}`)
         const data = await response.json()
-        
+        console.log("usng api response", data)
         // Cache the result
         sessionStorage.setItem('usngList', JSON.stringify(data))
         setUSNGList(data)

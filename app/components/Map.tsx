@@ -198,10 +198,10 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           f: 'json',
           returnGeometry: 'true',
           spatialRel: 'esriSpatialRelIntersects',
-        outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
+          outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
           outSR: '102100',
-          resultRecordCount: '8000',
-        geometryType: 'esriGeometryEnvelope'
+          resultRecordCount: '2000', // Reduced from 8000 to 2000
+          geometryType: 'esriGeometryEnvelope'
       };
       
       // Start with a single large request for the entire island
@@ -310,10 +310,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           const utmParams = {
             ...baseParams,
             where: `UTM_Zone = ${zone}`,
-            // No geometry filter to get all features in the UTM zone
           };
           
-          await fetchUSNGData(utmParams, `UTM Zone ${zone} Complete`);
+          try {
+            await fetchUSNGData(utmParams, `UTM Zone ${zone}`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (error) {
+            console.error(`Error loading UTM zone ${zone}:`, error);
+          }
         }
       }
       
