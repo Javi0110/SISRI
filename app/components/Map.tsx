@@ -69,12 +69,20 @@ const waterBodyStyle = new Style({
 
 // Improved USNG style function with better performance
 const createUSNGStyle = (feature: any, resolution: number): Style | Style[] => {
-  const usng = feature.get('USNG')
+  const usng = feature.get('USNG');
+  const geomType = feature.getGeometry()?.getType();
+  
+  console.log('Styling feature:', {
+    usng,
+    resolution,
+    geometryType: geomType,
+    coordinates: feature.getGeometry()?.getCoordinates()
+  });
   
   // Skip styling if no USNG value
   if (!usng) {
     console.warn('Feature missing USNG value:', feature.getProperties());
-    return new Style({}); // Return empty style instead of null
+    return new Style({});
   }
 
   // Base style with optimized settings
@@ -189,6 +197,11 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       
       const fetchUSNGData = async (params: any) => {
         try {
+          console.log('Fetching USNG data with params:', {
+            ...params,
+            geometry: JSON.parse(params.geometry)
+          });
+
           // Add cache control headers
           const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params), {
             headers: {
@@ -197,11 +210,24 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             }
           });
           
+          console.log('USNG API Response status:', response.status);
+          
           if (!response.ok) {
+            const errorText = await response.text();
+            console.error('USNG API Error:', {
+              status: response.status,
+              statusText: response.statusText,
+              body: errorText
+            });
             throw new Error(`HTTP error! status: ${response.status}`);
           }
           
           const data = await response.json();
+          console.log('USNG API Response data:', {
+            totalFeatures: data.features?.length || 0,
+            hasFeatures: Boolean(data.features),
+            spatialReference: data.spatialReference
+          });
           
           if (!data || !data.features?.length) {
             console.log('No features returned from API');
@@ -212,15 +238,32 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           const uniqueFeatures = data.features
             .filter((feature: USNGFeature) => {
               const id = feature.attributes.OBJECTID;
-              if (processedIds.has(id)) return false;
-              processedIds.add(id);
-              return true;
+              const isDuplicate = processedIds.has(id);
+              if (isDuplicate) {
+                console.log('Filtered duplicate feature:', id);
+              }
+              if (!processedIds.has(id)) {
+                processedIds.add(id);
+                return true;
+              }
+              return false;
             })
             .slice(0, USNG_LAYER_CONFIG.MAX_FEATURES);
+          
+          console.log('Unique features count:', uniqueFeatures.length);
           
           if (uniqueFeatures.length === 0) return 0;
           
           const uniqueData = { ...data, features: uniqueFeatures };
+          
+          // Log first feature for debugging
+          if (uniqueFeatures.length > 0) {
+            console.log('Sample feature:', {
+              attributes: uniqueFeatures[0].attributes,
+              geometryType: uniqueFeatures[0].geometry?.type,
+              rings: uniqueFeatures[0].geometry?.rings?.length
+            });
+          }
           
           // Ensure proper projection conversion
           const features = new EsriJSON().readFeatures(uniqueData, {
@@ -228,15 +271,33 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             dataProjection: 'EPSG:4269'
           });
           
-          console.log(`Adding ${features.length} features to source`);
+          console.log('OpenLayers features created:', {
+            count: features.length,
+            sampleFeature: features[0] ? {
+              usng: features[0].get('USNG'),
+              geometry: features[0].getGeometry()?.getType()
+            } : null
+          });
+          
           usngSource.addFeatures(features);
+          
+          // Verify features were added
+          console.log('Current source features:', {
+            totalFeatures: usngSource.getFeatures().length,
+            extent: usngSource.getExtent()
+          });
           
           // Force refresh of the layer
           usngLayer.changed();
+          console.log('Layer refreshed');
           
           return features.length;
         } catch (error) {
           console.error('Error fetching USNG data:', error);
+          // Log the full error stack
+          if (error instanceof Error) {
+            console.error('Error stack:', error.stack);
+          }
           return 0;
         }
       };
@@ -289,6 +350,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       source: new OSM(),
       zIndex: 0
     })
+
+    // Debug USNG layer configuration
+    console.log('Initializing USNG layer with config:', {
+      batchSize: USNG_LAYER_CONFIG.BATCH_SIZE,
+      bufferSize: USNG_LAYER_CONFIG.BUFFER_SIZE,
+      minResolution: USNG_LAYER_CONFIG.MIN_RESOLUTION,
+      maxFeatures: USNG_LAYER_CONFIG.MAX_FEATURES
+    });
 
     // Create map with better initial view
     const map = new Map({
@@ -452,6 +521,17 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         }
       }
     })
+
+    // Debug layer visibility
+    map.on('postrender', () => {
+      console.log('Map rendered, USNG layer state:', {
+        visible: usngLayer.getVisible(),
+        opacity: usngLayer.getOpacity(),
+        sourceFeatures: usngSource.getFeatures().length,
+        zIndex: usngLayer.getZIndex(),
+        extent: usngLayer.getExtent()
+      });
+    });
 
     return () => {
       map.un('moveend', handleMoveEnd);
