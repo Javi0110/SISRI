@@ -49,10 +49,11 @@ const COLORS = {
 
 // Constants for USNG layer - optimized for full coverage
 const USNG_LAYER_CONFIG = {
-  BATCH_SIZE: 8000,
-  BUFFER_SIZE: 2000, // Significantly increased buffer
+  BATCH_SIZE: 2000, // Reduced from 8000 to improve performance
+  BUFFER_SIZE: 1000, // Reduced buffer size
   MIN_RESOLUTION: 40,
-  LABEL_MIN_ZOOM: 10
+  LABEL_MIN_ZOOM: 10,
+  MAX_FEATURES: 5000 // Add maximum features limit
 }
 
 // Styles
@@ -67,43 +68,50 @@ const waterBodyStyle = new Style({
 })
 
 // Improved USNG style function with better performance
-const createUSNGStyle = (feature: any, resolution: number) => {
+const createUSNGStyle = (feature: any, resolution: number): Style | Style[] => {
   const usng = feature.get('USNG')
-  console.log('Styling feature:', { usng, resolution });
   
-  // Base style - always applied
-  const baseStyle = new Style({
-      stroke: new Stroke({
-        color: COLORS.USNG.STROKE,
-      width: 1.5
-      }),
-      fill: new Fill({
-        color: COLORS.USNG.FILL
-      })
-    })
+  // Skip styling if no USNG value
+  if (!usng) {
+    console.warn('Feature missing USNG value:', feature.getProperties());
+    return new Style({}); // Return empty style instead of null
+  }
 
-  // Only create text style at appropriate zoom levels
+  // Base style with optimized settings
+  const baseStyle = new Style({
+    stroke: new Stroke({
+      color: COLORS.USNG.STROKE,
+      width: 1,
+      lineDash: undefined,
+      lineCap: 'butt'
+    }),
+    fill: new Fill({
+      color: COLORS.USNG.FILL
+    })
+  });
+
+  // Only add text at appropriate zoom levels and resolutions
   if (resolution < USNG_LAYER_CONFIG.MIN_RESOLUTION) {
-    const textStyle = new Style({
+    return new Style({
+      stroke: baseStyle.getStroke() || undefined,
+      fill: baseStyle.getFill() || undefined,
       text: new Text({
-        text: usng || '',
+        text: usng,
         font: '11px Arial',
         fill: new Fill({ color: COLORS.USNG.TEXT }),
         stroke: new Stroke({
           color: COLORS.USNG.TEXT_STROKE,
-          width: 2.5
+          width: 2
         }),
         textAlign: 'center',
         textBaseline: 'middle',
         overflow: true,
-        scale: Math.min(1.8, 1 / (resolution * 0.08))
+        scale: Math.min(1.5, 1 / (resolution * 0.08))
       })
-    })
-    
-    return [baseStyle, textStyle]
+    });
   }
 
-  return [baseStyle]
+  return baseStyle;
 }
 
 // Update the USNG source configuration with wider boundaries
@@ -168,6 +176,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
     const view = map.getView();
     const zoom = view.getZoom() || 0;
+    console.log('Current zoom level:', zoom);
 
     if (zoom < ZOOM_LEVELS.USNG_MIN) {
       usngSource.clear();
@@ -175,118 +184,93 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     }
 
     try {
-      // Clear the source before loading new features
       usngSource.clear();
-      console.log('Cleared USNG source before loading new features');
-      
       const processedIds = new Set();
       
       const fetchUSNGData = async (params: any) => {
         try {
-          // Add cache-busting parameter
-          params.timestamp = Date.now();
-          const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params));
+          // Add cache control headers
+          const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params), {
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          });
           
           if (!response.ok) {
-            console.error('Service error:', await response.text());
-            return 0;
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
           
           const data = await response.json();
           
           if (!data || !data.features?.length) {
+            console.log('No features returned from API');
             return 0;
           }
           
-          const uniqueFeatures = data.features.filter((feature: USNGFeature) => {
-            const id = feature.attributes.OBJECTID;
-            if (processedIds.has(id)) return false;
-            processedIds.add(id);
-            return true;
-          });
+          // Filter out duplicates and limit total features
+          const uniqueFeatures = data.features
+            .filter((feature: USNGFeature) => {
+              const id = feature.attributes.OBJECTID;
+              if (processedIds.has(id)) return false;
+              processedIds.add(id);
+              return true;
+            })
+            .slice(0, USNG_LAYER_CONFIG.MAX_FEATURES);
           
           if (uniqueFeatures.length === 0) return 0;
           
           const uniqueData = { ...data, features: uniqueFeatures };
+          
+          // Ensure proper projection conversion
           const features = new EsriJSON().readFeatures(uniqueData, {
-            featureProjection: 'EPSG:3857',
+            featureProjection: map.getView().getProjection(),
             dataProjection: 'EPSG:4269'
           });
           
-          console.log('Adding features to source:', features.length);
-          console.log('Sample feature:', features[0]?.getProperties());
-          
+          console.log(`Adding ${features.length} features to source`);
           usngSource.addFeatures(features);
+          
+          // Force refresh of the layer
+          usngLayer.changed();
+          
           return features.length;
         } catch (error) {
-          console.error('Error loading features:', error);
+          console.error('Error fetching USNG data:', error);
           return 0;
         }
       };
 
-      // Get current viewport extent
+      // Get current viewport extent with buffer
       const extent = view.calculateExtent();
+      const buffer = 0.2; // Increased buffer
       const [minx, miny, maxx, maxy] = extent;
       
-      // Convert to lat/lon coordinates
-      const [x1, y1] = transform([minx, miny], 'EPSG:3857', 'EPSG:4326');
-      const [x2, y2] = transform([maxx, maxy], 'EPSG:3857', 'EPSG:4326');
+      // Convert to lat/lon coordinates with buffer
+      const [x1, y1] = transform([minx - buffer, miny - buffer], 'EPSG:3857', 'EPSG:4326');
+      const [x2, y2] = transform([maxx + buffer, maxy + buffer], 'EPSG:3857', 'EPSG:4326');
 
-      // Calculate grid dimensions
-      const width = Math.abs(x2 - x1);
-      const height = Math.abs(y2 - y1);
-      
-      // Split into smaller sections if area is large
-      const numSections = width * height > 0.5 ? 4 : 1;
-      const sections = [];
-      
-      if (numSections === 1) {
-        sections.push({
+      const params = {
+        f: 'json',
+        returnGeometry: 'true',
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
+        outSR: '102100',
+        resultRecordCount: USNG_LAYER_CONFIG.BATCH_SIZE.toString(),
+        geometryType: 'esriGeometryEnvelope',
+        where: "1=1",
+        geometry: JSON.stringify({
           xmin: Math.min(x1, x2),
           ymin: Math.min(y1, y2),
           xmax: Math.max(x1, x2),
-          ymax: Math.max(y1, y2)
-        });
-      } else {
-        // Split into quadrants
-        const xMid = (x1 + x2) / 2;
-        const yMid = (y1 + y2) / 2;
-        sections.push(
-          { xmin: x1, ymin: y1, xmax: xMid, ymax: yMid },
-          { xmin: xMid, ymin: y1, xmax: x2, ymax: yMid },
-          { xmin: x1, ymin: yMid, xmax: xMid, ymax: y2 },
-          { xmin: xMid, ymin: yMid, xmax: x2, ymax: y2 }
-        );
-      }
+          ymax: Math.max(y1, y2),
+          spatialReference: { wkid: 4326 }
+        })
+      };
 
-      // Add buffer to each section
-      const buffer = 0.1;
-      let totalFeatures = 0;
-
-      for (const section of sections) {
-        const params = {
-          f: 'json',
-          returnGeometry: 'true',
-          spatialRel: 'esriSpatialRelIntersects',
-          outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
-          outSR: '102100',
-          resultRecordCount: '2000',
-          geometryType: 'esriGeometryEnvelope',
-          where: "1=1",
-          geometry: JSON.stringify({
-            xmin: section.xmin - buffer,
-            ymin: section.ymin - buffer,
-            xmax: section.xmax + buffer,
-            ymax: section.ymax + buffer,
-            spatialReference: { wkid: 4326 }
-          })
-        };
-
-        const featureCount = await fetchUSNGData(params);
-        totalFeatures += featureCount;
-      }
-
-      console.log(`Total USNG features loaded: ${totalFeatures}`);
+      const featureCount = await fetchUSNGData(params);
+      console.log(`Total USNG features loaded: ${featureCount}`);
+      
     } catch (error) {
       console.error('Error in USNG loading process:', error);
     }
