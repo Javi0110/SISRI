@@ -170,14 +170,21 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     const zoom = view.getZoom() || 0;
 
     if (zoom < ZOOM_LEVELS.USNG_MIN) {
+      usngSource.clear();
       return;
     }
 
     try {
+      // Clear the source before loading new features
+      usngSource.clear();
+      console.log('Cleared USNG source before loading new features');
+      
       const processedIds = new Set();
       
       const fetchUSNGData = async (params: any) => {
         try {
+          // Add cache-busting parameter
+          params.timestamp = Date.now();
           const response = await fetch('/api/usng/proxy?' + new URLSearchParams(params));
           
           if (!response.ok) {
@@ -355,7 +362,10 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       console.log('Zoom changed:', zoom);
       if (zoom >= ZOOM_LEVELS.USNG_MIN) {
         console.log('Loading USNG grid after zoom change');
+        usngSource.clear();
         handleLoadUSNGData(map);
+      } else {
+        usngSource.clear();
       }
     });
 
