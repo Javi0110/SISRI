@@ -69,6 +69,7 @@ const waterBodyStyle = new Style({
 // Improved USNG style function with better performance
 const createUSNGStyle = (feature: any, resolution: number) => {
   const usng = feature.get('USNG')
+  console.log('Styling feature:', { usng, resolution });
   
   // Base style - always applied
   const baseStyle = new Style({
@@ -204,6 +205,9 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             featureProjection: 'EPSG:3857',
             dataProjection: 'EPSG:4269'
           });
+          
+          console.log('Adding features to source:', features.length);
+          console.log('Sample feature:', features[0]?.getProperties());
           
           usngSource.addFeatures(features);
           return features.length;
