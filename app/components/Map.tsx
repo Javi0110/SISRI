@@ -256,17 +256,25 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     if (!mapInstanceRef.current) return;
     
     const view = mapInstanceRef.current.getView();
-    view.animate({
-      center: coords,
-      zoom: zoom,
-      duration: 1000
-    });
-
-    // Force refresh USNG data if requested
+    
+    // Stop any ongoing animations
+    view.cancelAnimations();
+    
+    // Update view without animation if it's a force refresh
     if (forceRefresh) {
-      debouncedLoadUSNGData(mapInstanceRef.current, true);
+      view.setCenter(coords);
+      view.setZoom(zoom);
+      // Trigger USNG update immediately
+      handleLoadUSNGData(mapInstanceRef.current, true);
+    } else {
+      // Animate view change if it's not a force refresh
+      view.animate({
+        center: coords,
+        zoom: zoom,
+        duration: 1000
+      });
     }
-  }, [debouncedLoadUSNGData]);
+  }, [handleLoadUSNGData]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -308,118 +316,27 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     // Store map instance
     mapInstanceRef.current = map;
 
-    // Add moveend listener
+    // Add moveend listener with proper cleanup
     const moveEndListener = () => {
+      if (!map) return;
       const zoom = map.getView().getZoom() || 0;
-      console.log('[DEBUG] Move ended:', {
-        zoom,
-        center: map.getView().getCenter(),
-        extent: map.getView().calculateExtent(map.getSize() || [500, 500])
-      });
       
       if (zoom >= ZOOM_LEVELS.USNG_MIN) {
-        console.log('[DEBUG] Triggering USNG update');
-        debouncedLoadUSNGData(map);
+        debouncedLoadUSNGData(map, false);
       } else {
-        console.log('[DEBUG] Clearing USNG - zoom too low');
         usngSource.clear();
       }
     };
 
     map.on('moveend', moveEndListener);
 
-    // Add render complete listener
-    map.on('rendercomplete', () => {
-      console.log('[DEBUG] Render complete:', {
-        features: usngLayer.getSource()?.getFeatures().length || 0,
-        visible: usngLayer.getVisible(),
-        opacity: usngLayer.getOpacity(),
-        extent: usngLayer.getExtent()
-      });
-    });
+    // Expose handleViewChange through map instance
+    // @ts-ignore
+    map.handleViewChange = handleViewChange;
 
-    // Initial load
-    const initialZoom = map.getView().getZoom() || 0;
-    if (initialZoom >= ZOOM_LEVELS.USNG_MIN) {
-      handleLoadUSNGData(map);
-    }
-
-    // Update the municipios layer addition
-    const addMunicipiosLayer = async () => {
-      try {
-        const response = await fetch("/api/municipios")
-        const data = await response.json() as any[]
-        
-        const vectorSource = new VectorSource({
-          features: new GeoJSON().readFeatures(
-            {
-              type: "FeatureCollection",
-              features: data.map((municipio: any) => ({
-                type: "Feature",
-                geometry: municipio.geometria,
-                properties: { id: municipio.id, nombre: municipio.nombre }
-              }))
-            },
-            { featureProjection: "EPSG:3857" }
-          )
-        })
-
-        const vectorLayer = new VectorLayer({
-          source: vectorSource,
-          style: municipioStyle,
-          zIndex: 1
-        })
-
-        map.addLayer(vectorLayer)
-      } catch (error) {
-        console.error("Error fetching municipios:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    const addWaterBodiesLayer = async (map: Map) => {
-      try {
-        const waterSource = new VectorSource({
-          format: new EsriJSON(),
-          url: (_extent, _resolution, _projection) => {
-            return '/api/water/proxy?' + new URLSearchParams({
-              f: 'json',
-              returnGeometry: 'true',
-              spatialRel: 'esriSpatialRelIntersects',
-              outFields: '*',
-              outSR: '102100',
-              where: '1=1',
-              geometryType: 'esriGeometryEnvelope',
-              geometry: JSON.stringify({
-                xmin: -67.5,
-                ymin: 17.4,
-                xmax: -65.1,
-                ymax: 18.7,
-                spatialReference: { wkid: 4269 }
-              })
-            })
-          }
-        })
-
-        const waterLayer = new VectorLayer({
-          source: waterSource,
-          style: waterBodyStyle,
-          zIndex: 2, // Above municipios but below USNG grid
-        })
-
-        map.addLayer(waterLayer)
-      } catch (error) {
-        console.error("Error adding water bodies layer:", error)
-      }
-    }
-
-    addMunicipiosLayer()
-    addWaterBodiesLayer(map)
-    
     // Notify parent component
     if (onMapInitialized) {
-      onMapInitialized(map)
+      onMapInitialized(map);
     }
 
     // Add click handler for USNG features
@@ -437,15 +354,6 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         handleUSNGClick(feature);
       }
     });
-
-    // Pass handleViewChange to parent through onMapInitialized
-    useEffect(() => {
-      if (mapInstanceRef.current && onMapInitialized) {
-        onMapInitialized(mapInstanceRef.current);
-        // @ts-ignore - Add the view change handler to the map instance
-        mapInstanceRef.current.handleViewChange = handleViewChange;
-      }
-    }, [handleViewChange, onMapInitialized]);
 
     // Cleanup
     return () => {
