@@ -123,23 +123,15 @@ const createUSNGStyle = (feature: any, resolution: number): Style | Style[] => {
   return baseStyle;
 }
 
-// Update the USNG source configuration with wider boundaries
-const usngSource = new VectorSource({
-  format: new EsriJSON(),
-  strategy: () => [[
-    -7900000, 1700000, // Southwest corner in Web Mercator (expanded further west)
-    -6900000, 2500000  // Northeast corner in Web Mercator (expanded further east)
-  ]]
+// Move source creation outside the layer definition
+const createEmptySource = () => new VectorSource({
+  wrapX: false
 });
 
-// Add click handler for USNG features
-const handleUSNGClick = (feature: any) => {
-  const usng = feature.get('USNG')
-  // You can dispatch an event or update state to show property information
-  console.log(`USNG Grid clicked: ${usng}`)
-}
+// Create initial source
+let usngSource = createEmptySource();
 
-// Improved USNG Layer configuration
+// Create the layer with the initial source
 const usngLayer = new VectorLayer({
   source: usngSource,
   style: (feature, resolution) => createUSNGStyle(feature, resolution),
@@ -151,7 +143,14 @@ const usngLayer = new VectorLayer({
   renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
   declutter: true,
   visible: true
-})
+});
+
+// Add click handler for USNG features
+const handleUSNGClick = (feature: any) => {
+  const usng = feature.get('USNG')
+  // You can dispatch an event or update state to show property information
+  console.log(`USNG Grid clicked: ${usng}`)
+}
 
 // interface USNGFeature {
 //   attributes: {
@@ -209,14 +208,12 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     }
 
     try {
-      const tempSource = new VectorSource();
+      // Create a new source for this area
+      const newSource = createEmptySource();
       
       const fetchUSNGData = async (params: any) => {
         try {
-          // Convert params to URLSearchParams
           const searchParams = new URLSearchParams();
-          
-          // Add each parameter explicitly
           Object.entries(params).forEach(([key, value]) => {
             if (key === 'geometry') {
               searchParams.append(key, JSON.stringify(value));
@@ -224,8 +221,6 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
               searchParams.append(key, value as string);
             }
           });
-          
-          // Add timestamp to prevent caching
           searchParams.append('_t', Date.now().toString());
 
           console.log('Fetching USNG data with params:', searchParams.toString());
@@ -240,19 +235,10 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           });
 
           if (!response.ok) {
-            const errorText = await response.text();
-            console.error('USNG API Error:', {
-              status: response.status,
-              text: errorText
-            });
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
           const data = await response.json();
-          console.log('USNG API response:', {
-            featuresCount: data.features?.length || 0,
-            spatialReference: data.spatialReference
-          });
           
           if (!data || !data.features?.length) {
             console.log('No features returned from API');
@@ -264,7 +250,8 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             dataProjection: 'EPSG:4269'
           });
 
-          tempSource.addFeatures(features);
+          // Add features to the new source
+          newSource.addFeatures(features);
           return features.length;
         } catch (error) {
           console.error('Error fetching USNG data:', error);
@@ -301,23 +288,24 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       const featureCount = await fetchUSNGData(params);
       
       if (featureCount > 0) {
-        // Only update source if we got new features
-        usngSource.clear();
-        const newFeatures = tempSource.getFeatures();
-        console.log(`Adding ${newFeatures.length} features to source`);
-        usngSource.addFeatures(newFeatures);
+        // Update the source reference
+        usngSource = newSource;
+        // Set the new source on the layer
+        usngLayer.setSource(newSource);
         
-        // Force layer update
+        // Force refresh
         requestAnimationFrame(() => {
           usngLayer.changed();
           map.render();
         });
+
+        console.log(`Updated layer with ${featureCount} features`);
       }
 
     } catch (error) {
       console.error('Error in USNG loading process:', error);
     }
-  }, []); // Empty dependencies since we're using refs
+  }, []);
 
   useEffect(() => {
     if (!mapRef.current) return;
