@@ -2,10 +2,11 @@
 
 import { motion } from "framer-motion"
 import { debounce } from "lodash"
+import Feature from 'ol/Feature'
 import Map from "ol/Map"
 import View from "ol/View"
 import EsriJSON from 'ol/format/EsriJSON'
-import GeoJSON from "ol/format/GeoJSON"
+import Geometry from 'ol/geom/Geometry'
 import { defaults as defaultInteractions } from 'ol/interaction'
 import TileLayer from "ol/layer/Tile"
 import VectorLayer from "ol/layer/Vector"
@@ -329,6 +330,80 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     };
 
     map.on('moveend', moveEndListener);
+
+    // Add municipios layer
+    const addMunicipiosLayer = async () => {
+      try {
+        const response = await fetch("/api/municipios")
+        if (!response.ok) throw new Error('Failed to fetch municipios')
+        const data = await response.json()
+        
+        const features = data.map((municipio: any) => {
+          const feature = new EsriJSON().readFeature(municipio.geometria, {
+            featureProjection: 'EPSG:3857'
+          }) as Feature<Geometry>;
+          
+          feature.set('id', municipio.id_municipio);
+          feature.set('nombre', municipio.nombre);
+          return feature;
+        });
+
+        const vectorSource = new VectorSource({
+          features
+        });
+
+        const vectorLayer = new VectorLayer({
+          source: vectorSource,
+          style: municipioStyle,
+          zIndex: 1
+        });
+
+        map.addLayer(vectorLayer);
+      } catch (error) {
+        console.error("Error fetching municipios:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Add water bodies layer
+    const addWaterBodiesLayer = async () => {
+      try {
+        const waterSource = new VectorSource({
+          format: new EsriJSON(),
+          url: '/api/water/proxy?' + new URLSearchParams({
+            f: 'json',
+            returnGeometry: 'true',
+            spatialRel: 'esriSpatialRelIntersects',
+            outFields: '*',
+            outSR: '102100',
+            where: '1=1',
+            geometryType: 'esriGeometryEnvelope',
+            geometry: JSON.stringify({
+              xmin: -67.5,
+              ymin: 17.4,
+              xmax: -65.1,
+              ymax: 18.7,
+              spatialReference: { wkid: 4269 }
+            })
+          }).toString()
+        });
+
+        const waterLayer = new VectorLayer({
+          source: waterSource,
+          style: waterBodyStyle,
+          zIndex: 2
+        });
+
+        map.addLayer(waterLayer);
+      } catch (error) {
+        console.error("Error adding water bodies layer:", error);
+      }
+    };
+
+    // Initialize layers
+    addMunicipiosLayer();
+    addWaterBodiesLayer();
 
     // Expose handleViewChange through map instance
     // @ts-ignore
