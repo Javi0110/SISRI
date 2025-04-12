@@ -272,7 +272,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
       // Get current viewport extent
       const extent = view.calculateExtent(map.getSize() || [500, 500]);
-      const buffer = view.getResolution() * 100; // Dynamic buffer based on resolution
+      const buffer = (view.getResolution() || 1) * 100; // Add default value of 1 if undefined
       
       // Convert to geographic coordinates
       const [minx, miny, maxx, maxy] = extent;
