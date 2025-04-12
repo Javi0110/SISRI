@@ -15,8 +15,20 @@ const generateCacheKey = (geometry: string, params: URLSearchParams): string => 
     // If force refresh is requested, add random component to invalidate cache
     const refreshComponent = forceRefresh ? Math.random().toString() : '';
     
-    return `${xmin.toFixed(6)},${ymin.toFixed(6)},${xmax.toFixed(6)},${ymax.toFixed(6)},${timestamp},${refreshComponent}`;
-  } catch {
+    const cacheKey = `${xmin.toFixed(6)},${ymin.toFixed(6)},${xmax.toFixed(6)},${ymax.toFixed(6)},${timestamp},${refreshComponent}`;
+    
+    // Debug logging
+    console.log('Cache key generation:', {
+      geometry,
+      timestamp,
+      forceRefresh,
+      cacheKey,
+      params: Object.fromEntries(params.entries())
+    });
+    
+    return cacheKey;
+  } catch (error) {
+    console.error('Error generating cache key:', error);
     return geometry;
   }
 };
@@ -39,7 +51,7 @@ export async function GET(request: Request) {
   const params = url.searchParams;
   
   try {
-    // Clean cache periodically
+    // Clean cache on each request in production
     cleanCache();
     
     // Get geometry for cache key
@@ -53,12 +65,26 @@ export async function GET(request: Request) {
       });
     }
     
-    // Check if force refresh is requested
+    // Force refresh handling
     const forceRefresh = params.get('refresh') === 'true';
+    console.log('Request details:', {
+      url: request.url,
+      forceRefresh,
+      geometry,
+      params: Object.fromEntries(params.entries())
+    });
     
     // Check cache first (skip if force refresh)
     const cacheKey = generateCacheKey(geometry, params);
     const cachedData = !forceRefresh && cache.get(cacheKey);
+    
+    // Log cache status
+    console.log('Cache status:', {
+      cacheKey,
+      hasCachedData: !!cachedData,
+      cacheSize: cache.size,
+      forceRefresh
+    });
     
     if (cachedData && (Date.now() - cachedData.timestamp < CACHE_DURATION)) {
       console.log('Cache hit for:', cacheKey);
@@ -66,7 +92,7 @@ export async function GET(request: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=3600',
+          'Cache-Control': 'no-store, must-revalidate',
           'X-Cache': 'HIT'
         }
       });
@@ -125,7 +151,7 @@ export async function GET(request: Request) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'no-store, must-revalidate',
         'X-Cache': 'MISS'
       }
     });
