@@ -68,49 +68,41 @@ const waterBodyStyle = new Style({
   stroke: new Stroke({ color: COLORS.WATER.STROKE, width: 1 })
 })
 
-// Improved USNG style function with better performance
-const createUSNGStyle = (feature: any, resolution: number): Style | Style[] => {
+// Create the style function with better visibility settings
+const createUSNGStyle = (feature: any, resolution: number): Style => {
   const usng = feature.get('USNG');
-  const geomType = feature.getGeometry()?.getType();
   
-  console.log('Styling feature:', {
-    usng,
-    resolution,
-    geometryType: geomType,
-    coordinates: feature.getGeometry()?.getCoordinates()
-  });
-  
-  // Skip styling if no USNG value
-  if (!usng) {
-    console.warn('Feature missing USNG value:', feature.getProperties());
-    return new Style({});
-  }
-
-  // Base style with optimized settings
+  // Base style with more prominent settings
   const baseStyle = new Style({
     stroke: new Stroke({
       color: COLORS.USNG.STROKE,
-      width: 1,
-      lineDash: undefined,
-      lineCap: 'butt'
+      width: 2,
+      lineCap: 'square',
+      lineJoin: 'miter'
     }),
     fill: new Fill({
       color: COLORS.USNG.FILL
     })
   });
 
-  // Only add text at appropriate zoom levels and resolutions
   if (resolution < USNG_LAYER_CONFIG.MIN_RESOLUTION) {
     return new Style({
-      stroke: baseStyle.getStroke() || undefined,
-      fill: baseStyle.getFill() || undefined,
+      stroke: new Stroke({
+        color: COLORS.USNG.STROKE,
+        width: 2,
+        lineCap: 'square',
+        lineJoin: 'miter'
+      }),
+      fill: new Fill({
+        color: COLORS.USNG.FILL
+      }),
       text: new Text({
         text: usng,
-        font: '11px Arial',
+        font: '12px Arial',
         fill: new Fill({ color: COLORS.USNG.TEXT }),
         stroke: new Stroke({
           color: COLORS.USNG.TEXT_STROKE,
-          width: 2
+          width: 3
         }),
         textAlign: 'center',
         textBaseline: 'middle',
@@ -121,28 +113,31 @@ const createUSNGStyle = (feature: any, resolution: number): Style | Style[] => {
   }
 
   return baseStyle;
-}
+};
 
-// Move source creation outside the layer definition
+// Create source with explicit configuration
 const createEmptySource = () => new VectorSource({
-  wrapX: false
+  wrapX: false,
+  overlaps: false,
+  useSpatialIndex: true
 });
 
 // Create initial source
 let usngSource = createEmptySource();
 
-// Create the layer with the initial source
+// Configure layer with explicit rendering settings
 const usngLayer = new VectorLayer({
   source: usngSource,
-  style: (feature, resolution) => createUSNGStyle(feature, resolution),
+  style: createUSNGStyle,
   minZoom: ZOOM_LEVELS.USNG_MIN,
   maxZoom: ZOOM_LEVELS.USNG_MAX,
   zIndex: 5,
   updateWhileAnimating: true,
   updateWhileInteracting: true,
-  renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
+  renderBuffer: 1000,
   declutter: true,
-  visible: true
+  visible: true,
+  opacity: 1
 });
 
 // Add click handler for USNG features
@@ -200,7 +195,6 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
     const view = map.getView();
     const zoom = view.getZoom() || 0;
-    console.log('Loading USNG data at zoom:', zoom);
 
     if (zoom < ZOOM_LEVELS.USNG_MIN) {
       usngSource.clear();
@@ -208,7 +202,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     }
 
     try {
-      // Create a new source for this area
+      // Create new source for this viewport
       const newSource = createEmptySource();
       
       const fetchUSNGData = async (params: any) => {
@@ -222,8 +216,6 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             }
           });
           searchParams.append('_t', Date.now().toString());
-
-          console.log('Fetching USNG data with params:', searchParams.toString());
 
           const response = await fetch('/api/usng/proxy?' + searchParams.toString(), {
             method: 'GET',
@@ -241,17 +233,23 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           const data = await response.json();
           
           if (!data || !data.features?.length) {
-            console.log('No features returned from API');
             return 0;
           }
 
+          // Create features with explicit projection
           const features = new EsriJSON().readFeatures(data, {
             featureProjection: 'EPSG:3857',
             dataProjection: 'EPSG:4269'
           });
 
-          // Add features to the new source
+          // Add features to new source
           newSource.addFeatures(features);
+          
+          // Force feature refresh
+          features.forEach(feature => {
+            feature.changed();
+          });
+
           return features.length;
         } catch (error) {
           console.error('Error fetching USNG data:', error);
@@ -259,7 +257,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         }
       };
 
-      // Get current viewport extent
+      // Calculate viewport extent
       const extent = view.calculateExtent(map.getSize() || [500, 500]);
       const buffer = (view.getResolution() || 1) * 100;
       
@@ -273,7 +271,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         spatialRel: 'esriSpatialRelIntersects',
         outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
         outSR: '102100',
-        resultRecordCount: USNG_LAYER_CONFIG.BATCH_SIZE.toString(),
+        resultRecordCount: '2000',
         geometryType: 'esriGeometryEnvelope',
         where: "1=1",
         geometry: {
@@ -288,15 +286,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       const featureCount = await fetchUSNGData(params);
       
       if (featureCount > 0) {
-        // Update the source reference
-        usngSource = newSource;
-        // Set the new source on the layer
+        // Update layer source
         usngLayer.setSource(newSource);
         
-        // Force refresh
+        // Force immediate render
         requestAnimationFrame(() => {
+          newSource.changed();
           usngLayer.changed();
-          map.render();
+          map.renderSync();
         });
 
         console.log(`Updated layer with ${featureCount} features`);
