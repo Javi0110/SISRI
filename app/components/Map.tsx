@@ -146,11 +146,11 @@ const usngLayer = new VectorLayer({
   minZoom: ZOOM_LEVELS.USNG_MIN,
   maxZoom: ZOOM_LEVELS.USNG_MAX,
   zIndex: 5,
-  updateWhileAnimating: false,
-  updateWhileInteracting: false,
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   renderBuffer: USNG_LAYER_CONFIG.BUFFER_SIZE,
   declutter: true,
-  visible: true // Ensure layer is visible
+  visible: true
 })
 
 interface USNGFeature {
@@ -193,21 +193,15 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     }
 
     try {
-      // Clear the source before loading new features
-      usngSource.clear();
-      
-      // Reset processed IDs on each load to ensure fresh data
-      const processedIds = new Set();
+      // Instead of clearing immediately, create a new temporary source
+      const tempSource = new VectorSource();
       
       const fetchUSNGData = async (params: any) => {
         try {
           const queryParams = new URLSearchParams({
             ...params,
-            // Add timestamp to prevent caching
             _t: Date.now().toString()
           }).toString();
-
-          console.log('Fetching USNG data:', queryParams);
 
           const response = await fetch('/api/usng/proxy?' + queryParams, {
             headers: {
@@ -228,40 +222,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             return 0;
           }
 
-          const uniqueFeatures = data.features
-            .filter((feature: USNGFeature) => {
-              const id = feature.attributes.OBJECTID;
-              if (!processedIds.has(id)) {
-                processedIds.add(id);
-                return true;
-              }
-              return false;
-            })
-            .slice(0, USNG_LAYER_CONFIG.MAX_FEATURES);
-
-          if (uniqueFeatures.length === 0) return 0;
-
-          const uniqueData = { ...data, features: uniqueFeatures };
-          
           // Create features with explicit projection handling
-          const features = new EsriJSON().readFeatures(uniqueData, {
+          const features = new EsriJSON().readFeatures(data, {
             featureProjection: 'EPSG:3857',
             dataProjection: 'EPSG:4269'
           });
 
-          // Add features and force update
-          usngSource.addFeatures(features);
-          
-          // Force redraw of features
-          features.forEach(feature => {
-            feature.changed();
-          });
-
-          // Force layer update
-          usngLayer.changed();
-          
-          // Request a map render
-          map.render();
+          // Add features to temporary source
+          tempSource.addFeatures(features);
           
           return features.length;
         } catch (error) {
@@ -272,9 +240,8 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
       // Get current viewport extent
       const extent = view.calculateExtent(map.getSize() || [500, 500]);
-      const buffer = (view.getResolution() || 1) * 100; // Add default value of 1 if undefined
+      const buffer = (view.getResolution() || 1) * 100;
       
-      // Convert to geographic coordinates
       const [minx, miny, maxx, maxy] = extent;
       const [x1, y1] = transform([minx - buffer, miny - buffer], 'EPSG:3857', 'EPSG:4326');
       const [x2, y2] = transform([maxx + buffer, maxy + buffer], 'EPSG:3857', 'EPSG:4326');
@@ -298,6 +265,17 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       };
 
       const featureCount = await fetchUSNGData(params);
+      
+      if (featureCount > 0) {
+        // Only clear the main source after successful fetch
+        usngSource.clear();
+        // Add all features from temp source
+        usngSource.addFeatures(tempSource.getFeatures());
+        // Force update
+        usngLayer.changed();
+        map.render();
+      }
+
       console.log(`Loaded ${featureCount} USNG features`);
 
     } catch (error) {
