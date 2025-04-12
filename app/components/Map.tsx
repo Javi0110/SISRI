@@ -541,16 +541,16 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       }
     })
 
-    // Debug layer visibility
-    map.on('postrender', () => {
-      console.log('Map rendered, USNG layer state:', {
-        visible: usngLayer.getVisible(),
-        opacity: usngLayer.getOpacity(),
-        sourceFeatures: usngSource.getFeatures().length,
-        zIndex: usngLayer.getZIndex(),
-        extent: usngLayer.getExtent()
-      });
-    });
+    // // Debug layer visibility
+    // map.on('postrender', () => {
+    //   console.log('Map rendered, USNG layer state:', {
+    //     visible: usngLayer.getVisible(),
+    //     opacity: usngLayer.getOpacity(),
+    //     sourceFeatures: usngSource.getFeatures().length,
+    //     zIndex: usngLayer.getZIndex(),
+    //     extent: usngLayer.getExtent()
+    //   });
+    // });
 
     // Cleanup
     return () => {
