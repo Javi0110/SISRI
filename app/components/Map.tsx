@@ -1,6 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { debounce } from "lodash"
 import Map from "ol/Map"
 import View from "ol/View"
 import EsriJSON from 'ol/format/EsriJSON'
@@ -12,8 +13,7 @@ import { fromLonLat, transform } from "ol/proj"
 import OSM from "ol/source/OSM"
 import VectorSource from "ol/source/Vector"
 import { Fill, Stroke, Style, Text } from "ol/style"
-import { useCallback, useEffect, useRef, useState, useMemo } from "react"
-import { debounce } from "lodash"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 // Remove global window declaration - we'll use refs instead
 interface MapComponentProps {
