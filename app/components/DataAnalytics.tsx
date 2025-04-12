@@ -195,6 +195,17 @@ export function DataAnalytics() {
         </div>
       );
     }
+
+    // Default case for other search types
+    return (
+      <div className="flex items-center justify-between">
+        <div>
+          <CardTitle>
+            Búsqueda no válida
+          </CardTitle>
+        </div>
+      </div>
+    );
   };
 
   return (
