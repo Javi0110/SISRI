@@ -8,9 +8,14 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 const generateCacheKey = (geometry: string, params: URLSearchParams): string => {
   try {
     const { xmin, ymin, xmax, ymax } = JSON.parse(geometry);
-    // Use 4 decimal places for better precision and include timestamp
+    // Use 6 decimal places for better precision and include timestamp
     const timestamp = params.get('_t') || Date.now().toString();
-    return `${xmin.toFixed(4)},${ymin.toFixed(4)},${xmax.toFixed(4)},${ymax.toFixed(4)},${timestamp}`;
+    const forceRefresh = params.get('refresh') === 'true';
+    
+    // If force refresh is requested, add random component to invalidate cache
+    const refreshComponent = forceRefresh ? Math.random().toString() : '';
+    
+    return `${xmin.toFixed(6)},${ymin.toFixed(6)},${xmax.toFixed(6)},${ymax.toFixed(6)},${timestamp},${refreshComponent}`;
   } catch {
     return geometry;
   }
@@ -35,9 +40,7 @@ export async function GET(request: Request) {
   
   try {
     // Clean cache periodically
-    if (Math.random() < 0.1) { // 10% chance on each request
-      cleanCache();
-    }
+    cleanCache();
     
     // Get geometry for cache key
     const geometry = params.get('geometry');
@@ -50,9 +53,12 @@ export async function GET(request: Request) {
       });
     }
     
-    // Check cache first
+    // Check if force refresh is requested
+    const forceRefresh = params.get('refresh') === 'true';
+    
+    // Check cache first (skip if force refresh)
     const cacheKey = generateCacheKey(geometry, params);
-    const cachedData = cache.get(cacheKey);
+    const cachedData = !forceRefresh && cache.get(cacheKey);
     
     if (cachedData && (Date.now() - cachedData.timestamp < CACHE_DURATION)) {
       console.log('Cache hit for:', cacheKey);

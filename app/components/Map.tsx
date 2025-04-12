@@ -145,57 +145,24 @@ const usngLayer = new VectorLayer({
   opacity: 1
 });
 
-// Add click handler for USNG features
-const handleUSNGClick = (feature: any) => {
-  const usng = feature.get('USNG')
-  // You can dispatch an event or update state to show property information
-  console.log(`USNG Grid clicked: ${usng}`)
-}
-
-// interface USNGFeature {
-//   attributes: {
-//     OBJECTID: number;
-//     USNG: string;
-//     UTM_Zone: number;
-//     GRID1MIL: string;
-//   };
-// }
-
-// Utility function outside component
-// const createDebounce = (func: Function, wait: number) => {
-//   let timeout: NodeJS.Timeout;
-//   return function executedFunction(...args: any[]) {
-//     const later = () => {
-//       clearTimeout(timeout);
-//       func(...args);
-//     };
-//     clearTimeout(timeout);
-//     timeout = setTimeout(later, wait);
-//   };
-// };
-
 export default function MapComponent({ onMapInitialized }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<Map | null>(null)
   const [loading, setLoading] = useState(true)
   
-  // Create a stable reference to the debounced function
-  const debouncedLoadUSNGData = useCallback(
-    debounce((map: Map) => {
-      const view = map.getView();
-      const zoom = view.getZoom() || 0;
-      
-      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
-        handleLoadUSNGData(map);
-      } else {
-        usngSource.clear();
-      }
-    }, 300, { leading: true, trailing: true }),
-    [] // Empty dependencies since we want this to be stable
-  );
+  // Add click handler for USNG features
+  const handleUSNGClick = useCallback((feature: any) => {
+    const usng = feature.get('USNG')
+    // You can dispatch an event or update state to show property information
+    console.log(`USNG Grid clicked: ${usng}`)
+    // Force refresh when clicking on a feature
+    if (mapInstanceRef.current) {
+      debouncedLoadUSNGData(mapInstanceRef.current, true);
+    }
+  }, []);
 
   // Memoize the load handler
-  const handleLoadUSNGData = useCallback(async (map: Map) => {
+  const handleLoadUSNGData = useCallback(async (map: Map, forceRefresh: boolean = false) => {
     if (!map) return;
 
     const view = map.getView();
@@ -223,7 +190,13 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         spatialReference: { wkid: 4326 }
       };
 
-      const response = await fetch(`/api/usng/proxy?geometry=${encodeURIComponent(JSON.stringify(geometry))}&_t=${Date.now()}`);
+      const params = new URLSearchParams({
+        geometry: JSON.stringify(geometry),
+        _t: Date.now().toString(),
+        refresh: forceRefresh.toString()
+      });
+
+      const response = await fetch(`/api/usng/proxy?${params}`);
       if (!response.ok) throw new Error('Failed to fetch USNG data');
       const data = await response.json();
       
@@ -262,6 +235,21 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       console.error('Error loading USNG data:', error);
     }
   }, []);
+
+  // Create a stable reference to the debounced function
+  const debouncedLoadUSNGData = useCallback(
+    debounce((map: Map, forceRefresh: boolean = false) => {
+      const view = map.getView();
+      const zoom = view.getZoom() || 0;
+      
+      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
+        handleLoadUSNGData(map, forceRefresh);
+      } else {
+        usngSource.clear();
+      }
+    }, 300, { leading: true, trailing: true }),
+    [handleLoadUSNGData] // Add handleLoadUSNGData as dependency
+  );
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -417,35 +405,21 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       onMapInitialized(map)
     }
 
-    // Improved click interaction with better feature detection
+    // Add click handler for USNG features
     map.on('click', (event) => {
       const feature = map.forEachFeatureAtPixel(
-        event.pixel, 
+        event.pixel,
         (feature) => feature,
         {
           layerFilter: (layer) => layer === usngLayer,
           hitTolerance: 5
         }
-      )
+      );
       
       if (feature) {
-        const usng = feature.get('USNG')
-        if (usng) {
-          handleUSNGClick(feature)
-        }
+        handleUSNGClick(feature);
       }
-    })
-
-    // // Debug layer visibility
-    // map.on('postrender', () => {
-    //   console.log('Map rendered, USNG layer state:', {
-    //     visible: usngLayer.getVisible(),
-    //     opacity: usngLayer.getOpacity(),
-    //     sourceFeatures: usngSource.getFeatures().length,
-    //     zIndex: usngLayer.getZIndex(),
-    //     extent: usngLayer.getExtent()
-    //   });
-    // });
+    });
 
     // Cleanup
     return () => {
