@@ -251,6 +251,23 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     [handleLoadUSNGData] // Add handleLoadUSNGData as dependency
   );
 
+  // Function to handle view changes
+  const handleViewChange = useCallback((coords: [number, number], zoom: number, forceRefresh?: boolean) => {
+    if (!mapInstanceRef.current) return;
+    
+    const view = mapInstanceRef.current.getView();
+    view.animate({
+      center: coords,
+      zoom: zoom,
+      duration: 1000
+    });
+
+    // Force refresh USNG data if requested
+    if (forceRefresh) {
+      debouncedLoadUSNGData(mapInstanceRef.current, true);
+    }
+  }, [debouncedLoadUSNGData]);
+
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -421,6 +438,15 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       }
     });
 
+    // Pass handleViewChange to parent through onMapInitialized
+    useEffect(() => {
+      if (mapInstanceRef.current && onMapInitialized) {
+        onMapInitialized(mapInstanceRef.current);
+        // @ts-ignore - Add the view change handler to the map instance
+        mapInstanceRef.current.handleViewChange = handleViewChange;
+      }
+    }, [handleViewChange, onMapInitialized]);
+
     // Cleanup
     return () => {
       map.un('moveend', moveEndListener);
@@ -428,7 +454,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       map.setTarget(undefined);
       mapInstanceRef.current = null;
     }
-  }, [handleLoadUSNGData, debouncedLoadUSNGData, onMapInitialized]);
+  }, [handleLoadUSNGData, debouncedLoadUSNGData, onMapInitialized, handleViewChange]);
 
   return (
     <motion.div

@@ -26,7 +26,7 @@ interface Municipio {
 }
 
 interface MunicipiosListProps {
-  onMunicipioSelect: (coords: [number, number], zoom: number) => void
+  onMunicipioSelect: (coords: [number, number], zoom: number, forceRefresh?: boolean) => void
 }
 
 export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProps) {
@@ -65,16 +65,14 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
   const handleMunicipioClick = (municipio: Municipio) => {
     setSelectedMunicipio(municipio.nombre === selectedMunicipio ? null : municipio.nombre)
     
-    // Convert coordinates and zoom to the municipio
-    // Use default coordinates for Puerto Rico if latitud/longitud are not available
-    let coordinates: [number, number] = [-66.4, 18.2] // Default coordinates for Puerto Rico
+    let coordinates: [number, number] = [-66.4, 18.2]
     
     if (municipio.latitud && municipio.longitud) {
       coordinates = [municipio.longitud, municipio.latitud]
     }
     
     const transformedCoords = fromLonLat(coordinates)
-    onMunicipioSelect(transformedCoords as [number, number], 12) // Zoom level 12 is good for municipios
+    onMunicipioSelect(transformedCoords as [number, number], 12, true) // Pass true to force refresh
   }
 
   if (loading) return <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div>
