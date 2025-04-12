@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Filter, AlertCircle } from "lucide-react";
+import { Search, AlertCircle, ChevronDown, ChevronRight, Home, Users, MapPin } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -10,100 +10,65 @@ import {
   CardHeader,
   CardTitle,
 } from "../../components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
 import { Input } from "../../components/ui/input";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "../../components/ui/accordion";
+import { Badge } from "../../components/ui/badge";
+import { cn } from "../../lib/utils";
 
-// Available tables and their configurations
-const tables = {
-  habitantes: {
-    name: "Residentes",
-    fields: [
-      { name: "id", label: "ID", type: "number" },
-      { name: "nombre", label: "Nombre", type: "text" },
-      { name: "edad", label: "Edad", type: "number" },
-      { name: "categoria", label: "Categoría", type: "select", 
-        options: ["Adulto", "Joven", "Niño"] },
-      { name: "limitacion", label: "Limitación", type: "select",
-        options: ["Ninguna", "Movilidad Reducida", "Visual", "Auditiva"] },
-      { name: "condicion", label: "Condición", type: "select",
-        options: ["Ninguna", "Hipertensión", "Diabetes", "Asma", "Artritis"] },
-      { name: "disposicion", label: "Disposición", type: "select",
-        options: ["Disponible", "No Disponible"] }
-    ]
-  },
-  eventos: {
-    name: "Eventos",
-    fields: [
-      { name: "id", label: "ID", type: "number" },
-      { name: "titulo", label: "Título", type: "text" },
-      { name: "tipo", label: "Tipo", type: "select",
-        options: ["Hurricane", "Flood", "Storm", "Infrastructure", "Landslide"] },
-      { name: "estado", label: "Estado", type: "select",
-        options: ["pending", "active", "resolved"] },
-      { name: "fecha", label: "Fecha", type: "date" }
-    ]
-  },
-  propiedades_existentes: {
-    name: "Propiedades",
-    fields: [
-      { name: "id", label: "ID", type: "number" },
-      { name: "tipo", label: "Tipo", type: "select",
-        options: ["Residencial", "Comercial"] }
-    ]
-  }
-};
+interface EventData {
+  id: number;
+  titulo: string;
+  descripcion: string;
+  fecha: string;
+  tipo: string;
+  estado: string;
+  usng: string | null;
+}
 
-interface FilterCondition {
-  field: string;
-  operator: string;
-  value: string | number;
+interface PropertyData {
+  id: number;
+  tipo: string;
+  daños: string;
+  fecha: string;
+  municipio: string;
+  barrio: string;
+  sector: string;
+  usng: string;
+  habitantes: ResidentData[];
+}
+
+interface ResidentData {
+  id: number;
+  nombre: string;
+  edad: number;
+  categoria: string;
+  limitacion: string;
+  condicion: string;
+  disposicion: string;
+  propiedad_id: number;
+}
+
+interface ReportData {
+  evento: EventData | null;
+  propiedades: PropertyData[];
+}
+
+interface ExpandedState {
+  [key: string]: boolean;
 }
 
 export function DataAnalytics() {
-  const [selectedTable, setSelectedTable] = useState("");
-  const [filters, setFilters] = useState<FilterCondition[]>([]);
-  const [results, setResults] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-
-  const addFilter = () => {
-    setFilters([...filters, { field: "", operator: "equals", value: "" }]);
-  };
-
-  const updateFilter = (index: number, field: string, value: any) => {
-    const newFilters = [...filters];
-    newFilters[index] = { ...newFilters[index], [field]: value };
-    setFilters(newFilters);
-  };
-
-  const removeFilter = (index: number) => {
-    setFilters(filters.filter((_, i) => i !== index));
-  };
+  const [reportData, setReportData] = useState<ReportData>({
+    evento: null,
+    propiedades: []
+  });
+  const [expandedProperties, setExpandedProperties] = useState<ExpandedState>({});
 
   const handleSearch = async () => {
-    if (!selectedTable) {
-      setError("Por favor seleccione una tabla");
+    if (!searchQuery.trim()) {
+      setError("Por favor ingrese el nombre del evento");
       return;
     }
 
@@ -111,14 +76,10 @@ export function DataAnalytics() {
     setError(null);
 
     try {
-      const response = await fetch("/api/analytics/query", {
+      const response = await fetch("/api/analytics/comprehensive-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseTable: selectedTable,
-          selectedFields: tables[selectedTable as keyof typeof tables].fields.map(f => f.name),
-          conditions: filters.filter(f => f.field && f.value)
-        })
+        body: JSON.stringify({ eventTitle: searchQuery })
       });
 
       const data = await response.json();
@@ -126,7 +87,8 @@ export function DataAnalytics() {
       if (data.error) {
         setError(data.error);
       } else {
-        setResults(data.results);
+        setReportData(data);
+        setExpandedProperties({});
       }
     } catch (error) {
       setError("Error al buscar datos");
@@ -136,133 +98,43 @@ export function DataAnalytics() {
     }
   };
 
-  const renderFilterInput = (field: any, filter: FilterCondition, index: number) => {
-    if (field.type === "select") {
-      return (
-        <Select 
-          value={filter.value as string} 
-          onValueChange={(value) => updateFilter(index, "value", value)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Seleccionar valor" />
-          </SelectTrigger>
-          <SelectContent>
-            {field.options.map((option: string) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      );
-    }
-    
-    if (field.type === "date") {
-      return (
-        <Input
-          type="date"
-          value={filter.value as string}
-          onChange={(e) => updateFilter(index, "value", e.target.value)}
-        />
-      );
-    }
+  const toggleProperty = (propertyId: number) => {
+    setExpandedProperties(prev => ({
+      ...prev,
+      [propertyId]: !prev[propertyId]
+    }));
+  };
 
-    return (
-      <Input
-        type={field.type === "number" ? "number" : "text"}
-        placeholder="Valor"
-        value={filter.value as string}
-        onChange={(e) => updateFilter(index, "value", e.target.value)}
-      />
-    );
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return 'bg-red-100 text-red-800';
+      case 'resolved':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-yellow-100 text-yellow-800';
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Table Selection */}
+      {/* Search Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Análisis de Datos</CardTitle>
-          <CardDescription>Seleccione la tabla y aplique filtros para analizar los datos</CardDescription>
+          <CardTitle>Reporte Comprensivo de Eventos</CardTitle>
+          <CardDescription>
+            Busque un evento para ver todos los detalles relacionados, incluyendo propiedades afectadas y habitantes
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <Select value={selectedTable} onValueChange={setSelectedTable}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar tabla" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(tables).map(([key, table]) => (
-                  <SelectItem key={key} value={key}>
-                    {table.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {selectedTable && (
-              <Accordion type="single" collapsible>
-                <AccordionItem value="filters">
-                  <AccordionTrigger className="flex items-center gap-2">
-                    <Filter className="h-4 w-4" />
-                    Filtros Avanzados
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="space-y-4 pt-4">
-                      {filters.map((filter, index) => (
-                        <div key={index} className="flex gap-2 items-start">
-                          <Select
-                            value={filter.field}
-                            onValueChange={(value) => updateFilter(index, "field", value)}
-                          >
-                            <SelectTrigger className="w-[200px]">
-                              <SelectValue placeholder="Seleccionar campo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {tables[selectedTable as keyof typeof tables].fields.map((field) => (
-                                <SelectItem key={field.name} value={field.name}>
-                                  {field.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          {filter.field && renderFilterInput(
-                            tables[selectedTable as keyof typeof tables].fields.find(
-                              f => f.name === filter.field
-                            ),
-                            filter,
-                            index
-                          )}
-
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            onClick={() => removeFilter(index)}
-                          >
-                            ×
-                          </Button>
-                        </div>
-                      ))}
-
-                      <Button
-                        variant="outline"
-                        onClick={addFilter}
-                        className="w-full"
-                      >
-                        Agregar Filtro
-                      </Button>
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            )}
-
-            <Button
-              className="w-full"
-              onClick={handleSearch}
-              disabled={loading}
-            >
+          <div className="flex gap-4">
+            <Input
+              placeholder="Nombre del evento"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={handleSearch} disabled={loading}>
               {loading ? (
                 <span className="animate-spin mr-2">⏳</span>
               ) : (
@@ -274,7 +146,7 @@ export function DataAnalytics() {
         </CardContent>
       </Card>
 
-      {/* Results */}
+      {/* Error Display */}
       {error && (
         <div className="bg-destructive/10 text-destructive p-4 rounded-md flex items-center gap-2">
           <AlertCircle className="h-4 w-4" />
@@ -282,36 +154,130 @@ export function DataAnalytics() {
         </div>
       )}
 
-      {results.length > 0 && (
+      {/* Unified Results Display */}
+      {reportData.evento && (
         <Card>
           <CardHeader>
-            <CardTitle>Resultados</CardTitle>
-            <CardDescription>{results.length} registros encontrados</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>{reportData.evento.titulo}</CardTitle>
+                <CardDescription>
+                  Fecha: {new Date(reportData.evento.fecha).toLocaleDateString()}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-4">
+                {reportData.evento.usng && (
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <MapPin className="h-4 w-4" />
+                    {reportData.evento.usng}
+                  </Badge>
+                )}
+                <Badge className={cn("text-sm", getStatusColor(reportData.evento.estado))}>
+                  {reportData.evento.estado}
+                </Badge>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              {reportData.evento.descripcion}
+            </p>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {tables[selectedTable as keyof typeof tables].fields.map(field => (
-                      <TableHead key={field.name}>{field.label}</TableHead>
+            <div className="rounded-md border">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th className="py-3 px-4 text-left font-medium">Propiedad</th>
+                      <th className="py-3 px-4 text-left font-medium">Ubicación</th>
+                      <th className="py-3 px-4 text-left font-medium">USNG</th>
+                      <th className="py-3 px-4 text-left font-medium">Daños</th>
+                      <th className="py-3 px-4 text-left font-medium">Fecha</th>
+                      <th className="py-3 px-4 text-left font-medium">Habitantes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.propiedades.map((property) => (
+                      <>
+                        <tr key={property.id} className="border-t hover:bg-muted/50 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="p-0 h-auto"
+                                onClick={() => toggleProperty(property.id)}
+                              >
+                                {expandedProperties[property.id] ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Home className="h-4 w-4" />
+                              <span>{property.tipo}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{property.municipio}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {property.barrio} • {property.sector}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant="outline">{property.usng}</Badge>
+                          </td>
+                          <td className="py-3 px-4">{property.daños}</td>
+                          <td className="py-3 px-4">
+                            {new Date(property.fecha).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1">
+                              <Users className="h-4 w-4" />
+                              <span>{property.habitantes.length}</span>
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedProperties[property.id] && property.habitantes.length > 0 && (
+                          <tr className="bg-muted/30">
+                            <td colSpan={6} className="py-2 px-4">
+                              <div className="ml-8">
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="text-sm text-muted-foreground">
+                                      <th className="py-2 px-3 text-left font-medium">Nombre</th>
+                                      <th className="py-2 px-3 text-left font-medium">Edad</th>
+                                      <th className="py-2 px-3 text-left font-medium">Categoría</th>
+                                      <th className="py-2 px-3 text-left font-medium">Limitación</th>
+                                      <th className="py-2 px-3 text-left font-medium">Condición</th>
+                                      <th className="py-2 px-3 text-left font-medium">Disposición</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {property.habitantes.map((resident) => (
+                                      <tr key={resident.id} className="text-sm">
+                                        <td className="py-2 px-3">{resident.nombre}</td>
+                                        <td className="py-2 px-3">{resident.edad}</td>
+                                        <td className="py-2 px-3">
+                                          <Badge variant="outline">{resident.categoria}</Badge>
+                                        </td>
+                                        <td className="py-2 px-3">{resident.limitacion}</td>
+                                        <td className="py-2 px-3">{resident.condicion}</td>
+                                        <td className="py-2 px-3">{resident.disposicion}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {results.map((row, i) => (
-                    <TableRow key={i}>
-                      {tables[selectedTable as keyof typeof tables].fields.map(field => (
-                        <TableCell key={field.name}>
-                          {field.type === 'date' 
-                            ? new Date(row[field.name]).toLocaleDateString()
-                            : String(row[field.name] || '')}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </CardContent>
         </Card>
