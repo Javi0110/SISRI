@@ -179,7 +179,23 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<Map | null>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Create a stable reference to the debounced function
+  const debouncedLoadUSNGData = useCallback(
+    debounce((map: Map) => {
+      const view = map.getView();
+      const zoom = view.getZoom() || 0;
+      
+      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
+        handleLoadUSNGData(map);
+      } else {
+        usngSource.clear();
+      }
+    }, 300, { leading: true, trailing: true }),
+    [] // Empty dependencies since we want this to be stable
+  );
 
+  // Memoize the load handler
   const handleLoadUSNGData = useCallback(async (map: Map) => {
     if (!map) return;
 
@@ -301,11 +317,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     } catch (error) {
       console.error('Error in USNG loading process:', error);
     }
-  }, []);
-
-  const debouncedLoadUSNGData = debounce((map: Map) => {
-    handleLoadUSNGData(map);
-  }, 300, { leading: true, trailing: true });
+  }, []); // Empty dependencies since we're using refs
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -314,7 +326,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     const baseLayer = new TileLayer({ 
       source: new OSM(),
       zIndex: 0
-    })
+    });
 
     // Debug USNG layer configuration
     console.log('Initializing USNG layer with config:', {
@@ -324,10 +336,10 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       maxFeatures: USNG_LAYER_CONFIG.MAX_FEATURES
     });
 
-    // Create map with better initial view
+    // Create map instance
     const map = new Map({
       target: mapRef.current,
-      layers: [baseLayer, usngLayer], // Add USNG layer immediately
+      layers: [baseLayer, usngLayer],
       view: new View({
         center: fromLonLat(PUERTO_RICO_CENTER),
         zoom: ZOOM_LEVELS.INITIAL,
@@ -342,24 +354,19 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         doubleClickZoom: true,
         pinchZoom: true
       })
-    })
+    });
 
-    // Store map in ref
+    // Store map instance
     mapInstanceRef.current = map;
 
-    // Set up event listeners
-    map.on('moveend', () => {
+    // Add moveend listener
+    const moveEndListener = () => {
       const zoom = map.getView().getZoom() || 0;
       console.log('Move ended, current zoom:', zoom);
-      
-      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
-        console.log('Loading USNG grid after move');
-        debouncedLoadUSNGData(map);
-      } else {
-        console.log('Zoom too low for USNG grid');
-        usngSource.clear();
-      }
-    });
+      debouncedLoadUSNGData(map);
+    };
+
+    map.on('moveend', moveEndListener);
 
     // Initial load
     const initialZoom = map.getView().getZoom() || 0;
@@ -475,13 +482,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       });
     });
 
-    // Clean up
+    // Cleanup
     return () => {
+      map.un('moveend', moveEndListener);
       debouncedLoadUSNGData.cancel();
-      map.setTarget(undefined)
-      mapInstanceRef.current = null
+      map.setTarget(undefined);
+      mapInstanceRef.current = null;
     }
-  }, [handleLoadUSNGData, onMapInitialized, debouncedLoadUSNGData])
+  }, [handleLoadUSNGData, debouncedLoadUSNGData, onMapInitialized]);
 
   return (
     <motion.div
