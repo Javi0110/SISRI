@@ -5,11 +5,12 @@ const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
 // Better cache key generator with more precise chunking
-const generateCacheKey = (geometry: string): string => {
+const generateCacheKey = (geometry: string, params: URLSearchParams): string => {
   try {
     const { xmin, ymin, xmax, ymax } = JSON.parse(geometry);
-    // Round to 2 decimal places for better cache hits while maintaining precision
-    return `${xmin.toFixed(2)},${ymin.toFixed(2)},${xmax.toFixed(2)},${ymax.toFixed(2)}`;
+    // Use 4 decimal places for better precision and include timestamp
+    const timestamp = params.get('_t') || Date.now().toString();
+    return `${xmin.toFixed(4)},${ymin.toFixed(4)},${xmax.toFixed(4)},${ymax.toFixed(4)},${timestamp}`;
   } catch {
     return geometry;
   }
@@ -50,7 +51,7 @@ export async function GET(request: Request) {
     }
     
     // Check cache first
-    const cacheKey = generateCacheKey(geometry);
+    const cacheKey = generateCacheKey(geometry, params);
     const cachedData = cache.get(cacheKey);
     
     if (cachedData && (Date.now() - cachedData.timestamp < CACHE_DURATION)) {

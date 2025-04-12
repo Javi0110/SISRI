@@ -215,41 +215,16 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       const [x1, y1] = transform([minx - buffer, miny - buffer], 'EPSG:3857', 'EPSG:4326');
       const [x2, y2] = transform([maxx + buffer, maxy + buffer], 'EPSG:3857', 'EPSG:4326');
 
-      const params = {
-        f: 'json',
-        returnGeometry: 'true',
-        spatialRel: 'esriSpatialRelIntersects',
-        outFields: 'USNG,OBJECTID,UTM_Zone,GRID1MIL',
-        outSR: '102100',
-        resultRecordCount: '2000',
-        geometryType: 'esriGeometryEnvelope',
-        where: "1=1",
-        geometry: {
-          xmin: Math.min(x1, x2),
-          ymin: Math.min(y1, y2),
-          xmax: Math.max(x1, x2),
-          ymax: Math.max(y1, y2),
-          spatialReference: { wkid: 4326 }
-        }
+      const geometry = {
+        xmin: Math.min(x1, x2),
+        ymin: Math.min(y1, y2),
+        xmax: Math.max(x1, x2),
+        ymax: Math.max(y1, y2),
+        spatialReference: { wkid: 4326 }
       };
 
-      const response = await fetch('/api/usng/proxy?' + new URLSearchParams({
-        ...params,
-        geometry: JSON.stringify(params.geometry),
-        _t: Date.now().toString()
-      }), {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      const response = await fetch(`/api/usng/proxy?geometry=${encodeURIComponent(JSON.stringify(geometry))}&_t=${Date.now()}`);
+      if (!response.ok) throw new Error('Failed to fetch USNG data');
       const data = await response.json();
       
       if (!data || !data.features?.length) {
@@ -284,7 +259,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       }
 
     } catch (error) {
-      console.error('[DEBUG] Error in USNG loading process:', error);
+      console.error('Error loading USNG data:', error);
     }
   }, []);
 
