@@ -163,17 +163,17 @@ const usngLayer = new VectorLayer({
 // }
 
 // Utility function outside component
-const createDebounce = (func: Function, wait: number) => {
-  let timeout: NodeJS.Timeout;
-  return function executedFunction(...args: any[]) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
+// const createDebounce = (func: Function, wait: number) => {
+//   let timeout: NodeJS.Timeout;
+//   return function executedFunction(...args: any[]) {
+//     const later = () => {
+//       clearTimeout(timeout);
+//       func(...args);
+//     };
+//     clearTimeout(timeout);
+//     timeout = setTimeout(later, wait);
+//   };
+// };
 
 export default function MapComponent({ onMapInitialized }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null)
@@ -193,17 +193,29 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     }
 
     try {
-      // Instead of clearing immediately, create a new temporary source
       const tempSource = new VectorSource();
       
       const fetchUSNGData = async (params: any) => {
         try {
-          const queryParams = new URLSearchParams({
-            ...params,
-            _t: Date.now().toString()
-          }).toString();
+          // Convert params to URLSearchParams
+          const searchParams = new URLSearchParams();
+          
+          // Add each parameter explicitly
+          Object.entries(params).forEach(([key, value]) => {
+            if (key === 'geometry') {
+              searchParams.append(key, JSON.stringify(value));
+            } else {
+              searchParams.append(key, value as string);
+            }
+          });
+          
+          // Add timestamp to prevent caching
+          searchParams.append('_t', Date.now().toString());
 
-          const response = await fetch('/api/usng/proxy?' + queryParams, {
+          console.log('Fetching USNG data with params:', searchParams.toString());
+
+          const response = await fetch('/api/usng/proxy?' + searchParams.toString(), {
+            method: 'GET',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
@@ -212,25 +224,31 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           });
 
           if (!response.ok) {
+            const errorText = await response.text();
+            console.error('USNG API Error:', {
+              status: response.status,
+              text: errorText
+            });
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
           const data = await response.json();
+          console.log('USNG API response:', {
+            featuresCount: data.features?.length || 0,
+            spatialReference: data.spatialReference
+          });
           
           if (!data || !data.features?.length) {
             console.log('No features returned from API');
             return 0;
           }
 
-          // Create features with explicit projection handling
           const features = new EsriJSON().readFeatures(data, {
             featureProjection: 'EPSG:3857',
             dataProjection: 'EPSG:4269'
           });
 
-          // Add features to temporary source
           tempSource.addFeatures(features);
-          
           return features.length;
         } catch (error) {
           console.error('Error fetching USNG data:', error);
@@ -255,38 +273,39 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         resultRecordCount: USNG_LAYER_CONFIG.BATCH_SIZE.toString(),
         geometryType: 'esriGeometryEnvelope',
         where: "1=1",
-        geometry: JSON.stringify({
+        geometry: {
           xmin: Math.min(x1, x2),
           ymin: Math.min(y1, y2),
           xmax: Math.max(x1, x2),
           ymax: Math.max(y1, y2),
           spatialReference: { wkid: 4326 }
-        })
+        }
       };
 
       const featureCount = await fetchUSNGData(params);
       
       if (featureCount > 0) {
-        // Only clear the main source after successful fetch
+        // Only update source if we got new features
         usngSource.clear();
-        // Add all features from temp source
-        usngSource.addFeatures(tempSource.getFeatures());
-        // Force update
-        usngLayer.changed();
-        map.render();
+        const newFeatures = tempSource.getFeatures();
+        console.log(`Adding ${newFeatures.length} features to source`);
+        usngSource.addFeatures(newFeatures);
+        
+        // Force layer update
+        requestAnimationFrame(() => {
+          usngLayer.changed();
+          map.render();
+        });
       }
-
-      console.log(`Loaded ${featureCount} USNG features`);
 
     } catch (error) {
       console.error('Error in USNG loading process:', error);
     }
   }, []);
 
-  const debouncedLoadUSNGData = useMemo(
-    () => createDebounce((map: Map) => handleLoadUSNGData(map), 300),
-    [handleLoadUSNGData]
-  );
+  const debouncedLoadUSNGData = debounce((map: Map) => {
+    handleLoadUSNGData(map);
+  }, 300, { leading: true, trailing: true });
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -328,44 +347,25 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     // Store map in ref
     mapInstanceRef.current = map;
 
-    // Initial load of USNG data when map is created
-    const initialLoadUSNG = () => {
-      const zoom = map.getView().getZoom() || 0;
-      console.log('Initial map zoom:', zoom);
-      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
-        console.log('Loading initial USNG grid');
-        handleLoadUSNGData(map);
-      }
-    };
-
-    // Set up event listeners with debounce
-    const handleMoveEnd = debounce(() => {
+    // Set up event listeners
+    map.on('moveend', () => {
       const zoom = map.getView().getZoom() || 0;
       console.log('Move ended, current zoom:', zoom);
       
       if (zoom >= ZOOM_LEVELS.USNG_MIN) {
         console.log('Loading USNG grid after move');
-        handleLoadUSNGData(map);
+        debouncedLoadUSNGData(map);
       } else {
         console.log('Zoom too low for USNG grid');
         usngSource.clear();
       }
-    }, 300);
-
-    // Add move end listener
-    map.on('moveend', handleMoveEnd);
-
-    // Add render complete listener
-    map.on('rendercomplete', () => {
-      console.log('Render complete:', {
-        features: usngSource.getFeatures().length,
-        visible: usngLayer.getVisible(),
-        extent: usngSource.getExtent()
-      });
     });
 
-    // Initial load attempt
-    initialLoadUSNG();
+    // Initial load
+    const initialZoom = map.getView().getZoom() || 0;
+    if (initialZoom >= ZOOM_LEVELS.USNG_MIN) {
+      handleLoadUSNGData(map);
+    }
 
     // Update the municipios layer addition
     const addMunicipiosLayer = async () => {
@@ -477,8 +477,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
     // Clean up
     return () => {
-      map.un('moveend', handleMoveEnd);
-      handleMoveEnd.cancel();
+      debouncedLoadUSNGData.cancel();
       map.setTarget(undefined)
       mapInstanceRef.current = null
     }
