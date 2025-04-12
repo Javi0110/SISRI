@@ -153,14 +153,14 @@ const usngLayer = new VectorLayer({
   visible: true
 })
 
-interface USNGFeature {
-  attributes: {
-    OBJECTID: number;
-    USNG: string;
-    UTM_Zone: number;
-    GRID1MIL: string;
-  };
-}
+// interface USNGFeature {
+//   attributes: {
+//     OBJECTID: number;
+//     USNG: string;
+//     UTM_Zone: number;
+//     GRID1MIL: string;
+//   };
+// }
 
 // Utility function outside component
 const createDebounce = (func: Function, wait: number) => {
