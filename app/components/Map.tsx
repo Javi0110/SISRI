@@ -71,6 +71,11 @@ const waterBodyStyle = new Style({
 // Create the style function with better visibility settings
 const createUSNGStyle = (feature: any, resolution: number): Style => {
   const usng = feature.get('USNG');
+  console.log('[DEBUG] Styling feature:', {
+    usng,
+    resolution,
+    hasGeometry: Boolean(feature.getGeometry())
+  });
   
   // Base style with more prominent settings
   const baseStyle = new Style({
@@ -195,8 +200,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
     const view = map.getView();
     const zoom = view.getZoom() || 0;
+    console.log('[DEBUG] Starting USNG load:', {
+      zoom,
+      center: view.getCenter(),
+      resolution: view.getResolution()
+    });
 
     if (zoom < ZOOM_LEVELS.USNG_MIN) {
+      console.log('[DEBUG] Zoom too low, clearing source');
       usngSource.clear();
       return;
     }
@@ -204,6 +215,7 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     try {
       // Create new source for this viewport
       const newSource = createEmptySource();
+      console.log('[DEBUG] Created new source');
       
       const fetchUSNGData = async (params: any) => {
         try {
@@ -217,6 +229,10 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           });
           searchParams.append('_t', Date.now().toString());
 
+          console.log('[DEBUG] Fetching USNG data:', {
+            url: '/api/usng/proxy?' + searchParams.toString()
+          });
+
           const response = await fetch('/api/usng/proxy?' + searchParams.toString(), {
             method: 'GET',
             headers: {
@@ -226,13 +242,29 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             }
           });
 
+          console.log('[DEBUG] API Response:', {
+            status: response.status,
+            ok: response.ok
+          });
+
           if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[DEBUG] API Error:', {
+              status: response.status,
+              text: errorText
+            });
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
           const data = await response.json();
+          console.log('[DEBUG] API Data:', {
+            featuresCount: data.features?.length || 0,
+            hasFeatures: Boolean(data.features),
+            spatialReference: data.spatialReference
+          });
           
           if (!data || !data.features?.length) {
+            console.log('[DEBUG] No features in response');
             return 0;
           }
 
@@ -240,6 +272,14 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
           const features = new EsriJSON().readFeatures(data, {
             featureProjection: 'EPSG:3857',
             dataProjection: 'EPSG:4269'
+          });
+
+          console.log('[DEBUG] Created features:', {
+            count: features.length,
+            sampleFeature: features[0] ? {
+              usng: features[0].get('USNG'),
+              geometry: features[0].getGeometry()?.getType()
+            } : null
           });
 
           // Add features to new source
@@ -250,9 +290,13 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
             feature.changed();
           });
 
+          console.log('[DEBUG] Added features to source:', {
+            sourceFeatures: newSource.getFeatures().length
+          });
+
           return features.length;
         } catch (error) {
-          console.error('Error fetching USNG data:', error);
+          console.error('[DEBUG] Error fetching USNG data:', error);
           return 0;
         }
       };
@@ -264,6 +308,12 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       const [minx, miny, maxx, maxy] = extent;
       const [x1, y1] = transform([minx - buffer, miny - buffer], 'EPSG:3857', 'EPSG:4326');
       const [x2, y2] = transform([maxx + buffer, maxy + buffer], 'EPSG:3857', 'EPSG:4326');
+
+      console.log('[DEBUG] Calculated extent:', {
+        mercator: [minx, miny, maxx, maxy],
+        geographic: [x1, y1, x2, y2],
+        buffer
+      });
 
       const params = {
         f: 'json',
@@ -286,21 +336,35 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       const featureCount = await fetchUSNGData(params);
       
       if (featureCount > 0) {
+        console.log('[DEBUG] Setting new source on layer:', {
+          featureCount,
+          oldSourceFeatures: usngLayer.getSource()?.getFeatures().length || 0
+        });
+
         // Update layer source
         usngLayer.setSource(newSource);
         
         // Force immediate render
         requestAnimationFrame(() => {
+          console.log('[DEBUG] Forcing layer update');
           newSource.changed();
           usngLayer.changed();
           map.renderSync();
-        });
 
-        console.log(`Updated layer with ${featureCount} features`);
+          // Verify update
+          console.log('[DEBUG] Layer state after update:', {
+            sourceFeatures: usngLayer.getSource()?.getFeatures().length || 0,
+            visible: usngLayer.getVisible(),
+            opacity: usngLayer.getOpacity(),
+            extent: usngLayer.getExtent()
+          });
+        });
+      } else {
+        console.log('[DEBUG] No features to update');
       }
 
     } catch (error) {
-      console.error('Error in USNG loading process:', error);
+      console.error('[DEBUG] Error in USNG loading process:', error);
     }
   }, []);
 
@@ -347,11 +411,32 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     // Add moveend listener
     const moveEndListener = () => {
       const zoom = map.getView().getZoom() || 0;
-      console.log('Move ended, current zoom:', zoom);
-      debouncedLoadUSNGData(map);
+      console.log('[DEBUG] Move ended:', {
+        zoom,
+        center: map.getView().getCenter(),
+        extent: map.getView().calculateExtent(map.getSize() || [500, 500])
+      });
+      
+      if (zoom >= ZOOM_LEVELS.USNG_MIN) {
+        console.log('[DEBUG] Triggering USNG update');
+        debouncedLoadUSNGData(map);
+      } else {
+        console.log('[DEBUG] Clearing USNG - zoom too low');
+        usngSource.clear();
+      }
     };
 
     map.on('moveend', moveEndListener);
+
+    // Add render complete listener
+    map.on('rendercomplete', () => {
+      console.log('[DEBUG] Render complete:', {
+        features: usngLayer.getSource()?.getFeatures().length || 0,
+        visible: usngLayer.getVisible(),
+        opacity: usngLayer.getOpacity(),
+        extent: usngLayer.getExtent()
+      });
+    });
 
     // Initial load
     const initialZoom = map.getView().getZoom() || 0;
