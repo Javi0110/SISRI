@@ -339,14 +339,25 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         const data = await response.json()
         
         const features = data.map((municipio: any) => {
-          const feature = new EsriJSON().readFeature(municipio.geometria, {
-            featureProjection: 'EPSG:3857'
-          }) as Feature<Geometry>;
-          
-          feature.set('id', municipio.id_municipio);
-          feature.set('nombre', municipio.nombre);
-          return feature;
-        });
+          try {
+            // Ensure the geometry has a spatial reference
+            const geometria = municipio.geometria;
+            if (!geometria.spatialReference) {
+              geometria.spatialReference = { wkid: 4326 }; // Add default spatial reference
+            }
+            
+            const feature = new EsriJSON().readFeature(geometria, {
+              featureProjection: 'EPSG:3857'
+            }) as Feature<Geometry>;
+            
+            feature.set('id', municipio.id_municipio);
+            feature.set('nombre', municipio.nombre);
+            return feature;
+          } catch (error) {
+            console.warn(`Failed to create feature for municipio ${municipio.nombre}:`, error);
+            return null;
+          }
+        }).filter(Boolean); // Remove any null features
 
         const vectorSource = new VectorSource({
           features
