@@ -13,6 +13,15 @@ import {
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
+
+type SearchType = 'evento' | 'usng' | 'municipio';
 
 interface EventData {
   id: number;
@@ -27,8 +36,8 @@ interface EventData {
 interface PropertyData {
   id: number;
   tipo: string;
-  daños: string;
-  fecha: string;
+  daños: string | null;
+  fecha: string | null;
   municipio: string;
   barrio: string;
   sector: string;
@@ -48,7 +57,10 @@ interface ResidentData {
 }
 
 interface ReportData {
-  evento: EventData | null;
+  searchType: SearchType;
+  evento?: EventData | null;
+  usngQuery?: string;
+  municipioQuery?: string;
   propiedades: PropertyData[];
 }
 
@@ -57,18 +69,16 @@ interface ExpandedState {
 }
 
 export function DataAnalytics() {
+  const [searchType, setSearchType] = useState<SearchType>('evento');
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<ReportData>({
-    evento: null,
-    propiedades: []
-  });
+  const [reportData, setReportData] = useState<ReportData | null>(null);
   const [expandedProperties, setExpandedProperties] = useState<ExpandedState>({});
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      setError("Por favor ingrese el nombre del evento");
+      setError("Por favor ingrese un término de búsqueda");
       return;
     }
 
@@ -79,7 +89,7 @@ export function DataAnalytics() {
       const response = await fetch("/api/analytics/comprehensive-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventTitle: searchQuery })
+        body: JSON.stringify({ searchType, searchQuery })
       });
 
       const data = await response.json();
@@ -116,20 +126,101 @@ export function DataAnalytics() {
     }
   };
 
+  const getSearchPlaceholder = () => {
+    switch (searchType) {
+      case 'evento':
+        return 'Nombre del evento';
+      case 'usng':
+        return 'Coordenadas USNG';
+      case 'municipio':
+        return 'Nombre del municipio';
+      default:
+        return 'Buscar...';
+    }
+  };
+
+  const renderHeader = () => {
+    if (!reportData) return null;
+
+    if (reportData.searchType === 'evento' && reportData.evento) {
+      return (
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>{reportData.evento.titulo}</CardTitle>
+            <CardDescription>
+              Fecha: {new Date(reportData.evento.fecha).toLocaleDateString()}
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-4">
+            {reportData.evento.usng && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <MapPin className="h-4 w-4" />
+                {reportData.evento.usng}
+              </Badge>
+            )}
+            <Badge className={cn("text-sm", getStatusColor(reportData.evento.estado))}>
+              {reportData.evento.estado}
+            </Badge>
+          </div>
+        </div>
+      );
+    }
+
+    if (reportData.searchType === 'usng') {
+      return (
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Propiedades en USNG: {reportData.usngQuery}</CardTitle>
+            <CardDescription>
+              {reportData.propiedades.length} propiedades encontradas
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <MapPin className="h-4 w-4" />
+            {reportData.usngQuery}
+          </Badge>
+        </div>
+      );
+    }
+
+    if (reportData.searchType === 'municipio') {
+      return (
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Propiedades en: {reportData.municipioQuery}</CardTitle>
+            <CardDescription>
+              {reportData.propiedades.length} propiedades encontradas
+            </CardDescription>
+          </div>
+        </div>
+      );
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Search Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Reporte Comprensivo de Eventos</CardTitle>
+          <CardTitle>Reporte Comprensivo</CardTitle>
           <CardDescription>
-            Busque un evento para ver todos los detalles relacionados, incluyendo propiedades afectadas y habitantes
+            Busque por evento, coordenadas USNG o municipio para ver todos los detalles relacionados
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-4">
+            <Select value={searchType} onValueChange={(value: SearchType) => setSearchType(value)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Tipo de búsqueda" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="evento">Evento</SelectItem>
+                <SelectItem value="usng">USNG</SelectItem>
+                <SelectItem value="municipio">Municipio</SelectItem>
+              </SelectContent>
+            </Select>
             <Input
-              placeholder="Nombre del evento"
+              placeholder={getSearchPlaceholder()}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1"
@@ -154,32 +245,16 @@ export function DataAnalytics() {
         </div>
       )}
 
-      {/* Unified Results Display */}
-      {reportData.evento && (
+      {/* Results Display */}
+      {reportData && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>{reportData.evento.titulo}</CardTitle>
-                <CardDescription>
-                  Fecha: {new Date(reportData.evento.fecha).toLocaleDateString()}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-4">
-                {reportData.evento.usng && (
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {reportData.evento.usng}
-                  </Badge>
-                )}
-                <Badge className={cn("text-sm", getStatusColor(reportData.evento.estado))}>
-                  {reportData.evento.estado}
-                </Badge>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              {reportData.evento.descripcion}
-            </p>
+            {renderHeader()}
+            {reportData.searchType === 'evento' && reportData.evento && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {reportData.evento.descripcion}
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             <div className="rounded-md border">
@@ -228,9 +303,9 @@ export function DataAnalytics() {
                           <td className="py-3 px-4">
                             <Badge variant="outline">{property.usng}</Badge>
                           </td>
-                          <td className="py-3 px-4">{property.daños}</td>
+                          <td className="py-3 px-4">{property.daños || 'N/A'}</td>
                           <td className="py-3 px-4">
-                            {new Date(property.fecha).toLocaleDateString()}
+                            {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-1">
