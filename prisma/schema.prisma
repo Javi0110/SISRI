@@ -105,15 +105,16 @@ model municipio {
 }
 
 model notificacion {
-  id              Int      @id @default(autoincrement())
-  eventoId        Int
-  tipo            String   @db.VarChar(255)
-  mensaje         String   @db.Text
-  fecha_creacion  DateTime @default(now())
-  estado          String?  @default("pendiente") @db.VarChar(50)
+  id                  Int      @id @default(autoincrement())
+  eventoId            Int
+  tipo                String   @db.VarChar(255)
+  mensaje             String   @db.Text
+  fecha_creacion      DateTime @default(now())
+  estado              String?  @default("pendiente") @db.VarChar(50)
+  notification_number String?  @db.VarChar(50)
   
   // Relation
-  evento          eventos  @relation(fields: [eventoId], references: [id])
+  evento              eventos  @relation(fields: [eventoId], references: [id])
 
   @@schema("sisri")
 }
