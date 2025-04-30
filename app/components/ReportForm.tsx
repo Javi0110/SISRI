@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import * as z from "zod"
+import { debounce } from "lodash"
 
 // Material UI imports
 import {
@@ -100,6 +101,30 @@ interface USNG {
   usng: string
 }
 
+// Add this type for event search results
+interface EventSearchResult {
+  id: number
+  titulo: string
+  tipo: string
+  estado: string
+  fecha: string
+}
+
+// Add these interfaces after the existing interfaces
+interface BarrioSearchResult {
+  id_barrio: number
+  nombre: string
+  codigo_barrio?: string
+  id_municipio: number
+}
+
+interface SectorSearchResult {
+  id_sector: number
+  nombre: string
+  codigo_sector?: string
+  id_barrio: number
+}
+
 // Update form schema
 const formSchema = z.object({
   notificationNumber: z.string(),
@@ -160,6 +185,15 @@ export function ReportForm() {
   const [isLoadingUsngSuggestions, setIsLoadingUsngSuggestions] = useState(false)
   const [isMunicipiosLoading, setIsMunicipiosLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [eventSearchResults, setEventSearchResults] = useState<EventSearchResult[]>([])
+  const [selectedEvent, setSelectedEvent] = useState<EventSearchResult | null>(null)
+  const [isSearchingEvent, setIsSearchingEvent] = useState(false)
+  const [barrioSearchResults, setBarrioSearchResults] = useState<BarrioSearchResult[]>([])
+  const [sectorSearchResults, setSectorSearchResults] = useState<SectorSearchResult[]>([])
+  const [isSearchingBarrio, setIsSearchingBarrio] = useState(false)
+  const [isSearchingSector, setIsSearchingSector] = useState(false)
+  const [selectedBarrio, setSelectedBarrio] = useState<BarrioSearchResult | null>(null)
+  const [selectedSector, setSelectedSector] = useState<SectorSearchResult | null>(null)
   
   // Debounce timer reference
   const usngSearchTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -335,6 +369,45 @@ export function ReportForm() {
     }))
   }, [setValue])
   
+  // Add event search function
+  const searchEvents = useCallback(async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setEventSearchResults([])
+      return
+    }
+
+    setIsSearchingEvent(true)
+    try {
+      const response = await fetch(`/api/eventos/search?term=${encodeURIComponent(searchTerm)}`)
+      if (!response.ok) throw new Error('Failed to search events')
+      const data = await response.json()
+      setEventSearchResults(data)
+    } catch (error) {
+      console.error('Error searching events:', error)
+      setEventSearchResults([])
+    } finally {
+      setIsSearchingEvent(false)
+    }
+  }, [])
+
+  // Debounce event search
+  const debouncedEventSearch = useCallback(
+    debounce((term: string) => searchEvents(term), 300),
+    [searchEvents]
+  )
+
+  // Handle event selection
+  const handleEventSelect = useCallback((event: EventSearchResult | null) => {
+    setSelectedEvent(event)
+    if (event) {
+      // Update form values with selected event data
+      setValue('tipo', event.tipo as any)
+      setValue('estado', event.estado as any)
+      setValue('date', new Date(event.fecha).toISOString().split('T')[0])
+      setValue('time', new Date(event.fecha).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }))
+    }
+  }, [setValue])
+
   // Update the onSubmit function
   const onSubmit = useCallback(async (values: z.infer<typeof formSchema>) => {
     try {
@@ -347,23 +420,62 @@ export function ReportForm() {
         return
       }
       
+      // Get USNG ID from the code before submitting
+      let usngId = null
+      try {
+        console.log('Getting USNG ID for code:', values.usngCode)
+        const usngResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(values.usngCode)}`)
+        if (usngResponse.ok) {
+          const usngData = await usngResponse.json()
+          console.log('Retrieved USNG data:', usngData)
+          usngId = usngData.id
+        } else {
+          // Handle error case - try uppercase version if original failed
+          console.warn('USNG code not found, trying uppercase version:', values.usngCode)
+          const uppercaseCode = values.usngCode.toUpperCase()
+          if (uppercaseCode !== values.usngCode) {
+            const retryResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(uppercaseCode)}`)
+            if (retryResponse.ok) {
+              const usngData = await retryResponse.json()
+              console.log('Retrieved USNG data with uppercase:', usngData)
+              usngId = usngData.id
+            } else {
+              console.error('USNG code not found even with uppercase:', uppercaseCode)
+              const errorData = await retryResponse.json()
+              console.error('Error details:', errorData)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching USNG ID:', error)
+      }
+      
+      if (!usngId) {
+        console.warn('No USNG ID found, continuing without it')
+      }
+      
       // Format the data to match new Prisma schema
       const formattedData = {
-        notificacionId: parseInt(values.notificationNumber.split('-')[2]),
-        titulo: values.eventName,
-        descripcion: values.incidents[0].description,
-        fecha: new Date(values.date).toISOString(),
-        tipo: values.tipo,
-        estado: values.estado,
-        usngId: values.usngCode,
-        // Fix notification message
-        notificacion: {
+        // If we have a selected event, use its ID
+        eventoId: selectedEvent?.id,
+        // Only include event creation data if no existing event was selected
+        evento: !selectedEvent ? {
           create: {
+            titulo: values.eventName,
             tipo: values.tipo,
-            mensaje: `${values.eventName} - ${values.incidents[0].description}`,
             estado: values.estado,
-            fecha_creacion: new Date()
+            descripcion: values.incidents[0].description,
+            fecha: new Date(values.date).toISOString(),
           }
+        } : undefined,
+        // Notification specific data
+        notificacion: {
+          numero_notificacion: values.notificationNumber,
+          tipo: values.tipo,
+          mensaje: values.incidents[0].description,
+          estado: values.estado,
+          fecha: new Date(values.date).toISOString(),
+          // Add other notification fields as needed
         },
         // Format incidents with cuenca
         incidentes: values.incidents.map(incident => ({
@@ -372,31 +484,76 @@ export function ReportForm() {
           cuencaId: incident.cuencaId ? parseInt(incident.cuencaId) : parseInt(values.cuencaIds[0])
         })),
         // Format properties with required fields and habitantes
-        propiedades_afectadas: values.properties.map(property => ({
-          daños: property.value || "No damage reported",
-          propiedad: {
-            create: {
-              tipo: property.type,
-              id_municipio: parseInt(property.municipioId),
-              id_barrio: property.barrioId ? parseInt(property.barrioId) : undefined,
-              id_sector: property.sectorId ? parseInt(property.sectorId) : undefined,
-              direccion: property.address,
-              gridId: 0, // Will be set by API
-              geometria: property.location || null,
-              habitantes: {
-                create: property.habitantes?.map(habitante => ({
-                  nombre: habitante.nombre,
-                  categoria: habitante.categoria,
-                  rol: habitante.rol,
-                  edad: parseInt(habitante.edad),
-                  limitacion: habitante.limitacion,
-                  condicion: habitante.condicion,
-                  disposicion: habitante.disposicion,
-                })) || []
-              }
+        propiedades_afectadas: values.properties.map(property => {
+          // Handle new barrio or sector creation
+          const propertyData: any = {
+            tipo: property.type,
+            id_municipio: parseInt(property.municipioId),
+            direccion: property.address,
+            gridId: usngId, // Use the numeric USNG ID retrieved from API
+            geometria: property.location || null,
+          };
+
+          // Handle existing or new barrio
+          if (property.barrioId === "new") {
+            // Include fields for new barrio creation
+            if (!property.newBarrioName) {
+              window.alert('Please provide a name for the new barrio');
+              throw new Error('Missing new barrio name');
             }
+            propertyData.newBarrio = {
+              nombre: property.newBarrioName,
+              codigo_barrio: property.newBarrioCode || null,
+              id_municipio: parseInt(property.municipioId)
+            };
+          } else if (property.barrioId) {
+            propertyData.id_barrio = parseInt(property.barrioId);
           }
-        }))
+
+          // Handle existing or new sector
+          if (property.sectorId === "new") {
+            // Include fields for new sector creation
+            if (!property.newSectorName) {
+              window.alert('Please provide a name for the new sector');
+              throw new Error('Missing new sector name');
+            }
+            
+            // For new sector, we need either a parent barrio ID or also a new barrio
+            const parentBarrioId = property.barrioId === "new" 
+              ? null  // Will be created with the new barrio
+              : (property.barrioId && typeof property.barrioId === 'string') 
+                  ? parseInt(property.barrioId) 
+                  : null;
+              
+            propertyData.newSector = {
+              nombre: property.newSectorName,
+              codigo_sector: property.newSectorCode || null,
+              id_barrio: parentBarrioId
+            };
+          } else if (property.sectorId) {
+            propertyData.id_sector = parseInt(property.sectorId);
+          }
+
+          // Add habitantes
+          propertyData.habitantes = {
+            create: property.habitantes?.map(habitante => ({
+              nombre: habitante.nombre,
+              categoria: habitante.categoria,
+              rol: habitante.rol,
+              edad: parseInt(habitante.edad),
+              limitacion: habitante.limitacion,
+              condicion: habitante.condicion,
+              disposicion: habitante.disposicion,
+            })) || []
+          };
+
+          return {
+            daños: property.value || "No damage reported",
+            propiedad: {
+              create: propertyData
+            }
+          };
+        })
       }
       
       console.log('Submitting formatted data:', formattedData)
@@ -417,10 +574,10 @@ export function ReportForm() {
       const responseData = await response.json()
       console.log('Event submitted successfully:', responseData)
       
-      // Show success message
       window.alert('Event submitted successfully!')
       
-      // Reset form to default values
+      // Reset form
+      handleEventSelect(null)
       setValue("notificationNumber", generateNotificationNumber())
       setValue("eventName", "")
       setValue("date", new Date().toISOString().split('T')[0])
@@ -442,7 +599,7 @@ export function ReportForm() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [validateUsngCode, setValue])
+  }, [validateUsngCode, setValue, selectedEvent, handleEventSelect])
 
   // Handlers
   const handleAddIncident = useCallback(() => {
@@ -494,6 +651,58 @@ export function ReportForm() {
     return () => subscription.unsubscribe()
   }, [watch])
 
+  // Add these functions after the existing functions
+  const searchBarrios = useCallback(async (searchTerm: string, municipioId: number) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setBarrioSearchResults([])
+      return
+    }
+
+    setIsSearchingBarrio(true)
+    try {
+      const response = await fetch(`/api/barrios/search?term=${encodeURIComponent(searchTerm)}&municipioId=${municipioId}`)
+      if (!response.ok) throw new Error('Failed to search barrios')
+      const data = await response.json()
+      setBarrioSearchResults(data)
+    } catch (error) {
+      console.error('Error searching barrios:', error)
+      setBarrioSearchResults([])
+    } finally {
+      setIsSearchingBarrio(false)
+    }
+  }, [])
+
+  const searchSectores = useCallback(async (searchTerm: string, barrioId: number) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSectorSearchResults([])
+      return
+    }
+
+    setIsSearchingSector(true)
+    try {
+      const response = await fetch(`/api/sectores/search?term=${encodeURIComponent(searchTerm)}&barrioId=${barrioId}`)
+      if (!response.ok) throw new Error('Failed to search sectores')
+      const data = await response.json()
+      setSectorSearchResults(data)
+    } catch (error) {
+      console.error('Error searching sectores:', error)
+      setSectorSearchResults([])
+    } finally {
+      setIsSearchingSector(false)
+    }
+  }, [])
+
+  // Debounce the search functions
+  const debouncedBarrioSearch = useCallback(
+    debounce((term: string, municipioId: number) => searchBarrios(term, municipioId), 300),
+    [searchBarrios]
+  )
+
+  const debouncedSectorSearch = useCallback(
+    debounce((term: string, barrioId: number) => searchSectores(term, barrioId), 300),
+    [searchSectores]
+  )
+
   // Loading state
   if (loading) {
     return (
@@ -522,9 +731,9 @@ export function ReportForm() {
   // Render form
   return (
     <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 2 }}>
-      {/* Basic Info Section */}
+      {/* Event Information Section */}
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Basic Information</Typography>
+        <Typography variant="h6" gutterBottom>Event Information</Typography>
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Controller
@@ -546,17 +755,166 @@ export function ReportForm() {
               name="eventName"
               control={control}
               render={({ field }) => (
-                <TextField
+                <Autocomplete
                   {...field}
-                  label="Event Name"
-                  variant="outlined"
-                  fullWidth
-                  error={!!errors.eventName}
-                  helperText={errors.eventName?.message}
+                  freeSolo
+                  options={eventSearchResults}
+                  getOptionLabel={(option) => 
+                    typeof option === 'string' ? option : option.titulo
+                  }
+                  loading={isSearchingEvent}
+                  value={selectedEvent}
+                  onChange={(_, newValue) => {
+                    if (typeof newValue === 'string') {
+                      field.onChange(newValue);
+                    } else {
+                      handleEventSelect(newValue as EventSearchResult | null);
+                      field.onChange(newValue?.titulo || '');
+                    }
+                  }}
+                  onInputChange={(_, newValue) => {
+                    field.onChange(newValue)
+                    debouncedEventSearch(newValue)
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Event Name"
+                      variant="outlined"
+                      fullWidth
+                      error={!!errors.eventName}
+                      helperText={errors.eventName?.message || (selectedEvent ? 'Using existing event' : '')}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {isSearchingEvent && <CircularProgress size={20} />}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      <Box>
+                        <Typography variant="body1">{option.titulo}</Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {`Type: ${option.tipo} | Status: ${option.estado} | Date: ${new Date(option.fecha).toLocaleDateString()}`}
+                        </Typography>
+                      </Box>
+                    </li>
+                  )}
                 />
               )}
             />
           </Grid>
+
+          {/* Show these fields only when creating a new event (no selected event) */}
+          {!selectedEvent && (
+            <>
+              <Grid item xs={12} md={6}>
+                <Controller
+                  name="date"
+                  control={control}
+                  render={({ field: { value, onChange, ...field } }) => (
+                    <TextField
+                      {...field}
+                      value={value || ''}
+                      onChange={(e) => {
+                        onChange(e.target.value)
+                      }}
+                      type="date"
+                      label="Event Date"
+                      variant="outlined"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      error={!!errors.date}
+                      helperText={errors.date?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Controller
+                  name="time"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      type="time"
+                      label="Event Time"
+                      variant="outlined"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      error={!!errors.time}
+                      helperText={errors.time?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Controller
+                  name="tipo"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!errors.tipo}>
+                      <InputLabel>Event Type</InputLabel>
+                      <Select
+                        {...field}
+                        label="Event Type"
+                      >
+                        {incidentTypes.map((type) => (
+                          <MenuItem key={type} value={type}>
+                            {type}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      {errors.tipo && (
+                        <FormHelperText>
+                          {errors.tipo.message}
+                        </FormHelperText>
+                      )}
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Controller
+                  name="estado"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!errors.estado}>
+                      <InputLabel>Event Status</InputLabel>
+                      <Select
+                        {...field}
+                        label="Event Status"
+                      >
+                        {eventStatus.map((status) => (
+                          <MenuItem key={status} value={status}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      {errors.estado && (
+                        <FormHelperText>
+                          {errors.estado.message}
+                        </FormHelperText>
+                      )}
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+            </>
+          )}
+        </Grid>
+      </Paper>
+
+      {/* Notification Information Section */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Notification Information</Typography>
+        <Grid container spacing={3}>
+          {/* Date and Time */}
           <Grid item xs={12} md={6}>
             <Controller
               name="date"
@@ -597,6 +955,8 @@ export function ReportForm() {
               )}
             />
           </Grid>
+
+          {/* Type and Status */}
           <Grid item xs={12} md={6}>
             <Controller
               name="tipo"
@@ -649,13 +1009,8 @@ export function ReportForm() {
               )}
             />
           </Grid>
-        </Grid>
-      </Paper>
 
-      {/* USNG Code Section */}
-      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>USNG Location</Typography>
-        <Grid container spacing={3}>
+          {/* USNG Code */}
           <Grid item xs={12}>
             <Controller
               name="usngCode"
@@ -721,122 +1076,117 @@ export function ReportForm() {
               )}
             />
           </Grid>
-        </Grid>
-      </Paper>
 
-      {/* Incidents Section */}
-      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">Incidents</Typography>
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={handleAddIncident}
-              size="small"
-            >
-              Add Incident
-            </Button>
-        </Box>
-        
-        <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
-          {incidents.map((_, index) => (
-            <Card key={index} variant="outlined" sx={{ mb: 2 }}>
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Controller
-                      name={`incidents.${index}.type`}
-                      control={control}
-                      render={({ field }) => (
-                        <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
-                          <InputLabel>Incident Type</InputLabel>
-                          <Select
-                            {...field}
-                            label="Incident Type"
-                          >
-                            {incidentTypes.map((type) => (
-                              <MenuItem key={type} value={type}>
-                                {type}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          {errors.incidents?.[index]?.type && (
-                            <FormHelperText>
-                              {String(errors.incidents[index]?.type || "Invalid type")}
-                            </FormHelperText>
-                          )}
-                        </FormControl>
-                      )}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Controller
-                      name={`incidents.${index}.description`}
-                      control={control}
-                      render={({ field }) => (
-                        <TextField
-                          {...field}
-                          label="Description"
-                          variant="outlined"
-                          fullWidth
-                          multiline
-                          rows={2}
-                          error={!!errors.incidents?.[index]?.description}
-                          helperText={errors.incidents?.[index]?.description?.message}
-                        />
-                      )}
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          ))}
-        </Box>
-        {errors.incidents && !Array.isArray(errors.incidents) && (
-          <Typography color="error" variant="body2" mt={1}>
-            {errors.incidents.message}
-          </Typography>
-        )}
-      </Paper>
-
-      {/* Cuencas Selection */}
-      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Affected Cuencas (Optional)</Typography>
-        <Grid container spacing={2}>
+          {/* Incidents */}
           <Grid item xs={12}>
-            <FormControl fullWidth>
-              <InputLabel>Select Cuencas</InputLabel>
-              <Select
-                label="Select Cuencas"
-                value=""
-                onChange={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  handleCuencaSelect(target.value);
-                }}
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="subtitle1">Incidents</Typography>
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={handleAddIncident}
+                size="small"
               >
-                {cuencas.map((cuenca) => (
-                  <MenuItem key={cuenca.id} value={String(cuenca.id)}>
-                    {cuenca.nombre} ({cuenca.codigo_cuenca})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12}>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
-              {cuencaIds?.map((cuencaId) => {
-                const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
-                return cuenca ? (
-                  <Chip
-                    key={cuenca.id}
-                    label={cuenca.nombre}
-                    onDelete={() => handleRemoveCuenca(cuencaId)}
-                    color="primary"
-                    variant="outlined"
-                  />
-                ) : null
-              })}
+                Add Incident
+              </Button>
             </Box>
+            
+            <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
+              {incidents.map((_, index) => (
+                <Card key={index} variant="outlined" sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <Controller
+                          name={`incidents.${index}.type`}
+                          control={control}
+                          render={({ field }) => (
+                            <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
+                              <InputLabel>Incident Type</InputLabel>
+                              <Select
+                                {...field}
+                                label="Incident Type"
+                              >
+                                {incidentTypes.map((type) => (
+                                  <MenuItem key={type} value={type}>
+                                    {type}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                              {errors.incidents?.[index]?.type && (
+                                <FormHelperText>
+                                  {String(errors.incidents[index]?.type || "Invalid type")}
+                                </FormHelperText>
+                              )}
+                            </FormControl>
+                          )}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Controller
+                          name={`incidents.${index}.description`}
+                          control={control}
+                          render={({ field }) => (
+                            <TextField
+                              {...field}
+                              label="Description"
+                              variant="outlined"
+                              fullWidth
+                              multiline
+                              rows={2}
+                              error={!!errors.incidents?.[index]?.description}
+                              helperText={errors.incidents?.[index]?.description?.message}
+                            />
+                          )}
+                        />
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          </Grid>
+
+          {/* Affected Cuencas */}
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" gutterBottom>Affected Cuencas (Optional)</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Select Cuencas</InputLabel>
+                  <Select
+                    label="Select Cuencas"
+                    value=""
+                    onChange={(e) => {
+                      const target = e.target as HTMLInputElement;
+                      handleCuencaSelect(target.value);
+                    }}
+                  >
+                    {cuencas.map((cuenca) => (
+                      <MenuItem key={cuenca.id} value={String(cuenca.id)}>
+                        {cuenca.nombre} ({cuenca.codigo_cuenca})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
+                  {cuencaIds?.map((cuencaId) => {
+                    const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
+                    return cuenca ? (
+                      <Chip
+                        key={cuenca.id}
+                        label={cuenca.nombre}
+                        onDelete={() => handleRemoveCuenca(cuencaId)}
+                        color="primary"
+                        variant="outlined"
+                      />
+                    ) : null
+                  })}
+                </Box>
+              </Grid>
+            </Grid>
           </Grid>
         </Grid>
       </Paper>
@@ -925,235 +1275,226 @@ export function ReportForm() {
                           control={control}
                           render={({ field }) => (
                             <FormControl fullWidth>
-                              <Box sx={{ display: 'flex', gap: 1 }}>
-                            <FormControl fullWidth>
-                              <InputLabel>Barrio</InputLabel>
-                              <Select
-                                {...field}
-                                label="Barrio"
-                                value={field.value || ""}
-                                onChange={(e) => {
-                                  field.onChange(e.target.value);
-                                  handleBarrioSelect(index, e.target.value as string);
+                              <Autocomplete
+                                freeSolo
+                                options={barrioSearchResults}
+                                getOptionLabel={(option) => 
+                                  typeof option === 'string' ? option : option.nombre
+                                }
+                                loading={isSearchingBarrio}
+                                value={selectedBarrio}
+                                onChange={(_, newValue) => {
+                                  if (typeof newValue === 'string') {
+                                    field.onChange(newValue);
+                                  } else {
+                                    setSelectedBarrio(newValue as BarrioSearchResult | null);
+                                    if (newValue) {
+                                      field.onChange(String(newValue.id_barrio));
+                                      handleBarrioSelect(index, String(newValue.id_barrio));
+                                    }
+                                  }
                                 }}
-                                disabled={!selectedMunicipios[index]}
-                              >
-                                    <MenuItem value="new">+ Add New Barrio</MenuItem>
-                                {municipios
-                                  .find((m) => m.id_municipio === selectedMunicipios[index])
-                                  ?.barrios?.map((barrio) => (
-                                    <MenuItem
-                                      key={barrio.id_barrio}
-                                      value={String(barrio.id_barrio)}
-                                    >
-                                      {barrio.nombre}
-                                    </MenuItem>
-                                  )) || []}
-                              </Select>
-                                </FormControl>
-                              </Box>
-                            </FormControl>
-                          )}
-                        />
-                        {/* New Barrio Form */}
-                        {getValues(`properties.${index}.barrioId`) === "new" && (
-                          <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                            <Typography variant="subtitle2" gutterBottom>Add New Barrio</Typography>
-                            <Grid container spacing={2}>
-                              <Grid item xs={12}>
+                                onInputChange={(_, newValue) => {
+                                  if (selectedMunicipios[index]) {
+                                    field.onChange(newValue);
+                                    debouncedBarrioSearch(newValue, selectedMunicipios[index]);
+                                  }
+                                }}
+                                renderInput={(params) => (
                                 <TextField
-                                  fullWidth
-                                  label="Barrio Name"
-                                  onChange={(e) => {
-                                    setValue(`properties.${index}.newBarrioName`, e.target.value);
-                                  }}
-                        />
-                      </Grid>
-                              <Grid item xs={12}>
-                                <TextField
-                                  fullWidth
-                                  label="Código Barrio (Optional)"
-                                  type="number"
-                                  onChange={(e) => {
-                                    setValue(`properties.${index}.newBarrioCode`, e.target.value);
+                                    {...params}
+                                    label="Barrio"
+                                    error={!!errors.properties?.[index]?.barrioId}
+                                    helperText={errors.properties?.[index]?.barrioId?.message}
+                                    InputProps={{
+                                      ...params.InputProps,
+                                      endAdornment: (
+                                        <>
+                                          {isSearchingBarrio && <CircularProgress size={20} />}
+                                          {params.InputProps.endAdornment}
+                                        </>
+                                      ),
                                   }}
                                 />
-                              </Grid>
-                              <Grid item xs={12}>
+                                )}
+                                renderOption={(props, option) => (
+                                  <li {...props}>
+                                    <Box>
+                                      <Typography variant="body1">{option.nombre}</Typography>
+                                      {option.codigo_barrio && (
+                                        <Typography variant="caption" color="textSecondary">
+                                          Código: {option.codigo_barrio}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </li>
+                                )}
+                              />
                                 <Button
-                                  fullWidth
-                                  variant="contained"
-                                  disabled={!getValues(`properties.${index}.newBarrioName`)}
-                                  onClick={async () => {
-                                    const nombre = getValues(`properties.${index}.newBarrioName`);
-                                    const codigo = getValues(`properties.${index}.newBarrioCode`);
-                                    
-                                    if (nombre) {
-                                      try {
-                                        const response = await fetch('/api/barrios', {
-                                          method: 'POST',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({
-                                            nombre,
-                                            codigo_barrio: codigo,
-                                            id_municipio: selectedMunicipios[index]
-                                          })
-                                        });
-                                        
-                                        if (!response.ok) throw new Error('Failed to create barrio');
-                                        
-                                        const newBarrio = await response.json();
-                                        // Update municipios state to include new barrio
-                                        setMunicipios(prev => prev.map(mun => {
-                                          if (mun.id_municipio === selectedMunicipios[index]) {
-                                            return {
-                                              ...mun,
-                                              barrios: [...(mun.barrios || []), newBarrio]
-                                            };
-                                          }
-                                          return mun;
-                                        }));
-                                        // Set the new barrio as selected
-                                        setValue(`properties.${index}.barrioId`, String(newBarrio.id_barrio));
-                                        handleBarrioSelect(index, String(newBarrio.id_barrio));
-                                        // Clear the form
-                                        setValue(`properties.${index}.newBarrioName`, "");
-                                        setValue(`properties.${index}.newBarrioCode`, "");
-                                      } catch (error) {
-                                        console.error('Error creating barrio:', error);
-                                        alert('Failed to create barrio');
-                                      }
-                                    }
-                                  }}
-                                >
-                                  Create Barrio
+                                size="small"
+                                onClick={() => {
+                                  setValue(`properties.${index}.barrioId`, "new");
+                                  setSelectedBarrio(null);
+                                }}
+                                sx={{ mt: 1 }}
+                              >
+                                + Add New Barrio
                                 </Button>
-                              </Grid>
-                            </Grid>
-                          </Box>
+                            </FormControl>
                         )}
+                        />
                       </Grid>
                       
+                      {/* New Barrio Name Fields - shown when "new" is selected */}
+                      {getValues(`properties.${index}.barrioId`) === "new" && (
+                        <>
+                          <Grid item xs={12} md={6}>
+                            <Controller
+                              name={`properties.${index}.newBarrioName`}
+                              control={control}
+                              defaultValue=""
+                              render={({ field }) => (
+                                <TextField
+                                  {...field}
+                                  label="New Barrio Name"
+                                  variant="outlined"
+                                  fullWidth
+                                  required
+                                />
+                              )}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Controller
+                              name={`properties.${index}.newBarrioCode`}
+                              control={control}
+                              defaultValue=""
+                              render={({ field }) => (
+                                <TextField
+                                  {...field}
+                                  label="New Barrio Code (Optional)"
+                                  variant="outlined"
+                                  fullWidth
+                                />
+                              )}
+                            />
+                          </Grid>
+                        </>
+                      )}
+                      
                       {/* Sector Selection with Add New Option */}
-                      {selectedBarrios[index] && (
+                      {(selectedBarrios[index] || getValues(`properties.${index}.barrioId`) === "new") && (
                         <Grid item xs={12} md={6}>
                           <Controller
                             name={`properties.${index}.sectorId`}
                             control={control}
                             render={({ field }) => (
                               <FormControl fullWidth>
-                                <Box sx={{ display: 'flex', gap: 1 }}>
-                              <FormControl fullWidth>
-                                <InputLabel>Sector</InputLabel>
-                                <Select
-                                  {...field}
-                                  label="Sector"
-                                  value={field.value || ""}
-                                  disabled={!selectedBarrios[index]}
-                                >
-                                      <MenuItem value="new">+ Add New Sector</MenuItem>
-                                  {municipios
-                                    .find((m) => m.id_municipio === selectedMunicipios[index])
-                                    ?.barrios?.find((b) => b.id_barrio === selectedBarrios[index])
-                                    ?.sectores?.map((sector) => (
-                                      <MenuItem
-                                        key={sector.id_sector}
-                                        value={String(sector.id_sector)}
-                                      >
-                                        {sector.nombre}
-                                      </MenuItem>
-                                    )) || []}
-                                </Select>
-                                  </FormControl>
-                                </Box>
-                              </FormControl>
-                            )}
-                          />
-                          {/* New Sector Form */}
-                          {getValues(`properties.${index}.sectorId`) === "new" && (
-                            <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                              <Typography variant="subtitle2" gutterBottom>Add New Sector</Typography>
-                              <Grid container spacing={2}>
-                                <Grid item xs={12}>
-                                  <TextField
-                                    fullWidth
-                                    label="Sector Name"
-                                    onChange={(e) => {
-                                      setValue(`properties.${index}.newSectorName`, e.target.value);
-                                    }}
-                                  />
-                                </Grid>
-                                <Grid item xs={12}>
-                                  <TextField
-                                    fullWidth
-                                    label="Código Sector (Optional)"
-                                    type="number"
-                                    onChange={(e) => {
-                                      setValue(`properties.${index}.newSectorCode`, e.target.value);
-                                    }}
-                                  />
-                                </Grid>
-                                <Grid item xs={12}>
-                                  <Button
-                                    fullWidth
-                                    variant="contained"
-                                    disabled={!getValues(`properties.${index}.newSectorName`)}
-                                    onClick={async () => {
-                                      const nombre = getValues(`properties.${index}.newSectorName`);
-                                      const codigo = getValues(`properties.${index}.newSectorCode`);
-                                      
-                                      if (nombre) {
-                                        try {
-                                          const response = await fetch('/api/sectores', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({
-                                              nombre,
-                                              codigo_sector: codigo,
-                                              id_barrio: selectedBarrios[index]
-                                            })
-                                          });
-                                          
-                                          if (!response.ok) throw new Error('Failed to create sector');
-                                          
-                                          const newSector = await response.json();
-                                          // Update municipios state to include new sector
-                                          setMunicipios(prev => prev.map(mun => {
-                                            if (mun.id_municipio === selectedMunicipios[index]) {
-                                              return {
-                                                ...mun,
-                                                barrios: mun.barrios?.map(bar => {
-                                                  if (bar.id_barrio === selectedBarrios[index]) {
-                                                    return {
-                                                      ...bar,
-                                                      sectores: [...(bar.sectores || []), newSector]
-                                                    };
-                                                  }
-                                                  return bar;
-                                                })
-                                              };
-                                            }
-                                            return mun;
-                                          }));
-                                          // Set the new sector as selected
-                                          setValue(`properties.${index}.sectorId`, String(newSector.id_sector));
-                                          // Clear the form
-                                          setValue(`properties.${index}.newSectorName`, "");
-                                          setValue(`properties.${index}.newSectorCode`, "");
-                                        } catch (error) {
-                                          console.error('Error creating sector:', error);
-                                          alert('Failed to create sector');
-                                        }
+                                <Autocomplete
+                                  freeSolo
+                                  options={sectorSearchResults}
+                                  getOptionLabel={(option) => 
+                                    typeof option === 'string' ? option : option.nombre
+                                  }
+                                  loading={isSearchingSector}
+                                  value={selectedSector}
+                                  onChange={(_, newValue) => {
+                                    if (typeof newValue === 'string') {
+                                      field.onChange(newValue);
+                                    } else {
+                                      setSelectedSector(newValue as SectorSearchResult | null);
+                                      if (newValue) {
+                                        field.onChange(String(newValue.id_sector));
                                       }
+                                    }
+                                  }}
+                                  onInputChange={(_, newValue) => {
+                                    if (selectedBarrios[index]) {
+                                      field.onChange(newValue);
+                                      debouncedSectorSearch(newValue, selectedBarrios[index]);
+                                    }
+                                  }}
+                                  renderInput={(params) => (
+                                  <TextField
+                                      {...params}
+                                      label="Sector"
+                                      error={!!errors.properties?.[index]?.sectorId}
+                                      helperText={errors.properties?.[index]?.sectorId?.message}
+                                      InputProps={{
+                                        ...params.InputProps,
+                                        endAdornment: (
+                                          <>
+                                            {isSearchingSector && <CircularProgress size={20} />}
+                                            {params.InputProps.endAdornment}
+                                          </>
+                                        ),
                                     }}
-                                  >
-                                    Create Sector
+                                  />
+                                  )}
+                                  renderOption={(props, option) => (
+                                    <li {...props}>
+                                      <Box>
+                                        <Typography variant="body1">{option.nombre}</Typography>
+                                        {option.codigo_sector && (
+                                          <Typography variant="caption" color="textSecondary">
+                                            Código: {option.codigo_sector}
+                                          </Typography>
+                                        )}
+                                      </Box>
+                                    </li>
+                                  )}
+                                />
+                                  <Button
+                                  size="small"
+                                  onClick={() => {
+                                    setValue(`properties.${index}.sectorId`, "new");
+                                    setSelectedSector(null);
+                                  }}
+                                  sx={{ mt: 1 }}
+                                >
+                                  + Add New Sector
                                   </Button>
-                                </Grid>
-                              </Grid>
-                            </Box>
+                              </FormControl>
                           )}
+                          />
                         </Grid>
+                      )}
+                      
+                      {/* New Sector Name Fields - shown when "new" is selected */}
+                      {getValues(`properties.${index}.sectorId`) === "new" && (
+                        <>
+                          <Grid item xs={12} md={6}>
+                            <Controller
+                              name={`properties.${index}.newSectorName`}
+                              control={control}
+                              defaultValue=""
+                              render={({ field }) => (
+                                <TextField
+                                  {...field}
+                                  label="New Sector Name"
+                                  variant="outlined"
+                                  fullWidth
+                                  required
+                                />
+                              )}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Controller
+                              name={`properties.${index}.newSectorCode`}
+                              control={control}
+                              defaultValue=""
+                              render={({ field }) => (
+                                <TextField
+                                  {...field}
+                                  label="New Sector Code (Optional)"
+                                  variant="outlined"
+                                  fullWidth
+                                />
+                              )}
+                            />
+                          </Grid>
+                        </>
                       )}
                       
                       <Grid item xs={12} md={6}>

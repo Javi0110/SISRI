@@ -32,11 +32,19 @@ export default function Home() {
     })
   }, [map])
 
+  const handleCuencaSelect = useCallback((cuenca: any) => {
+    if (!map || !map.handleCuencaSelect) return
+    
+    // Use the method we attached to the map instance
+    map.handleCuencaSelect(cuenca)
+  }, [map])
+
   return (
     <main className="flex h-screen">
       <Sidebar 
         onUSNGSelect={handleUSNGSelect} 
         onMunicipioSelect={handleMunicipioSelect}
+        onCuencaSelect={handleCuencaSelect}
       />
       <Map onMapInitialized={handleMapInitialized} />
     </main>
