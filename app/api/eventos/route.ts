@@ -2,23 +2,6 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import prisma from '../../../lib/prisma';
 
-// Utility function to deeply remove 'id' fields
-function removeIdDeep(obj: any): any {
-  if (Array.isArray(obj)) {
-    return obj.map(removeIdDeep);
-  } else if (obj && typeof obj === 'object') {
-    const newObj = { ...obj };
-    delete newObj.id; // Delete id property if it exists
-    
-    // Process all other properties recursively
-    for (const key in newObj) {
-      newObj[key] = removeIdDeep(newObj[key]);
-    }
-    return newObj;
-  }
-  return obj;
-}
-
 export async function POST(request: Request) {
   try {
     const data = await request.json()

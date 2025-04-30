@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import prisma from '../../../../../lib/prisma'
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: { eventId: string } }
 ) {
   try {
@@ -74,7 +74,6 @@ export async function GET(
     })
     
     // Next, look for properties affected in the same event
-    // This is a common scenario - notifications are tied to the event but need to show all affected properties
     notifications.forEach(notification => {
       if (!notificationProperties.has(notification.id)) {
         notificationProperties.set(notification.id, [])

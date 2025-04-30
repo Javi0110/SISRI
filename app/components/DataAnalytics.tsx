@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Bell, ChevronDown, ChevronRight, Clock, FileText, Home, MapPin, Printer, Search, Users } from "lucide-react";
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
@@ -12,6 +12,13 @@ import {
   CardHeader,
   CardTitle,
 } from "../../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import {
@@ -28,13 +35,6 @@ import {
   TabsTrigger,
 } from "../../components/ui/tabs";
 import { cn } from "../../lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
 
 type SearchType = 'evento' | 'usng' | 'municipio';
 

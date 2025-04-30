@@ -395,16 +395,6 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     
     if (parsedCoords.length === 0) return null;
     
-    // Find min/max coordinates
-    const minX = Math.min(...parsedCoords.map(c => c!.x));
-    const maxX = Math.max(...parsedCoords.map(c => c!.x));
-    const minY = Math.min(...parsedCoords.map(c => c!.y));
-    const maxY = Math.max(...parsedCoords.map(c => c!.y));
-    
-    // Use the center coordinate as our focus point
-    const centerX = Math.floor((minX + maxX) / 2);
-    const centerY = Math.floor((minY + maxY) / 2);
-    
     // For Rio La Plata specifically
     if (usngCoords.some(coord => coord.includes("19Q GA 89"))) {
       // Rio La Plata specific center coordinates 
