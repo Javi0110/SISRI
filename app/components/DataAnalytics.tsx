@@ -36,7 +36,7 @@ import {
 } from "../../components/ui/tabs";
 import { cn } from "../../lib/utils";
 
-type SearchType = 'evento' | 'usng' | 'municipio';
+type SearchType = 'evento' | 'usng' | 'municipio' | 'residente';
 
 interface EventData {
   id: number;
@@ -76,6 +76,12 @@ interface ResidentData {
   condicion: string;
   disposicion: string;
   propiedad_id: number;
+  family_id?: number | null;
+  family?: {
+    id: number;
+    apellidos: string;
+    description?: string;
+  } | null;
 }
 
 interface NotificationData {
@@ -91,11 +97,36 @@ interface NotificationData {
 
 interface ReportData {
   searchType: SearchType;
+  searchQuery?: string;
   evento?: EventData | null;
   usngQuery?: string;
   municipioQuery?: string;
   propiedades: PropertyData[];
   notificaciones?: NotificationData[];
+  residentes?: {
+    id: number;
+    nombre: string;
+    edad: number;
+    categoria: string;
+    limitacion: string;
+    condicion: string;
+    disposicion: string;
+    propiedad_id: number;
+    family_id?: number | null;
+    family?: {
+      id: number;
+      apellidos: string;
+      description?: string;
+    } | null;
+    propiedad_info: {
+      id: number | null;
+      tipo: string;
+      municipio: string;
+      barrio: string;
+      sector: string;
+      usng: string;
+    }
+  }[];
 }
 
 interface ExpandedState {
@@ -130,13 +161,23 @@ export function DataAnalytics() {
   const [filters, setFilters] = useState<{
     usng?: string;
     municipio?: string;
+    barrio?: string;
+    sector?: string;
     ageRange?: { min: number; max: number };
     propertyType?: string;
     incidentType?: string;
     damageType?: string;
     residentCategory?: string;
+    residentCondition?: string;
+    residentLimitation?: string;
+    residentDisposition?: string;
+    residentName?: string;
+    familyName?: string;
     dateRange?: { start: string; end: string };
   }>({});
+
+  // Add a state for quick filtering resident names
+  const [quickResidentFilter, setQuickResidentFilter] = useState("");
 
   // Add debounce function
   const debounce = (func: Function, wait: number) => {
@@ -168,6 +209,9 @@ export function DataAnalytics() {
           // For USNG, we'll use the comprehensive report endpoint
           endpoint = `/api/analytics/comprehensive-report`;
           break;
+        case 'residente':
+          endpoint = `/api/residentes/search?term=${encodeURIComponent(query)}`;
+          break;
       }
 
       if (searchType === 'usng') {
@@ -184,6 +228,16 @@ export function DataAnalytics() {
             type: 'usng'
           })));
         }
+      } else if (searchType === 'residente') {
+        const response = await fetch(endpoint);
+        const data = await response.json();
+        setSearchSuggestions(data.map((resident: any) => ({
+          id: resident.id,
+          label: resident.nombre,
+          type: 'residente',
+          edad: resident.edad,
+          categoria: resident.categoria
+        })));
       } else {
         const response = await fetch(endpoint);
         const data = await response.json();
@@ -220,28 +274,74 @@ export function DataAnalytics() {
     }, 300),
     [fetchSearchSuggestions]
   );
+  
+  // Add a function to reset filters when changing search types
+  const resetFilters = () => {
+    setFilters({});
+    setQuickResidentFilter("");
+  };
 
+  // Update the search type change handler to reset filters
+  const handleSearchTypeChange = (value: SearchType) => {
+    setSearchType(value);
+    resetFilters();
+    setSearchQuery("");
+  };
+
+  // Update the handleSearch function to improve the filtering process
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setError("Por favor ingrese un término de búsqueda");
+    // Only require search term for non-residente searches
+    if (!searchQuery.trim() && searchType !== 'residente') {
+      setError("Please enter a search term");
       return;
     }
 
+    // Clear error and start loading
     setLoading(true);
     setError(null);
 
     try {
+      // Build filter object only with valid values
+      const filterObj: any = {};
+      
+      if (filters.usng) filterObj.usng = filters.usng;
+      if (filters.municipio) filterObj.municipio = filters.municipio;
+      if (filters.barrio) filterObj.barrio = filters.barrio;
+      if (filters.sector) filterObj.sector = filters.sector;
+      
+      if (filters.ageRange?.min || filters.ageRange?.max) {
+        filterObj.ageRange = {
+          min: Number(filters.ageRange?.min || 0),
+          max: Number(filters.ageRange?.max || 200)
+        };
+      }
+      
+      if (filters.propertyType) {
+        filterObj.propertyType = filters.propertyType === 'residencial' ? 'Residential' :
+                               filters.propertyType === 'comercial' ? 'Commercial' :
+                               filters.propertyType === 'industrial' ? 'Industrial' :
+                               filters.propertyType;
+      }
+      
+      if (filters.incidentType) filterObj.incidentType = filters.incidentType;
+      if (filters.residentCategory && filters.residentCategory !== 'all') filterObj.residentCategory = filters.residentCategory;
+      if (filters.residentCondition) filterObj.residentCondition = filters.residentCondition;
+      if (filters.residentLimitation) filterObj.residentLimitation = filters.residentLimitation;
+      if (filters.residentDisposition) filterObj.residentDisposition = filters.residentDisposition;
+      if (filters.residentName) filterObj.residentName = filters.residentName;
+      if (filters.familyName) filterObj.familyName = filters.familyName;
+      
+      if (filters.dateRange?.start || filters.dateRange?.end) {
+        filterObj.dateRange = {};
+        if (filters.dateRange?.start) filterObj.dateRange.start = filters.dateRange.start;
+        if (filters.dateRange?.end) filterObj.dateRange.end = filters.dateRange.end;
+      }
+
       // Combine main search with filters
       const searchPayload = {
         searchType,
         searchQuery,
-        filters: {
-          ...filters,
-          ageRange: filters.ageRange ? {
-            min: Number(filters.ageRange.min),
-            max: Number(filters.ageRange.max)
-          } : undefined
-        }
+        filters: filterObj
       };
 
       const response = await fetch("/api/analytics/comprehensive-report", {
@@ -255,7 +355,11 @@ export function DataAnalytics() {
       if (data.error) {
         setError(data.error);
       } else {
-        setReportData(data);
+        // Add the searchQuery to the reportData
+        setReportData({
+          ...data,
+          searchQuery: searchType === 'residente' && !searchQuery.trim() ? 'All residents' : searchQuery
+        });
         setExpandedProperties({});
         
         if (searchType === 'evento' && data.evento) {
@@ -274,7 +378,7 @@ export function DataAnalytics() {
         }
       }
     } catch (error) {
-      setError("Error al buscar datos");
+      setError("Error processing search");
       console.error("Query error:", error);
     } finally {
       setLoading(false);
@@ -294,11 +398,24 @@ export function DataAnalytics() {
     return (
       <div className="space-y-4 mt-4 p-4 border rounded-md bg-muted/30">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Resident Name Filter - Show prominently for resident searches */}
+          {searchType === 'residente' && (
+            <div className="space-y-2 lg:col-span-3">
+              <label className="text-sm font-medium">Resident Name</label>
+              <Input
+                placeholder="Filter residents by name"
+                value={filters.residentName || ''}
+                onChange={(e) => handleFilterChange('residentName', e.target.value)}
+                className="w-full"
+              />
+            </div>
+          )}
+
           {/* USNG Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">USNG</label>
             <Input
-              placeholder="Filtrar por USNG"
+              placeholder="Filter by USNG"
               value={filters.usng || ''}
               onChange={(e) => handleFilterChange('usng', e.target.value)}
             />
@@ -306,17 +423,37 @@ export function DataAnalytics() {
 
           {/* Municipality Filter */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Municipio</label>
+            <label className="text-sm font-medium">Municipality</label>
             <Input
-              placeholder="Filtrar por municipio"
+              placeholder="Filter by municipality"
               value={filters.municipio || ''}
               onChange={(e) => handleFilterChange('municipio', e.target.value)}
+            />
+          </div>
+          
+          {/* Barrio Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Barrio</label>
+            <Input
+              placeholder="Filter by barrio"
+              value={filters.barrio || ''}
+              onChange={(e) => handleFilterChange('barrio', e.target.value)}
+            />
+          </div>
+          
+          {/* Sector Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Sector</label>
+            <Input
+              placeholder="Filter by sector"
+              value={filters.sector || ''}
+              onChange={(e) => handleFilterChange('sector', e.target.value)}
             />
           </div>
 
           {/* Age Range Filter */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Rango de Edad</label>
+            <label className="text-sm font-medium">Age Range</label>
             <div className="flex gap-2">
               <Input
                 type="number"
@@ -341,17 +478,17 @@ export function DataAnalytics() {
 
           {/* Property Type Filter */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Tipo de Propiedad</label>
+            <label className="text-sm font-medium">Property Type</label>
             <Select
               value={filters.propertyType}
               onValueChange={(value) => handleFilterChange('propertyType', value)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar tipo" />
+                <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="residencial">Residencial</SelectItem>
-                <SelectItem value="comercial">Comercial</SelectItem>
+                <SelectItem value="residencial">Residential</SelectItem>
+                <SelectItem value="comercial">Commercial</SelectItem>
                 <SelectItem value="industrial">Industrial</SelectItem>
               </SelectContent>
             </Select>
@@ -359,43 +496,74 @@ export function DataAnalytics() {
 
           {/* Incident Type Filter */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Tipo de Incidente</label>
+            <label className="text-sm font-medium">Incident Type</label>
             <Select
               value={filters.incidentType}
               onValueChange={(value) => handleFilterChange('incidentType', value)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar tipo" />
+                <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="inundacion">Inundación</SelectItem>
-                <SelectItem value="deslizamiento">Deslizamiento</SelectItem>
-                <SelectItem value="derrumbe">Derrumbe</SelectItem>
+                <SelectItem value="inundacion">Flood</SelectItem>
+                <SelectItem value="deslizamiento">Landslide</SelectItem>
+                <SelectItem value="derrumbe">Collapse</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Resident Category Filter */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Categoría de Residente</label>
+            <label className="text-sm font-medium">Resident Category</label>
             <Select
-              value={filters.residentCategory}
+              value={filters.residentCategory || 'all'}
               onValueChange={(value) => handleFilterChange('residentCategory', value)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar categoría" />
+                <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="adulto">Adulto</SelectItem>
-                <SelectItem value="menor">Menor</SelectItem>
-                <SelectItem value="envejeciente">Envejeciente</SelectItem>
+                <SelectItem value="all">All categories</SelectItem>
+                <SelectItem value="Adulto">Adult</SelectItem>
+                <SelectItem value="Niño">Minor</SelectItem>
+                <SelectItem value="Adulto Mayor">Elderly</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          
+          {/* Resident Condition Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Resident Condition</label>
+            <Input
+              placeholder="Filter by condition"
+              value={filters.residentCondition || ''}
+              onChange={(e) => handleFilterChange('residentCondition', e.target.value)}
+            />
+          </div>
+          
+          {/* Resident Limitation Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Resident Limitation</label>
+            <Input
+              placeholder="Filter by limitation"
+              value={filters.residentLimitation || ''}
+              onChange={(e) => handleFilterChange('residentLimitation', e.target.value)}
+            />
+          </div>
+          
+          {/* Resident Disposition Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Resident Disposition</label>
+            <Input
+              placeholder="Filter by disposition"
+              value={filters.residentDisposition || ''}
+              onChange={(e) => handleFilterChange('residentDisposition', e.target.value)}
+            />
           </div>
 
           {/* Date Range Filter */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Rango de Fecha</label>
+            <label className="text-sm font-medium">Date Range</label>
             <div className="flex gap-2">
               <Input
                 type="date"
@@ -415,6 +583,16 @@ export function DataAnalytics() {
               />
             </div>
           </div>
+
+          {/* Family Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Family</label>
+            <Input
+              placeholder="Filter by family name"
+              value={filters.familyName || ''}
+              onChange={(e) => handleFilterChange('familyName', e.target.value)}
+            />
+          </div>
         </div>
 
         {/* Clear Filters Button */}
@@ -426,7 +604,7 @@ export function DataAnalytics() {
               handleSearch();
             }}
           >
-            Limpiar Filtros
+            Clear Filters
           </Button>
         </div>
       </div>
@@ -477,13 +655,15 @@ export function DataAnalytics() {
   const getSearchPlaceholder = () => {
     switch (searchType) {
       case 'evento':
-        return 'Nombre del evento';
+        return 'Event name';
       case 'usng':
-        return 'Coordenadas USNG';
+        return 'USNG coordinates';
       case 'municipio':
-        return 'Nombre del municipio';
+        return 'Municipality name';
+      case 'residente':
+        return 'Resident name (optional)';
       default:
-        return 'Buscar...';
+        return 'Search...';
     }
   };
 
@@ -496,7 +676,7 @@ export function DataAnalytics() {
           <div>
             <CardTitle>{reportData.evento.titulo}</CardTitle>
             <CardDescription>
-              Fecha: {new Date(reportData.evento.fecha).toLocaleDateString()}
+              Date: {new Date(reportData.evento.fecha).toLocaleDateString()}
             </CardDescription>
           </div>
           <div className="flex items-center gap-4">
@@ -519,7 +699,7 @@ export function DataAnalytics() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              Propiedades en USNG: 
+              Properties in USNG: 
               <span className="relative">
                 {reportData.usngQuery}
                 <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-pink-500 rounded-full"></div>
@@ -530,12 +710,12 @@ export function DataAnalytics() {
               </Badge>
             </CardTitle>
             <CardDescription className="mt-1 flex items-center gap-2">
-              <span className="font-medium">{reportData.propiedades.length} propiedades encontradas</span>
+              <span className="font-medium">{reportData.propiedades.length} properties found</span>
               <span className="text-muted-foreground">•</span>
               <div className="flex items-center gap-1">
                 <Users className="h-3.5 w-3.5" />
                 <span>
-                  {reportData.propiedades.reduce((total, property) => total + property.habitantes.length, 0)} habitantes en total
+                  {reportData.propiedades.reduce((total, property) => total + property.habitantes.length, 0)} residents in total
                 </span>
               </div>
             </CardDescription>
@@ -548,9 +728,26 @@ export function DataAnalytics() {
       return (
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Propiedades en: {reportData.municipioQuery}</CardTitle>
+            <CardTitle>Properties in: {reportData.municipioQuery}</CardTitle>
             <CardDescription>
-              {reportData.propiedades.length} propiedades encontradas
+              {reportData.propiedades.length} properties found
+            </CardDescription>
+          </div>
+        </div>
+      );
+    }
+
+    if (reportData.searchType === 'residente') {
+      return (
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>
+              {reportData.searchQuery === 'All residents' 
+                ? 'All Residents' 
+                : `Resident Search: ${reportData.searchQuery}`}
+            </CardTitle>
+            <CardDescription>
+              {reportData.residentes ? reportData.residentes.length : 0} residents found
             </CardDescription>
           </div>
         </div>
@@ -562,7 +759,7 @@ export function DataAnalytics() {
       <div className="flex items-center justify-between">
         <div>
           <CardTitle>
-            Búsqueda no válida
+            Invalid search
           </CardTitle>
         </div>
       </div>
@@ -726,7 +923,8 @@ export function DataAnalytics() {
               <div class="value">${
                 reportData.searchType === 'evento' ? 'Event' : 
                 reportData.searchType === 'usng' ? 'USNG Coordinates' : 
-                reportData.searchType === 'municipio' ? 'Municipality' : 'Unknown'
+                reportData.searchType === 'municipio' ? 'Municipality' :
+                reportData.searchType === 'residente' ? 'Resident' : 'Unknown'
               }</div>
             </div>
             ${reportData.searchType === 'evento' && reportData.evento ? `
@@ -805,6 +1003,7 @@ export function DataAnalytics() {
                                 <th class="nested-th">Name</th>
                                 <th class="nested-th">Age</th>
                                 <th class="nested-th">Category</th>
+                                <th class="nested-th">Family</th>
                                 <th class="nested-th">Limitation</th>
                                 <th class="nested-th">Condition</th>
                                 <th class="nested-th">Disposition</th>
@@ -816,6 +1015,12 @@ export function DataAnalytics() {
                                   <td class="nested-td">${resident.nombre}</td>
                                   <td class="nested-td">${resident.edad}</td>
                                   <td class="nested-td">${resident.categoria}</td>
+                                  <td class="nested-td">
+                                    ${resident.family ? 
+                                      `<span style="background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 11px; color: #334155;">${resident.family.apellidos}</span>` : 
+                                      '<span style="color: #64748b; font-size: 11px;">No family</span>'
+                                    }
+                                  </td>
                                   <td class="nested-td">${resident.limitacion || 'None'}</td>
                                   <td class="nested-td">${resident.condicion || 'None'}</td>
                                   <td class="nested-td">${resident.disposicion || 'None'}</td>
@@ -886,27 +1091,89 @@ export function DataAnalytics() {
     printWindow.document.close();
   };
 
+  // Add this helper function to apply all filters to habitants
+  const applyResidentFilters = (residents: ResidentData[]): ResidentData[] => {
+    let filteredResidents = residents;
+    
+    // Apply name filter from both quick filter and advanced filters
+    const nameFilter = quickResidentFilter || filters.residentName;
+    if (nameFilter) {
+      const filterLower = nameFilter.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => 
+        resident.nombre.toLowerCase().includes(filterLower)
+      );
+    }
+    
+    // Apply family name filter
+    if (filters.familyName) {
+      const familyFilter = filters.familyName.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => 
+        resident.family?.apellidos?.toLowerCase().includes(familyFilter)
+      );
+    }
+    
+    // Apply category filter
+    if (filters.residentCategory) {
+      filteredResidents = filteredResidents.filter(resident => 
+        resident.categoria.toLowerCase() === filters.residentCategory?.toLowerCase()
+      );
+    }
+    
+    // Apply condition filter
+    if (filters.residentCondition) {
+      filteredResidents = filteredResidents.filter(resident => 
+        resident.condicion?.toLowerCase().includes(filters.residentCondition!.toLowerCase())
+      );
+    }
+    
+    // Apply limitation filter
+    if (filters.residentLimitation) {
+      filteredResidents = filteredResidents.filter(resident => 
+        resident.limitacion?.toLowerCase().includes(filters.residentLimitation!.toLowerCase())
+      );
+    }
+    
+    // Apply disposition filter
+    if (filters.residentDisposition) {
+      filteredResidents = filteredResidents.filter(resident => 
+        resident.disposicion?.toLowerCase().includes(filters.residentDisposition!.toLowerCase())
+      );
+    }
+    
+    // Apply age filter
+    if (filters.ageRange?.min || filters.ageRange?.max) {
+      filteredResidents = filteredResidents.filter(resident => {
+        const min = Number(filters.ageRange?.min || 0);
+        const max = Number(filters.ageRange?.max || 200);
+        return resident.edad >= min && resident.edad <= max;
+      });
+    }
+    
+    return filteredResidents;
+  };
+
   return (
     <div className="space-y-6">
       {/* Search Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Reporte Comprensivo</CardTitle>
+          <CardTitle>Comprehensive Report</CardTitle>
           <CardDescription>
-            Busque por evento, coordenadas USNG o municipio para ver todos los detalles relacionados
+            Search by event, USNG coordinates, or municipality to see all related details
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="flex gap-4">
-              <Select value={searchType} onValueChange={(value: SearchType) => setSearchType(value)}>
+              <Select value={searchType} onValueChange={handleSearchTypeChange}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Tipo de búsqueda" />
+                  <SelectValue placeholder="Type of search" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="evento">Evento</SelectItem>
+                  <SelectItem value="evento">Event</SelectItem>
                   <SelectItem value="usng">USNG</SelectItem>
-                  <SelectItem value="municipio">Municipio</SelectItem>
+                  <SelectItem value="municipio">Municipality</SelectItem>
+                  <SelectItem value="residente">Resident</SelectItem>
                 </SelectContent>
               </Select>
               <div className="relative flex-1">
@@ -925,7 +1192,7 @@ export function DataAnalytics() {
                     <ScrollArea className="h-[200px]">
                       {isLoadingSuggestions ? (
                         <div className="p-2 text-center text-sm text-muted-foreground">
-                          Cargando sugerencias...
+                          Loading suggestions...
                         </div>
                       ) : (
                         <div className="py-1">
@@ -947,13 +1214,21 @@ export function DataAnalytics() {
                   </div>
                 )}
               </div>
+              {searchType === 'residente' && (
+                <Button variant="outline" onClick={() => {
+                  setSearchQuery('');
+                  handleSearch();
+                }} className="whitespace-nowrap">
+                  View All
+                </Button>
+              )}
               <Button onClick={handleSearch} disabled={loading}>
                 {loading ? (
                   <span className="animate-spin mr-2">⏳</span>
                 ) : (
                   <Search className="h-4 w-4 mr-2" />
                 )}
-                Buscar
+                Search
               </Button>
             </div>
 
@@ -964,7 +1239,7 @@ export function DataAnalytics() {
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className="text-sm"
               >
-                {showAdvancedFilters ? "Ocultar filtros avanzados" : "Mostrar filtros avanzados"}
+                {showAdvancedFilters ? "Hide advanced filters" : "Show advanced filters"}
               </Button>
             </div>
 
@@ -1001,7 +1276,7 @@ export function DataAnalytics() {
                 onClick={handlePrintReport}
               >
                 <Printer className="h-4 w-4" />
-                Imprimir Reporte Profesional
+                Print Professional Report
               </Button>
             </div>
           </CardHeader>
@@ -1011,12 +1286,12 @@ export function DataAnalytics() {
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="properties" className="flex items-center gap-2">
                   <Home className="h-4 w-4" />
-                  <span>Propiedades Afectadas</span>
+                  <span>Affected Properties</span>
                   <Badge variant="secondary" className="ml-1">{reportData.propiedades.length}</Badge>
                 </TabsTrigger>
                 <TabsTrigger value="notifications" className="flex items-center gap-2">
                   <Bell className="h-4 w-4" />
-                  <span>Notificaciones</span>
+                  <span>Notifications</span>
                   <Badge variant="secondary" className="ml-1">{reportData.notificaciones?.length || 0}</Badge>
                 </TabsTrigger>
               </TabsList>
@@ -1027,12 +1302,12 @@ export function DataAnalytics() {
                     <table className="w-full">
                       <thead>
                         <tr className="bg-muted/50">
-                          <th className="py-3 px-4 text-left font-medium">Propiedad</th>
-                          <th className="py-3 px-4 text-left font-medium">Ubicación</th>
+                          <th className="py-3 px-4 text-left font-medium">Property</th>
+                          <th className="py-3 px-4 text-left font-medium">Location</th>
                           <th className="py-3 px-4 text-left font-medium">USNG</th>
-                          <th className="py-3 px-4 text-left font-medium">Daños</th>
-                          <th className="py-3 px-4 text-left font-medium">Fecha</th>
-                          <th className="py-3 px-4 text-left font-medium">Habitantes</th>
+                          <th className="py-3 px-4 text-left font-medium">Damage</th>
+                          <th className="py-3 px-4 text-left font-medium">Date</th>
+                          <th className="py-3 px-4 text-left font-medium">Residents</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1094,12 +1369,13 @@ export function DataAnalytics() {
                                     <table className="w-full">
                                       <thead>
                                         <tr className="text-sm text-muted-foreground">
-                                          <th className="py-2 px-3 text-left font-medium">Nombre</th>
-                                          <th className="py-2 px-3 text-left font-medium">Edad</th>
-                                          <th className="py-2 px-3 text-left font-medium">Categoría</th>
-                                          <th className="py-2 px-3 text-left font-medium">Limitación</th>
-                                          <th className="py-2 px-3 text-left font-medium">Condición</th>
-                                          <th className="py-2 px-3 text-left font-medium">Disposición</th>
+                                          <th className="py-2 px-3 text-left font-medium">Name</th>
+                                          <th className="py-2 px-3 text-left font-medium">Age</th>
+                                          <th className="py-2 px-3 text-left font-medium">Category</th>
+                                          <th className="py-2 px-3 text-left font-medium">Family</th>
+                                          <th className="py-2 px-3 text-left font-medium">Limitation</th>
+                                          <th className="py-2 px-3 text-left font-medium">Condition</th>
+                                          <th className="py-2 px-3 text-left font-medium">Disposition</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -1109,6 +1385,13 @@ export function DataAnalytics() {
                                             <td className="py-2 px-3">{resident.edad}</td>
                                             <td className="py-2 px-3">
                                               <Badge variant="outline">{resident.categoria}</Badge>
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              {resident.family ? (
+                                                <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                                              ) : (
+                                                <span className="text-muted-foreground text-xs">No family</span>
+                                              )}
                                             </td>
                                             <td className="py-2 px-3">{resident.limitacion}</td>
                                             <td className="py-2 px-3">{resident.condicion}</td>
@@ -1154,14 +1437,14 @@ export function DataAnalytics() {
                             <p className="text-sm">{notification.mensaje}</p>
                           </CardContent>
                           <CardFooter className="px-4 py-2 bg-muted/30 flex justify-between">
-                            <span className="text-xs text-muted-foreground">Tipo: {notification.tipo}</span>
+                            <span className="text-xs text-muted-foreground">Type: {notification.tipo}</span>
                             <Button 
                               variant="ghost" 
                               size="sm" 
                               className="h-7 text-xs"
                               onClick={() => handleNotificationDetails(notification)}
                             >
-                              Ver detalles
+                              View details
                             </Button>
                           </CardFooter>
                         </Card>
@@ -1169,35 +1452,31 @@ export function DataAnalytics() {
                     </div>
                   </ScrollArea>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <Bell className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                    <h3 className="text-lg font-medium">Sin notificaciones</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      No hay notificaciones registradas para este evento.
-                    </p>
+                  <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 rounded-md">
+                    <p className="text-muted-foreground">No notifications registered for this event.</p>
                   </div>
                 )}
               </TabsContent>
             </Tabs>
           )}
           
-          {(reportData.searchType !== 'evento' || !reportData.evento) && (
+          {(reportData.searchType !== 'evento' || !reportData.evento) && reportData.searchType !== 'residente' && (
             <CardContent>
               <div className="rounded-md border">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-muted/50">
-                        <th className="py-3 px-4 text-left font-medium">Propiedad</th>
-                        <th className="py-3 px-4 text-left font-medium">Ubicación</th>
+                        <th className="py-3 px-4 text-left font-medium">Property</th>
+                        <th className="py-3 px-4 text-left font-medium">Location</th>
                         <th className="py-3 px-4 text-left font-medium">USNG</th>
-                        <th className="py-3 px-4 text-left font-medium">Daños</th>
-                        <th className="py-3 px-4 text-left font-medium">Fecha</th>
-                        <th className="py-3 px-4 text-left font-medium">Habitantes</th>
+                        <th className="py-3 px-4 text-left font-medium">Damage</th>
+                        <th className="py-3 px-4 text-left font-medium">Date</th>
+                        <th className="py-3 px-4 text-left font-medium">Residents</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {reportData.propiedades.map((property) => (
+                      {reportData.propiedades && reportData.propiedades.map((property) => (
                         <>
                           <tr key={property.id} className="border-t hover:bg-muted/50 transition-colors">
                             <td className="py-3 px-4">
@@ -1255,12 +1534,13 @@ export function DataAnalytics() {
                                   <table className="w-full">
                                     <thead>
                                       <tr className="text-sm text-muted-foreground">
-                                        <th className="py-2 px-3 text-left font-medium">Nombre</th>
-                                        <th className="py-2 px-3 text-left font-medium">Edad</th>
-                                        <th className="py-2 px-3 text-left font-medium">Categoría</th>
-                                        <th className="py-2 px-3 text-left font-medium">Limitación</th>
-                                        <th className="py-2 px-3 text-left font-medium">Condición</th>
-                                        <th className="py-2 px-3 text-left font-medium">Disposición</th>
+                                        <th className="py-2 px-3 text-left font-medium">Name</th>
+                                        <th className="py-2 px-3 text-left font-medium">Age</th>
+                                        <th className="py-2 px-3 text-left font-medium">Category</th>
+                                        <th className="py-2 px-3 text-left font-medium">Family</th>
+                                        <th className="py-2 px-3 text-left font-medium">Limitation</th>
+                                        <th className="py-2 px-3 text-left font-medium">Condition</th>
+                                        <th className="py-2 px-3 text-left font-medium">Disposition</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1270,6 +1550,13 @@ export function DataAnalytics() {
                                           <td className="py-2 px-3">{resident.edad}</td>
                                           <td className="py-2 px-3">
                                             <Badge variant="outline">{resident.categoria}</Badge>
+                                          </td>
+                                          <td className="py-2 px-3">
+                                            {resident.family ? (
+                                              <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                                            ) : (
+                                              <span className="text-muted-foreground text-xs">No family</span>
+                                            )}
                                           </td>
                                           <td className="py-2 px-3">{resident.limitacion}</td>
                                           <td className="py-2 px-3">{resident.condicion}</td>
@@ -1288,6 +1575,187 @@ export function DataAnalytics() {
                   </table>
                 </div>
               </div>
+            </CardContent>
+          )}
+
+          {reportData && reportData.searchType === 'residente' && (
+            <CardContent>
+              {/* Add a quick filter input above the results */}
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search resident by name..."
+                    value={quickResidentFilter}
+                    onChange={(e) => setQuickResidentFilter(e.target.value)}
+                    className="pl-10"
+                  />
+                  {quickResidentFilter && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="absolute right-1 top-1 h-8 px-2"
+                      onClick={() => setQuickResidentFilter("")}
+                    >
+                      ✕
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              <div className="rounded-md border">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-muted/50">
+                        <th className="py-3 px-4 text-left font-medium">Name</th>
+                        <th className="py-3 px-4 text-left font-medium">Age</th>
+                        <th className="py-3 px-4 text-left font-medium">Category</th>
+                        <th className="py-3 px-4 text-left font-medium">Family</th>
+                        <th className="py-3 px-4 text-left font-medium">Limitation</th>
+                        <th className="py-3 px-4 text-left font-medium">Condition</th>
+                        <th className="py-3 px-4 text-left font-medium">Disposition</th>
+                        <th className="py-3 px-4 text-left font-medium">Property</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportData.residentes ? (
+                        // Filter the flat list of residents by name
+                        reportData.residentes
+                          .filter(resident => {
+                            if (!quickResidentFilter) return true;
+                            return resident.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase());
+                          })
+                          .map(resident => (
+                            <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
+                              <td className="py-3 px-4">{resident.nombre}</td>
+                              <td className="py-3 px-4">{resident.edad}</td>
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.categoria}</Badge>
+                              </td>
+                              <td className="py-3 px-4">
+                                {resident.family ? (
+                                  <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">No family</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
+                                  </span>
+                                  <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                      ) : (
+                        // Fallback to the old way for backward compatibility
+                        reportData.propiedades.flatMap(property => 
+                          applyResidentFilters(property.habitantes).map(resident => (
+                            <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
+                              <td className="py-3 px-4">{resident.nombre}</td>
+                              <td className="py-3 px-4">{resident.edad}</td>
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.categoria}</Badge>
+                              </td>
+                              <td className="py-3 px-4">
+                                {resident.family ? (
+                                  <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">No family</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{property.tipo}</Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    {property.municipio}, {property.barrio}, {property.sector}
+                                  </span>
+                                  <span className="text-xs font-mono mt-1">{property.usng}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )
+                      )}
+                      {((reportData.residentes && reportData.residentes.filter(r => !quickResidentFilter || r.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase())).length === 0) || 
+                        (!reportData.residentes && reportData.propiedades.flatMap(property => applyResidentFilters(property.habitantes)).length === 0)) && (
+                        <tr className="border-t">
+                          <td colSpan={7} className="py-6 px-4 text-center text-muted-foreground">
+                            No residents found matching the search criteria.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              {/* Results counter */}
+              <div className="mt-2 text-sm text-muted-foreground">
+                {reportData.residentes 
+                  ? reportData.residentes.filter(r => !quickResidentFilter || r.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase())).length
+                  : reportData.propiedades.flatMap(property => applyResidentFilters(property.habitantes)).length} 
+                {' residents found'}
+              </div>
+              
+              {/* Show feedback on active filters for resident search */}
+              {(quickResidentFilter || filters.residentName || filters.residentCategory || 
+                filters.residentCondition || filters.residentLimitation || 
+                filters.residentDisposition || filters.familyName ||
+                (filters.ageRange?.min || filters.ageRange?.max)) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {quickResidentFilter && !filters.residentName && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Name: {quickResidentFilter}</span>
+                    </Badge>
+                  )}
+                  {filters.residentName && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Name: {filters.residentName}</span>
+                    </Badge>
+                  )}
+                  {filters.familyName && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Family: {filters.familyName}</span>
+                    </Badge>
+                  )}
+                  {filters.residentCategory && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Category: {filters.residentCategory}</span>
+                    </Badge>
+                  )}
+                  {filters.residentCondition && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Condition: {filters.residentCondition}</span>
+                    </Badge>
+                  )}
+                  {filters.residentLimitation && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Limitation: {filters.residentLimitation}</span>
+                    </Badge>
+                  )}
+                  {filters.residentDisposition && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Disposition: {filters.residentDisposition}</span>
+                    </Badge>
+                  )}
+                  {(filters.ageRange?.min || filters.ageRange?.max) && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <span>Age: {filters.ageRange?.min || '0'} - {filters.ageRange?.max || '∞'}</span>
+                    </Badge>
+                  )}
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
@@ -1321,8 +1789,8 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
             <DialogTitle className="text-xl flex items-center gap-2">
               <FileText className="h-5 w-5" />
               <span>{notification.numero_notificacion || `NOT-${notification.id}`}</span>
-              <Badge className={cn(getStatusColor(notification.estado || "pendiente"))}>
-                {notification.estado || "pendiente"}
+              <Badge className={cn(getStatusColor(notification.estado || "pending"))}>
+                {notification.estado || "pending"}
               </Badge>
             </DialogTitle>
             <div className="text-sm text-muted-foreground flex items-center gap-1">
@@ -1339,7 +1807,7 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
         
         <div className="flex flex-col space-y-6 overflow-auto py-4">
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">Mensaje</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Message</h3>
             <div className="rounded-md bg-muted p-4">
               <p className="text-sm">{notification.mensaje}</p>
             </div>
@@ -1348,17 +1816,17 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Home className="h-4 w-4" />
-              Propiedades Afectadas ({relatedProperties.length})
+              Affected Properties ({relatedProperties.length})
             </h3>
             {relatedProperties.length > 0 ? (
               <div className="rounded-md border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
-                      <th className="py-2 px-3 text-left font-medium">Tipo</th>
-                      <th className="py-2 px-3 text-left font-medium">Ubicación</th>
+                      <th className="py-2 px-3 text-left font-medium">Type</th>
+                      <th className="py-2 px-3 text-left font-medium">Location</th>
                       <th className="py-2 px-3 text-left font-medium">USNG</th>
-                      <th className="py-2 px-3 text-left font-medium">Daños</th>
+                      <th className="py-2 px-3 text-left font-medium">Damage</th>
                       <th className="py-2 px-3 text-left font-medium">Habitantes</th>
                     </tr>
                   </thead>
@@ -1382,12 +1850,14 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
                           {property.habitantes.length > 0 ? (
                             <details className="text-xs">
                               <summary className="cursor-pointer font-medium hover:text-primary">
-                                Ver {property.habitantes.length} habitantes
+                                View {property.habitantes.length} residents
                               </summary>
                               <div className="mt-2 space-y-1">
                                 {property.habitantes.map(resident => (
                                   <div key={resident.id} className="pl-2 border-l-2 border-muted-foreground/20">
-                                    <p><strong>{resident.nombre}</strong> ({resident.edad} años)</p>
+                                    <p><strong>{resident.nombre}</strong> ({resident.edad} years)
+                                      {resident.family && <span className="ml-1">• Family: {resident.family.apellidos}</span>}
+                                    </p>
                                     <p className="text-muted-foreground">
                                       {resident.categoria}
                                       {resident.limitacion && ` • ${resident.limitacion}`}
@@ -1398,7 +1868,7 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
                               </div>
                             </details>
                           ) : (
-                            <span>Sin habitantes</span>
+                            <span>No residents</span>
                           )}
                         </td>
                       </tr>
@@ -1408,7 +1878,7 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center p-6 text-center bg-muted/20 rounded-md">
-                <p className="text-muted-foreground">No hay propiedades asociadas a esta notificación</p>
+                <p className="text-muted-foreground">No properties associated with this notification</p>
               </div>
             )}
           </div>

@@ -250,22 +250,7 @@ export async function POST(request: Request) {
         if (propertyData.habitantes?.create?.length > 0) {
           for (const h of propertyData.habitantes.create) {
             try {
-              await prisma.$executeRaw`SELECT setval('sisri.habitantes_id_seq', COALESCE((SELECT MAX(id) FROM sisri.habitantes), 0) + 1, false)`;
-              
-              await prisma.$queryRaw`
-                INSERT INTO sisri.habitantes 
-                (nombre, categoria, rol, edad, limitacion, condicion, disposicion, propiedad_id) 
-                VALUES (
-                  ${h.nombre || ''}, 
-                  ${h.categoria || ''}, 
-                  ${h.rol || ''}, 
-                  ${h.edad || null}, 
-                  ${h.limitacion || null}, 
-                  ${h.condicion || null}, 
-                  ${h.disposicion || null}, 
-                  ${propiedad.id}
-                )
-              `;
+              await handleHabitante(h, propiedad.id);
             } catch (habitanteError) {
               console.error('Error creating habitante:', habitanteError);
             }
@@ -324,4 +309,88 @@ async function getNextSectorId(): Promise<number> {
     orderBy: { id_sector: 'desc' }
   });
   return (lastSector?.id_sector || 0) + 1;
-} 
+}
+
+// In the POST function, modify the handleHabitante helper function to handle families
+const handleHabitante = async (habitante: any, propiedadId: number) => {
+  // Check if there's a family relationship to create/connect
+  let family_id = null;
+  
+  try {
+    if (habitante.newFamily) {
+      // Create a new family using raw SQL
+      const familyResult = await prisma.$queryRaw`
+        INSERT INTO sisri.families (apellidos, description, created_at, updated_at)
+        VALUES (${habitante.newFamily.apellidos}, ${habitante.newFamily.description || ''}, NOW(), NOW())
+        RETURNING id
+      `;
+      family_id = Array.isArray(familyResult) && familyResult.length > 0 ? familyResult[0].id : null;
+    } else if (habitante.family_id) {
+      // Use existing family ID
+      family_id = habitante.family_id;
+    }
+
+    // Map fields accounting for both English and Spanish field names
+    const nombre = habitante.name || habitante.nombre || '';
+    const categoria = habitante.category || habitante.categoria || '';
+    const rol = habitante.role || habitante.rol || '';
+    const edad = habitante.age || habitante.edad || null;
+    const limitacion = habitante.limitation || habitante.limitacion || null;
+    const condicion = habitante.condition || habitante.condicion || null;
+    const disposicion = habitante.disposition || habitante.disposicion || null;
+
+    // Create the habitante with family data included
+    const habitanteResult = await prisma.$queryRaw`
+      INSERT INTO sisri.habitantes 
+      (nombre, categoria, rol, edad, limitacion, condicion, disposicion, propiedad_id, family_id)
+      VALUES (
+        ${nombre}, 
+        ${categoria}, 
+        ${rol}, 
+        ${edad}, 
+        ${limitacion}, 
+        ${condicion}, 
+        ${disposicion}, 
+        ${propiedadId},
+        ${family_id}
+      )
+      RETURNING id
+    `;
+    
+    return {
+      id: Array.isArray(habitanteResult) && habitanteResult.length > 0 ? habitanteResult[0].id : null
+    };
+  } catch (error) {
+    console.error('Error creating habitante with family:', error);
+    
+    // Map fields for fallback too
+    const nombre = habitante.name || habitante.nombre || '';
+    const categoria = habitante.category || habitante.categoria || '';
+    const rol = habitante.role || habitante.rol || '';
+    const edad = habitante.age || habitante.edad || null;
+    const limitacion = habitante.limitation || habitante.limitacion || null;
+    const condicion = habitante.condition || habitante.condicion || null;
+    const disposicion = habitante.disposition || habitante.disposicion || null;
+    
+    // Fallback to basic insert without family if error occurs
+    const fallbackResult = await prisma.$queryRaw`
+      INSERT INTO sisri.habitantes 
+      (nombre, categoria, rol, edad, limitacion, condicion, disposicion, propiedad_id)
+      VALUES (
+        ${nombre}, 
+        ${categoria}, 
+        ${rol}, 
+        ${edad}, 
+        ${limitacion}, 
+        ${condicion}, 
+        ${disposicion}, 
+        ${propiedadId}
+      )
+      RETURNING id
+    `;
+    
+    return {
+      id: Array.isArray(fallbackResult) && fallbackResult.length > 0 ? fallbackResult[0].id : null
+    };
+  }
+}; 

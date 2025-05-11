@@ -159,6 +159,17 @@ model usngsquare {
   @@schema("sisri")
 }
 
+model families {
+  id           Int          @id @default(autoincrement())
+  apellidos    String?      @db.VarChar(100)
+  description  String?      @db.VarChar(255)
+  created_at   DateTime     @default(now()) @db.Timestamp(6)
+  updated_at   DateTime     @default(now()) @db.Timestamp(6)
+  habitantes   habitantes[]
+
+  @@schema("sisri")
+}
+
 model habitantes {
   id           Int                     @id @default(autoincrement())
   nombre       String?                 @db.VarChar(100)
@@ -173,11 +184,13 @@ model habitantes {
   id_barrio    Int?
   id_sector    Int?
   usngId       Int?
+  family_id    Int?
   barrio       barrio?                 @relation(fields: [id_barrio], references: [id_barrio])
   municipio    municipio?              @relation(fields: [id_municipio], references: [id_municipio])
   sector       sector?                 @relation(fields: [id_sector], references: [id_sector])
   propiedad    propiedades_existentes? @relation(fields: [propiedad_id], references: [id])
   usngsquare   usngsquare?             @relation(fields: [usngId], references: [id])
+  family       families?               @relation(fields: [family_id], references: [id])
 
   @@schema("sisri")
 }

@@ -41,15 +41,7 @@ const incidentTypes = [
   "Coastal Erosion",
 ] as const
 
-const propertyTypes = [
-  "Residential",
-  "Commercial",
-  "Industrial",
-  "Agricultural",
-  "Government",
-  "Educational",
-  "Healthcare"
-] as const
+const propertyTypes = ["House", "Apartment", "Business", "School", "Hospital", "Government Building", "Other"] as const
 
 const eventStatus = [
   "pending",
@@ -59,17 +51,17 @@ const eventStatus = [
 
 // Add habitantes related constants
 const habitanteCategories = [
-  "Adulto",
-  "Niño",
-  "Anciano",
-  "Discapacitado"
+  "Adult",
+  "Child",
+  "Elderly",
+  "Disabled"
 ] as const
 
 const habitanteRoles = [
-  "Residente",
-  "Propietario",
-  "Inquilino",
-  "Visitante"
+  "Resident",
+  "Owner",
+  "Tenant",
+  "Visitor"
 ] as const
 
 // Types
@@ -125,6 +117,13 @@ interface SectorSearchResult {
   id_barrio: number
 }
 
+// Add family interface after other interfaces
+interface Family {
+  id: number;
+  apellidos: string;
+  description: string;
+}
+
 // Update form schema
 const formSchema = z.object({
   notificationNumber: z.string(),
@@ -141,7 +140,7 @@ const formSchema = z.object({
   })).min(1, "At least one incident is required"),
   cuencaIds: z.array(z.string()).optional().default([]),
   properties: z.array(z.object({
-    type: z.enum(propertyTypes),
+    type: z.string(),
     municipioId: z.string(),
     barrioId: z.string().optional(),
     sectorId: z.string().optional(),
@@ -156,13 +155,16 @@ const formSchema = z.object({
       lng: z.number().optional(),
     }).optional(),
     habitantes: z.array(z.object({
-      nombre: z.string(),
+      name: z.string(),
       categoria: z.enum(habitanteCategories),
       rol: z.enum(habitanteRoles),
-      edad: z.string(),
-      limitacion: z.string().optional(),
-      condicion: z.string().optional(),
-      disposicion: z.string().optional(),
+      age: z.string(),
+      limitation: z.string().optional(),
+      condition: z.string().optional(),
+      disposition: z.string().optional(),
+      familyId: z.string().min(1, "Family is required"),
+      newFamilyApellidos: z.string().optional(),
+      newFamilyDescription: z.string().optional(),
     })).optional().default([]),
   })).min(1, "At least one property must be added"),
 })
@@ -192,8 +194,8 @@ export function ReportForm() {
   const [sectorSearchResults, setSectorSearchResults] = useState<SectorSearchResult[]>([])
   const [isSearchingBarrio, setIsSearchingBarrio] = useState(false)
   const [isSearchingSector, setIsSearchingSector] = useState(false)
-  const [selectedBarrio, setSelectedBarrio] = useState<BarrioSearchResult | null>(null)
-  const [selectedSector, setSelectedSector] = useState<SectorSearchResult | null>(null)
+  const [familySearchResults, setFamilySearchResults] = useState<Family[]>([])
+  const [isSearchingFamily, setIsSearchingFamily] = useState(false)
   
   // Debounce timer reference
   const usngSearchTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -207,7 +209,7 @@ export function ReportForm() {
     estado: "pending" as const,
     incidents: [{ type: incidentTypes[0], description: "", cuencaId: "" }],
     properties: [{ 
-      type: propertyTypes[0], 
+      type: propertyTypes[0],
       municipioId: "", 
       address: "",
       habitantes: [],
@@ -221,7 +223,8 @@ export function ReportForm() {
     formState: { errors }, 
     setValue, 
     getValues,
-    watch
+    watch,
+    reset
   } = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues,
@@ -346,29 +349,95 @@ export function ReportForm() {
   // Add state to track selected barrios
   const [selectedBarrios, setSelectedBarrios] = useState<Record<number, number>>({})
   
-  // Enhance the municipio selection handler
+  // Add these functions after the existing functions
+  const searchBarrios = useCallback(async (searchTerm: string, municipioId: number) => {
+    // Allow empty searches to show all barrios for the municipality
+    setIsSearchingBarrio(true);
+    try {
+      const response = await fetch(`/api/barrios/search?term=${encodeURIComponent(searchTerm || '')}&municipioId=${municipioId}`);
+      if (!response.ok) throw new Error('Failed to search barrios');
+      const data = await response.json();
+      console.log('Barrio search results:', data);
+      setBarrioSearchResults(data);
+    } catch (error) {
+      console.error('Error searching barrios:', error);
+      setBarrioSearchResults([]);
+    } finally {
+      setIsSearchingBarrio(false);
+    }
+  }, []);
+
+  const searchSectores = useCallback(async (searchTerm: string, barrioId: number) => {
+    // Allow empty searches to show all sectors for the barrio
+    setIsSearchingSector(true);
+    try {
+      const response = await fetch(`/api/sectores/search?term=${encodeURIComponent(searchTerm || '')}&barrioId=${barrioId}`);
+      if (!response.ok) throw new Error('Failed to search sectores');
+      const data = await response.json();
+      console.log('Sector search results:', data);
+      setSectorSearchResults(data);
+    } catch (error) {
+      console.error('Error searching sectores:', error);
+      setSectorSearchResults([]);
+    } finally {
+      setIsSearchingSector(false);
+    }
+  }, []);
+
+  // Debounce the search functions
+  const debouncedBarrioSearch = useCallback(
+    debounce((term: string, municipioId: number) => searchBarrios(term, municipioId), 300),
+    [searchBarrios]
+  );
+
+  const debouncedSectorSearch = useCallback(
+    debounce((term: string, barrioId: number) => searchSectores(term, barrioId), 300),
+    [searchSectores]
+  );
+
+  // Enhance the municipio selection handler to load barrios
   const handleMunicipioSelect = useCallback((index: number, value: string) => {
-    setValue(`properties.${index}.municipioId`, value)
+    setValue(`properties.${index}.municipioId`, value);
     // Reset barrio and sector when municipio changes
-    setValue(`properties.${index}.barrioId`, "")
-    setValue(`properties.${index}.sectorId`, "")
+    setValue(`properties.${index}.barrioId`, "");
+    setValue(`properties.${index}.sectorId`, "");
+    
+    const municipioId = Number(value);
     setSelectedMunicipios(prev => ({
       ...prev,
-      [index]: Number(value)
-    }))
-  }, [setValue])
+      [index]: municipioId
+    }));
+    
+    // Clear previous barrio and sector selections
+    setSelectedBarrios({});
+    
+    // Load all barrios for this municipio with empty search
+    if (municipioId) {
+      searchBarrios("", municipioId);
+    }
+  }, [setValue, searchBarrios]);
   
-  // Add barrio selection handler
-  const handleBarrioSelect = useCallback((index: number, value: string) => {
-    setValue(`properties.${index}.barrioId`, value)
+  // Update barrio selection handler to load sectors
+  const handleBarrioSelect = useCallback((index: number, value: string, isNewBarrio: boolean = false) => {
+    setValue(`properties.${index}.barrioId`, value);
     // Reset sector when barrio changes
-    setValue(`properties.${index}.sectorId`, "")
-    setSelectedBarrios(prev => ({
-      ...prev,
-      [index]: Number(value)
-    }))
-  }, [setValue])
-  
+    setValue(`properties.${index}.sectorId`, "");
+    
+    // Don't try to load sectors for a new barrio being created
+    if (!isNewBarrio && value !== "new") {
+      const barrioId = Number(value);
+      setSelectedBarrios(prev => ({
+        ...prev,
+        [index]: barrioId
+      }));
+      
+      // Load all sectors for this barrio with empty search
+      if (barrioId) {
+        searchSectores("", barrioId);
+      }
+    }
+  }, [setValue, searchSectores]);
+
   // Add event search function
   const searchEvents = useCallback(async (searchTerm: string) => {
     if (!searchTerm || searchTerm.length < 2) {
@@ -408,50 +477,72 @@ export function ReportForm() {
     }
   }, [setValue])
 
-  // Update the onSubmit function
+  // Update the searchFamilies function to allow empty searches
+  const searchFamilies = useCallback(async (searchTerm: string = '') => {
+    setIsSearchingFamily(true);
+    try {
+      const response = await fetch(`/api/families/search?term=${encodeURIComponent(searchTerm)}`);
+      if (!response.ok) throw new Error('Failed to search families');
+      const data = await response.json();
+      setFamilySearchResults(data);
+    } catch (error) {
+      console.error('Error searching families:', error);
+      setFamilySearchResults([]);
+    } finally {
+      setIsSearchingFamily(false);
+    }
+  }, []);
+
+  // Update the debounced family search to handle empty searches
+  const debouncedFamilySearch = useCallback(
+    debounce((term: string = '') => searchFamilies(term), 300),
+    [searchFamilies]
+  );
+
+  // Update the onSubmit function to properly reset the form after successful submission
   const onSubmit = useCallback(async (values: z.infer<typeof formSchema>) => {
     try {
-      setIsSubmitting(true)
+      setIsSubmitting(true);
       
       // Validate USNG code before submission
-      const isValidUsng = await validateUsngCode(values.usngCode)
+      const isValidUsng = await validateUsngCode(values.usngCode);
       if (!isValidUsng) {
-        window.alert('Please enter a valid USNG code')
-        return
+        window.alert('Please enter a valid USNG code');
+        return;
       }
       
       // Get USNG ID from the code before submitting
-      let usngId = null
+      let usngId = null;
       try {
-        console.log('Getting USNG ID for code:', values.usngCode)
-        const usngResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(values.usngCode)}`)
+        console.log('Getting USNG ID for code:', values.usngCode);
+        const usngResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(values.usngCode)}`);
         if (usngResponse.ok) {
-          const usngData = await usngResponse.json()
-          console.log('Retrieved USNG data:', usngData)
-          usngId = usngData.id
+          const usngData = await usngResponse.json();
+          console.log('Retrieved USNG data:', usngData);
+          usngId = usngData.id;
         } else {
           // Handle error case - try uppercase version if original failed
-          console.warn('USNG code not found, trying uppercase version:', values.usngCode)
-          const uppercaseCode = values.usngCode.toUpperCase()
+          console.warn('USNG code not found, trying uppercase version:', values.usngCode);
+          const uppercaseCode = values.usngCode.toUpperCase();
           if (uppercaseCode !== values.usngCode) {
-            const retryResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(uppercaseCode)}`)
+            const retryResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(uppercaseCode)}`);
             if (retryResponse.ok) {
-              const usngData = await retryResponse.json()
-              console.log('Retrieved USNG data with uppercase:', usngData)
-              usngId = usngData.id
+              const usngData = await retryResponse.json();
+              console.log('Retrieved USNG data with uppercase:', usngData);
+              usngId = usngData.id;
             } else {
-              console.error('USNG code not found even with uppercase:', uppercaseCode)
-              const errorData = await retryResponse.json()
-              console.error('Error details:', errorData)
+              console.error('USNG code not found even with uppercase:', uppercaseCode);
+              const errorData = await retryResponse.json();
+              console.error('Error details:', errorData);
             }
           }
         }
       } catch (error) {
-        console.error('Error fetching USNG ID:', error)
+        console.error('Error fetching USNG ID:', error);
       }
       
       if (!usngId) {
-        console.warn('No USNG ID found, continuing without it')
+        console.warn('No USNG ID found, continuing without it');
       }
       
       // Format the data to match new Prisma schema
@@ -534,17 +625,33 @@ export function ReportForm() {
             propertyData.id_sector = parseInt(property.sectorId);
           }
 
-          // Add habitantes
+          // Add habitantes with family information
           propertyData.habitantes = {
-            create: property.habitantes?.map(habitante => ({
-              nombre: habitante.nombre,
-              categoria: habitante.categoria,
-              rol: habitante.rol,
-              edad: parseInt(habitante.edad),
-              limitacion: habitante.limitacion,
-              condicion: habitante.condicion,
-              disposicion: habitante.disposicion,
-            })) || []
+            create: property.habitantes?.map(habitante => {
+              const habitanteData: any = {
+                name: habitante.name,
+                categoria: habitante.categoria,
+                rol: habitante.rol,
+                age: parseInt(habitante.age),
+                limitation: habitante.limitation,
+                condition: habitante.condition,
+                disposition: habitante.disposition,
+              };
+
+              // Handle family connection
+              if (habitante.familyId === "new" && habitante.newFamilyApellidos) {
+                // Create a new family
+                habitanteData.newFamily = {
+                  apellidos: habitante.newFamilyApellidos,
+                  description: habitante.newFamilyDescription || ""
+                };
+              } else if (habitante.familyId !== "new") {
+                // Link to existing family
+                habitanteData.family_id = parseInt(habitante.familyId);
+              }
+
+              return habitanteData;
+            }) || []
           };
 
           return {
@@ -554,9 +661,9 @@ export function ReportForm() {
             }
           };
         })
-      }
+      };
       
-      console.log('Submitting formatted data:', formattedData)
+      console.log('Submitting formatted data:', formattedData);
 
       const response = await fetch('/api/eventos', {
         method: 'POST',
@@ -564,42 +671,50 @@ export function ReportForm() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formattedData),
-      })
+      });
       
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || `Server responded with ${response.status}`)
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Server responded with ${response.status}`);
       }
       
-      const responseData = await response.json()
-      console.log('Event submitted successfully:', responseData)
+      const responseData = await response.json();
+      console.log('Event submitted successfully:', responseData);
       
-      window.alert('Event submitted successfully!')
+      window.alert('Event submitted successfully!');
       
-      // Reset form
-      handleEventSelect(null)
-      setValue("notificationNumber", generateNotificationNumber())
-      setValue("eventName", "")
-      setValue("date", new Date().toISOString().split('T')[0])
-      setValue("time", "")
-      setValue("usngCode", "")
-      setValue("tipo", incidentTypes[0])
-      setValue("estado", "pending")
-      setValue("incidents", [{ type: incidentTypes[0], description: "", cuencaId: "" }])
-      setValue("properties", [{ type: propertyTypes[0], municipioId: "", address: "", habitantes: [] }])
-      setValue("cuencaIds", [])
+      // Reset form completely using react-hook-form's reset method
+      handleEventSelect(null);
+      setSelectedMunicipios({});
+      setSelectedBarrios({});
+      setBarrioSearchResults([]);
+      setSectorSearchResults([]);
+      setFamilySearchResults([]);
       
-      // Reset selected states
-      setSelectedMunicipios({})
-      setSelectedBarrios({})
+      // Reset form with default values
+      reset({
+        notificationNumber: generateNotificationNumber(),
+        date: new Date().toISOString().split('T')[0],
+        usngCode: "",
+        tipo: incidentTypes[0],
+        estado: "pending" as const,
+        incidents: [{ type: incidentTypes[0], description: "", cuencaId: "" }],
+        properties: [{ 
+          type: propertyTypes[0],
+          municipioId: "", 
+          address: "",
+          habitantes: [],
+        }],
+        cuencaIds: [] as string[],
+      });
       
     } catch (error) {
-      console.error('Error submitting event:', error)
-      window.alert(`Failed to submit event: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Error submitting event:', error);
+      window.alert(`Failed to submit event: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }, [validateUsngCode, setValue, selectedEvent, handleEventSelect])
+  }, [validateUsngCode, reset, selectedEvent, handleEventSelect, setSelectedMunicipios, setSelectedBarrios, setBarrioSearchResults, setSectorSearchResults, setFamilySearchResults]);
 
   // Handlers
   const handleAddIncident = useCallback(() => {
@@ -650,58 +765,6 @@ export function ReportForm() {
     })
     return () => subscription.unsubscribe()
   }, [watch])
-
-  // Add these functions after the existing functions
-  const searchBarrios = useCallback(async (searchTerm: string, municipioId: number) => {
-    if (!searchTerm || searchTerm.length < 2) {
-      setBarrioSearchResults([])
-      return
-    }
-
-    setIsSearchingBarrio(true)
-    try {
-      const response = await fetch(`/api/barrios/search?term=${encodeURIComponent(searchTerm)}&municipioId=${municipioId}`)
-      if (!response.ok) throw new Error('Failed to search barrios')
-      const data = await response.json()
-      setBarrioSearchResults(data)
-    } catch (error) {
-      console.error('Error searching barrios:', error)
-      setBarrioSearchResults([])
-    } finally {
-      setIsSearchingBarrio(false)
-    }
-  }, [])
-
-  const searchSectores = useCallback(async (searchTerm: string, barrioId: number) => {
-    if (!searchTerm || searchTerm.length < 2) {
-      setSectorSearchResults([])
-      return
-    }
-
-    setIsSearchingSector(true)
-    try {
-      const response = await fetch(`/api/sectores/search?term=${encodeURIComponent(searchTerm)}&barrioId=${barrioId}`)
-      if (!response.ok) throw new Error('Failed to search sectores')
-      const data = await response.json()
-      setSectorSearchResults(data)
-    } catch (error) {
-      console.error('Error searching sectores:', error)
-      setSectorSearchResults([])
-    } finally {
-      setIsSearchingSector(false)
-    }
-  }, [])
-
-  // Debounce the search functions
-  const debouncedBarrioSearch = useCallback(
-    debounce((term: string, municipioId: number) => searchBarrios(term, municipioId), 300),
-    [searchBarrios]
-  )
-
-  const debouncedSectorSearch = useCallback(
-    debounce((term: string, barrioId: number) => searchSectores(term, barrioId), 300),
-    [searchSectores]
-  )
 
   // Loading state
   if (loading) {
@@ -1038,7 +1101,7 @@ export function ReportForm() {
                     <TextField
                       {...params}
                       {...field} 
-                      label="USNG Code"
+                      label="USNG Coordinates"
                       variant="outlined"
                       fullWidth
                       error={!!errors.usngCode}
@@ -1255,7 +1318,7 @@ export function ReportForm() {
                             renderInput={(params) => (
                               <TextField
                                 {...params}
-                                label="Municipio"
+                                label="Municipality"
                                 error={!!errors.properties?.[index]?.municipioId}
                                 helperText={errors.properties?.[index]?.municipioId?.message}
                                 required
@@ -1282,28 +1345,29 @@ export function ReportForm() {
                                   typeof option === 'string' ? option : option.nombre
                                 }
                                 loading={isSearchingBarrio}
-                                value={selectedBarrio}
+                                // Don't use a value from state, use the field value to get the selected option
+                                value={field.value === "new" 
+                                  ? null 
+                                  : barrioSearchResults.find(b => String(b.id_barrio) === field.value) || null}
                                 onChange={(_, newValue) => {
                                   if (typeof newValue === 'string') {
                                     field.onChange(newValue);
+                                  } else if (newValue) {
+                                    field.onChange(String(newValue.id_barrio));
+                                    handleBarrioSelect(index, String(newValue.id_barrio));
                                   } else {
-                                    setSelectedBarrio(newValue as BarrioSearchResult | null);
-                                    if (newValue) {
-                                      field.onChange(String(newValue.id_barrio));
-                                      handleBarrioSelect(index, String(newValue.id_barrio));
-                                    }
+                                    field.onChange("");
                                   }
                                 }}
                                 onInputChange={(_, newValue) => {
                                   if (selectedMunicipios[index]) {
-                                    field.onChange(newValue);
                                     debouncedBarrioSearch(newValue, selectedMunicipios[index]);
                                   }
                                 }}
                                 renderInput={(params) => (
-                                <TextField
+                                  <TextField
                                     {...params}
-                                    label="Barrio"
+                                    label="Neighborhood"
                                     error={!!errors.properties?.[index]?.barrioId}
                                     helperText={errors.properties?.[index]?.barrioId?.message}
                                     InputProps={{
@@ -1314,8 +1378,8 @@ export function ReportForm() {
                                           {params.InputProps.endAdornment}
                                         </>
                                       ),
-                                  }}
-                                />
+                                    }}
+                                  />
                                 )}
                                 renderOption={(props, option) => (
                                   <li {...props}>
@@ -1330,18 +1394,18 @@ export function ReportForm() {
                                   </li>
                                 )}
                               />
-                                <Button
+                              <Button
                                 size="small"
                                 onClick={() => {
                                   setValue(`properties.${index}.barrioId`, "new");
-                                  setSelectedBarrio(null);
+                                  handleBarrioSelect(index, "new", true);
                                 }}
                                 sx={{ mt: 1 }}
                               >
-                                + Add New Barrio
-                                </Button>
+                                + Add New Neighborhood
+                              </Button>
                             </FormControl>
-                        )}
+                          )}
                         />
                       </Grid>
                       
@@ -1356,7 +1420,7 @@ export function ReportForm() {
                               render={({ field }) => (
                                 <TextField
                                   {...field}
-                                  label="New Barrio Name"
+                                  label="New Neighborhood Name"
                                   variant="outlined"
                                   fullWidth
                                   required
@@ -1372,7 +1436,7 @@ export function ReportForm() {
                               render={({ field }) => (
                                 <TextField
                                   {...field}
-                                  label="New Barrio Code (Optional)"
+                                  label="New Neighborhood Code (Optional)"
                                   variant="outlined"
                                   fullWidth
                                 />
@@ -1397,25 +1461,26 @@ export function ReportForm() {
                                     typeof option === 'string' ? option : option.nombre
                                   }
                                   loading={isSearchingSector}
-                                  value={selectedSector}
+                                  // Don't use a value from state, use the field value to get the selected option
+                                  value={field.value === "new" 
+                                    ? null 
+                                    : sectorSearchResults.find(s => String(s.id_sector) === field.value) || null}
                                   onChange={(_, newValue) => {
                                     if (typeof newValue === 'string') {
                                       field.onChange(newValue);
+                                    } else if (newValue) {
+                                      field.onChange(String(newValue.id_sector));
                                     } else {
-                                      setSelectedSector(newValue as SectorSearchResult | null);
-                                      if (newValue) {
-                                        field.onChange(String(newValue.id_sector));
-                                      }
+                                      field.onChange("");
                                     }
                                   }}
                                   onInputChange={(_, newValue) => {
                                     if (selectedBarrios[index]) {
-                                      field.onChange(newValue);
                                       debouncedSectorSearch(newValue, selectedBarrios[index]);
                                     }
                                   }}
                                   renderInput={(params) => (
-                                  <TextField
+                                    <TextField
                                       {...params}
                                       label="Sector"
                                       error={!!errors.properties?.[index]?.sectorId}
@@ -1428,8 +1493,8 @@ export function ReportForm() {
                                             {params.InputProps.endAdornment}
                                           </>
                                         ),
-                                    }}
-                                  />
+                                      }}
+                                    />
                                   )}
                                   renderOption={(props, option) => (
                                     <li {...props}>
@@ -1444,18 +1509,17 @@ export function ReportForm() {
                                     </li>
                                   )}
                                 />
-                                  <Button
+                                <Button
                                   size="small"
                                   onClick={() => {
                                     setValue(`properties.${index}.sectorId`, "new");
-                                    setSelectedSector(null);
                                   }}
                                   sx={{ mt: 1 }}
                                 >
                                   + Add New Sector
-                                  </Button>
+                                </Button>
                               </FormControl>
-                          )}
+                            )}
                           />
                         </Grid>
                       )}
@@ -1518,32 +1582,33 @@ export function ReportForm() {
 
                   {/* Habitantes Section */}
                   <Box mt={2}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Habitantes
-                      <Button
-                        size="small"
-                        startIcon={<AddIcon />}
-                        onClick={() => {
-                          const currentProperties = getValues("properties");
-                          const currentHabitantes = currentProperties[index].habitantes || [];
-                          setValue(`properties.${index}.habitantes`, [
-                            ...currentHabitantes,
-                            {
-                              nombre: "",
-                              categoria: habitanteCategories[0],
-                              rol: habitanteRoles[0],
-                              edad: "",
-                              limitacion: "",
-                              condicion: "",
-                              disposicion: "",
-                            }
-                          ]);
-                        }}
-                        sx={{ ml: 1 }}
-                      >
-                        Add Habitante
-                      </Button>
-                    </Typography>
+                    <Typography variant="h6">Residents</Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<AddIcon />}
+                      onClick={() => {
+                        const currentProperties = getValues("properties");
+                        const currentHabitantes = currentProperties[index].habitantes || [];
+                        setValue(`properties.${index}.habitantes`, [
+                          ...currentHabitantes,
+                          {
+                            name: "",
+                            categoria: "Adult",
+                            rol: "Resident",
+                            age: "",
+                            limitation: "",
+                            condition: "",
+                            disposition: "",
+                            familyId: "",
+                            newFamilyApellidos: "",
+                            newFamilyDescription: "",
+                          }
+                        ]);
+                      }}
+                      size="small"
+                    >
+                      Add Resident
+                    </Button>
                     
                     <Controller
                       name={`properties.${index}.habitantes`}
@@ -1551,26 +1616,47 @@ export function ReportForm() {
                       defaultValue={[]}
                       render={({ field }) => (
                         <Box sx={{ mt: 1 }}>
-                          {field.value?.map((_, habitanteIndex) => (
+                          {field.value?.map((habitante, habitanteIndex) => (
                             <Card key={habitanteIndex} variant="outlined" sx={{ mb: 2, p: 2 }}>
                               <Grid container spacing={2}>
                                 <Grid item xs={12} md={6}>
                                   <TextField
+                                    label="Name"
+                                    variant="outlined"
                                     fullWidth
-                                    label="Nombre"
-                                    value={field.value[habitanteIndex].nombre}
+                                    value={habitante.name || ""}
                                     onChange={(e) => {
                                       const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].nombre = e.target.value;
+                                      newHabitantes[habitanteIndex].name = e.target.value;
                                       field.onChange(newHabitantes);
                                     }}
+                                    error={!!errors.properties?.[index]?.habitantes?.[habitanteIndex]?.name}
+                                    helperText={errors.properties?.[index]?.habitantes?.[habitanteIndex]?.name?.message}
+                                    required
                                   />
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid item xs={12} md={3}>
+                                  <TextField
+                                    label="Age"
+                                    variant="outlined"
+                                    fullWidth
+                                    type="number"
+                                    InputProps={{ inputProps: { min: 0 } }}
+                                    value={habitante.age || ""}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].age = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                    error={!!errors.properties?.[index]?.habitantes?.[habitanteIndex]?.age}
+                                    helperText={errors.properties?.[index]?.habitantes?.[habitanteIndex]?.age?.message}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={3}>
                                   <FormControl fullWidth>
-                                    <InputLabel>Categoría</InputLabel>
+                                    <InputLabel>Category</InputLabel>
                                     <Select
-                                      value={field.value[habitanteIndex].categoria}
+                                      value={habitante.categoria}
                                       onChange={(e) => {
                                         const newHabitantes = [...field.value];
                                         const value = e.target.value;
@@ -1579,7 +1665,7 @@ export function ReportForm() {
                                           field.onChange(newHabitantes);
                                         }
                                       }}
-                                      label="Categoría"
+                                      label="Category"
                                     >
                                       {habitanteCategories.map((cat) => (
                                         <MenuItem key={cat} value={cat}>{cat}</MenuItem>
@@ -1587,11 +1673,11 @@ export function ReportForm() {
                                     </Select>
                                   </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid item xs={12} md={3}>
                                   <FormControl fullWidth>
-                                    <InputLabel>Rol</InputLabel>
+                                    <InputLabel>Role</InputLabel>
                                     <Select
-                                      value={field.value[habitanteIndex].rol}
+                                      value={habitante.rol}
                                       onChange={(e) => {
                                         const newHabitantes = [...field.value];
                                         const value = e.target.value;
@@ -1600,7 +1686,7 @@ export function ReportForm() {
                                           field.onChange(newHabitantes);
                                         }
                                       }}
-                                      label="Rol"
+                                      label="Role"
                                     >
                                       {habitanteRoles.map((rol) => (
                                         <MenuItem key={rol} value={rol}>{rol}</MenuItem>
@@ -1608,55 +1694,191 @@ export function ReportForm() {
                                     </Select>
                                   </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
-                                  <TextField
-                                    fullWidth
-                                    label="Edad"
-                                    type="number"
-                                    value={field.value[habitanteIndex].edad}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].edad = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                  />
+                                
+                                {/* Family Section */}
+                                <Grid item xs={12}>
+                                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                                    Family Information (Required)
+                                  </Typography>
+                                  <FormControl fullWidth error={!habitante.familyId}>
+                                    <Autocomplete
+                                      freeSolo
+                                      options={familySearchResults}
+                                      getOptionLabel={(option) =>
+                                        typeof option === 'string' ? option : option.apellidos
+                                      }
+                                      loading={isSearchingFamily}
+                                      value={habitante.familyId === "new" ? 
+                                        { id: -1, apellidos: habitante.newFamilyApellidos || "New Family", description: "" } :
+                                        familySearchResults.find(f => String(f.id) === habitante.familyId) || null
+                                      }
+                                      onChange={(_, newValue) => {
+                                        const newHabitantes = [...field.value];
+                                        if (typeof newValue === 'string') {
+                                          // Handle string input (not an option from the list)
+                                          newHabitantes[habitanteIndex].familyId = "new";
+                                          newHabitantes[habitanteIndex].newFamilyApellidos = newValue;
+                                        } else if (newValue && 'id' in newValue) {
+                                          // Selected an existing family
+                                          newHabitantes[habitanteIndex].familyId = String(newValue.id);
+                                          // Clear new family fields
+                                          newHabitantes[habitanteIndex].newFamilyApellidos = "";
+                                          newHabitantes[habitanteIndex].newFamilyDescription = "";
+                                        } else {
+                                          // Cleared the selection
+                                          newHabitantes[habitanteIndex].familyId = "";
+                                        }
+                                        field.onChange(newHabitantes);
+                                      }}
+                                      onInputChange={(_, newValue) => {
+                                        debouncedFamilySearch(newValue);
+                                      }}
+                                      onFocus={() => {
+                                        // Load all families on focus if we don't have any loaded
+                                        if (familySearchResults.length === 0) {
+                                          searchFamilies('');
+                                        }
+                                      }}
+                                      renderInput={(params) => (
+                                        <TextField
+                                          {...params}
+                                          label="Family Last Names"
+                                          placeholder="Search or create a new family"
+                                          required
+                                          error={!habitante.familyId}
+                                          helperText={!habitante.familyId ? "Family is required" : ""}
+                                          InputProps={{
+                                            ...params.InputProps,
+                                            endAdornment: (
+                                              <>
+                                                {isSearchingFamily && <CircularProgress size={20} />}
+                                                {params.InputProps.endAdornment}
+                                              </>
+                                            ),
+                                          }}
+                                        />
+                                      )}
+                                      renderOption={(props, option) => (
+                                        <li {...props}>
+                                          <Box>
+                                            <Typography variant="body1">{option.apellidos}</Typography>
+                                            {option.description && (
+                                              <Typography variant="caption" color="textSecondary">
+                                                {option.description}
+                                              </Typography>
+                                            )}
+                                          </Box>
+                                        </li>
+                                      )}
+                                    />
+                                    <Button
+                                      size="small"
+                                      onClick={() => {
+                                        const newHabitantes = [...field.value];
+                                        // Toggle between new and empty
+                                        if (newHabitantes[habitanteIndex].familyId === "new") {
+                                          newHabitantes[habitanteIndex].familyId = "";
+                                        } else {
+                                          newHabitantes[habitanteIndex].familyId = "new";
+                                        }
+                                        field.onChange(newHabitantes);
+                                      }}
+                                      sx={{ mt: 1 }}
+                                      disabled={Boolean(habitante.familyId && habitante.familyId !== "new" && habitante.familyId !== "")}
+                                    >
+                                      + Create New Family
+                                    </Button>
+                                  </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+
+                                {/* New Family fields - shown when "new" is selected */}
+                                {habitante.familyId === "new" && (
+                                  <>
+                                    <Grid item xs={12} md={6}>
+                                      <TextField
+                                        fullWidth
+                                        label="New Family Last Names"
+                                        required
+                                        value={habitante.newFamilyApellidos || ""}
+                                        onChange={(e) => {
+                                          const newHabitantes = [...field.value];
+                                          newHabitantes[habitanteIndex].newFamilyApellidos = e.target.value;
+                                          field.onChange(newHabitantes);
+                                        }}
+                                        error={!habitante.newFamilyApellidos}
+                                        helperText={!habitante.newFamilyApellidos ? "Last names required" : ""}
+                                      />
+                                    </Grid>
+                                    <Grid item xs={12} md={6}>
+                                      <TextField
+                                        fullWidth
+                                        label="Family Description"
+                                        value={habitante.newFamilyDescription || ""}
+                                        onChange={(e) => {
+                                          const newHabitantes = [...field.value];
+                                          newHabitantes[habitanteIndex].newFamilyDescription = e.target.value;
+                                          field.onChange(newHabitantes);
+                                        }}
+                                        placeholder="Example: Family of 4 members"
+                                      />
+                                    </Grid>
+                                  </>
+                                )}
+                                
+                                <Grid item xs={12}>
                                   <TextField
                                     fullWidth
-                                    label="Limitación"
-                                    value={field.value[habitanteIndex].limitacion}
+                                    label="Limitation"
+                                    value={habitante.limitation || ""}
                                     onChange={(e) => {
                                       const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].limitacion = e.target.value;
+                                      newHabitantes[habitanteIndex].limitation = e.target.value;
                                       field.onChange(newHabitantes);
                                     }}
-                                  />
-                                </Grid>
-                                <Grid item xs={12} md={6}>
-                                  <TextField
-                                    fullWidth
-                                    label="Condición"
-                                    value={field.value[habitanteIndex].condicion}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].condicion = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
+                                    placeholder="Physical limitations, if any"
                                   />
                                 </Grid>
                                 <Grid item xs={12}>
                                   <TextField
                                     fullWidth
-                                    label="Disposición"
-                                    value={field.value[habitanteIndex].disposicion}
+                                    label="Condition"
+                                    value={habitante.condition || ""}
                                     onChange={(e) => {
                                       const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].disposicion = e.target.value;
+                                      newHabitantes[habitanteIndex].condition = e.target.value;
                                       field.onChange(newHabitantes);
                                     }}
+                                    placeholder="Health conditions, if any"
                                   />
                                 </Grid>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    fullWidth
+                                    label="Disposition"
+                                    value={habitante.disposition || ""}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].disposition = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                    placeholder="Current disposition/status"
+                                  />
+                                </Grid>
+                                {habitanteIndex > 0 && (
+                                  <Grid item xs={12} display="flex" justifyContent="flex-end">
+                                    <Button 
+                                      variant="outlined" 
+                                      color="error"
+                                      size="small"
+                                      onClick={() => {
+                                        const newHabitantes = field.value.filter((_, idx) => idx !== habitanteIndex);
+                                        field.onChange(newHabitantes);
+                                      }}
+                                    >
+                                      Remove Resident
+                                    </Button>
+                                  </Grid>
+                                )}
                               </Grid>
                             </Card>
                           ))}
