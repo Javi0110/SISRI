@@ -1035,6 +1035,26 @@ export function DataAnalytics() {
               padding-top: 5px;
               text-align: center;
             }
+            .residents-table {
+              margin-top: 5px;
+              margin-bottom: 15px;
+              margin-left: 30px;
+              width: calc(100% - 30px);
+              font-size: 0.9em;
+            }
+            .residents-table th {
+              background-color: #f8f8f8;
+              font-size: 0.9em;
+              padding: 6px;
+            }
+            .residents-table td {
+              padding: 6px;
+              border: 1px solid #eee;
+            }
+            .property-divider {
+              margin: 15px 0;
+              border-top: 1px dashed #ccc;
+            }
           </style>
         </head>
         <body>
@@ -1146,6 +1166,52 @@ export function DataAnalytics() {
                         ${property.habitantes.length}
                       </td>
                     </tr>
+                    ${property.habitantes.length > 0 ? `
+                    <tr>
+                      <td colspan="7" style="padding: 0;">
+                        <table class="residents-table">
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>Name</th>
+                              <th>Age</th>
+                              <th>Category</th>
+                              <th>Family</th>
+                              <th>Contact</th>
+                              <th>Limitation</th>
+                              <th>Condition</th>
+                              <th>Disposition</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${(sortConfigs ? sortData(property.habitantes) : property.habitantes).map((resident) => `
+                              <tr>
+                                <td>
+                                  <span class="badge badge-outline">${resident.family_id || '0'}-${resident.id}</span>
+                                </td>
+                                <td>${resident.nombre}</td>
+                                <td>${resident.edad}</td>
+                                <td>
+                                  <span class="badge badge-outline">${resident.categoria}</span>
+                                </td>
+                                <td>
+                                  ${resident.family ? 
+                                    `<span class="badge">${resident.family.apellidos}</span>` : 
+                                    `<span style="color: #666; font-size: 0.9em;">No family</span>`
+                                  }
+                                </td>
+                                <td>${resident.contacto || 'N/A'}</td>
+                                <td>${resident.limitacion || 'N/A'}</td>
+                                <td>${resident.condicion || 'N/A'}</td>
+                                <td>${resident.disposicion || 'N/A'}</td>
+                              </tr>
+                            `).join('')}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr><td colspan="7" class="property-divider"></td></tr>
+                    ` : ''}
                   `).join('')}
                 </tbody>
               </table>
