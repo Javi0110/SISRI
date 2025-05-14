@@ -8,7 +8,8 @@ import { debounce } from "lodash"
 
 // Material UI imports
 import {
-  Add as AddIcon
+  Add as AddIcon,
+  Phone
 } from "@mui/icons-material"
 import {
   Autocomplete,
@@ -21,6 +22,7 @@ import {
   FormControl,
   FormHelperText,
   Grid,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -62,6 +64,12 @@ const habitanteRoles = [
   "Owner",
   "Tenant",
   "Visitor"
+] as const
+
+// Add sex options
+const sexOptions = [
+  "Male",
+  "Female"
 ] as const
 
 // Types
@@ -156,14 +164,19 @@ const formSchema = z.object({
     }).optional(),
     habitantes: z.array(z.object({
       name: z.string(),
+      apellido1: z.string(),
+      apellido2: z.string().optional(),
+      sex: z.enum(sexOptions),
       categoria: z.enum(habitanteCategories),
       rol: z.enum(habitanteRoles),
       age: z.string(),
       limitation: z.string().optional(),
       condition: z.string().optional(),
       disposition: z.string().optional(),
+      contacto: z.string().optional(),
       familyId: z.string().min(1, "Family is required"),
-      newFamilyApellidos: z.string().optional(),
+      newFamilyApellido1: z.string().optional(),
+      newFamilyApellido2: z.string().optional(),
       newFamilyDescription: z.string().optional(),
     })).optional().default([]),
   })).min(1, "At least one property must be added"),
@@ -484,7 +497,22 @@ export function ReportForm() {
       const response = await fetch(`/api/families/search?term=${encodeURIComponent(searchTerm)}`);
       if (!response.ok) throw new Error('Failed to search families');
       const data = await response.json();
-      setFamilySearchResults(data);
+      
+      // If the API still returns apellidos field, adapt it to the new structure
+      const formattedData = data.map((family: any) => {
+        if (family.apellidos && !family.apellido1) {
+          // Split the apellidos into apellido1 and apellido2
+          const parts = family.apellidos.split(' ');
+          return {
+            ...family,
+            apellido1: parts[0] || '',
+            apellido2: parts.slice(1).join(' ') || '',
+          };
+        }
+        return family;
+      });
+      
+      setFamilySearchResults(formattedData);
     } catch (error) {
       console.error('Error searching families:', error);
       setFamilySearchResults([]);
@@ -630,21 +658,33 @@ export function ReportForm() {
             create: property.habitantes?.map(habitante => {
               const habitanteData: any = {
                 name: habitante.name,
+                apellido1: habitante.apellido1,
+                apellido2: habitante.apellido2 || "",
+                sex: habitante.sex,
                 categoria: habitante.categoria,
                 rol: habitante.rol,
                 age: parseInt(habitante.age),
                 limitation: habitante.limitation,
                 condition: habitante.condition,
                 disposition: habitante.disposition,
+                contacto: habitante.contacto,
               };
 
-              // Handle family connection
-              if (habitante.familyId === "new" && habitante.newFamilyApellidos) {
-                // Create a new family
-                habitanteData.newFamily = {
-                  apellidos: habitante.newFamilyApellidos,
-                  description: habitante.newFamilyDescription || ""
-                };
+              // For family information, use the apellidos from the habitante
+              if (habitante.familyId === "new") {
+                // Create a new family using the habitante's apellidos
+                if (habitante.newFamilyApellido1) {
+                  habitanteData.newFamily = {
+                    apellidos: `${habitante.newFamilyApellido1} ${habitante.newFamilyApellido2 || ""}`,
+                    description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
+                  };
+                } else {
+                  // Use the habitante's last names if no specific family names provided
+                  habitanteData.newFamily = {
+                    apellidos: `${habitante.apellido1} ${habitante.apellido2 || ""}`,
+                    description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
+                  };
+                }
               } else if (habitante.familyId !== "new") {
                 // Link to existing family
                 habitanteData.family_id = parseInt(habitante.familyId);
@@ -1383,10 +1423,14 @@ export function ReportForm() {
                                 )}
                                 renderOption={(props, option) => (
                                   <li {...props}>
-                                    <Box>
-                                      <Typography variant="body1">{option.nombre}</Typography>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                      <Typography variant="body1">
+                                        <Typography component="span" fontWeight="bold">
+                                          {option.nombre}
+                                        </Typography>
+                                      </Typography>
                                       {option.codigo_barrio && (
-                                        <Typography variant="caption" color="textSecondary">
+                                        <Typography variant="caption" color="text.secondary">
                                           Código: {option.codigo_barrio}
                                         </Typography>
                                       )}
@@ -1498,10 +1542,14 @@ export function ReportForm() {
                                   )}
                                   renderOption={(props, option) => (
                                     <li {...props}>
-                                      <Box>
-                                        <Typography variant="body1">{option.nombre}</Typography>
+                                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                        <Typography variant="body1">
+                                          <Typography component="span" fontWeight="bold">
+                                            {option.nombre}
+                                          </Typography>
+                                        </Typography>
                                         {option.codigo_sector && (
-                                          <Typography variant="caption" color="textSecondary">
+                                          <Typography variant="caption" color="text.secondary">
                                             Código: {option.codigo_sector}
                                           </Typography>
                                         )}
@@ -1579,318 +1627,503 @@ export function ReportForm() {
                       </Grid>
                     </>
                   )}
-
-                  {/* Habitantes Section */}
-                  <Box mt={2}>
-                    <Typography variant="h6">Residents</Typography>
-                    <Button
-                      variant="outlined"
-                      startIcon={<AddIcon />}
-                      onClick={() => {
-                        const currentProperties = getValues("properties");
-                        const currentHabitantes = currentProperties[index].habitantes || [];
-                        setValue(`properties.${index}.habitantes`, [
-                          ...currentHabitantes,
-                          {
-                            name: "",
-                            categoria: "Adult",
-                            rol: "Resident",
-                            age: "",
-                            limitation: "",
-                            condition: "",
-                            disposition: "",
-                            familyId: "",
-                            newFamilyApellidos: "",
-                            newFamilyDescription: "",
-                          }
-                        ]);
-                      }}
-                      size="small"
-                    >
-                      Add Resident
-                    </Button>
-                    
-                    <Controller
-                      name={`properties.${index}.habitantes`}
-                      control={control}
-                      defaultValue={[]}
-                      render={({ field }) => (
-                        <Box sx={{ mt: 1 }}>
-                          {field.value?.map((habitante, habitanteIndex) => (
-                            <Card key={habitanteIndex} variant="outlined" sx={{ mb: 2, p: 2 }}>
-                              <Grid container spacing={2}>
-                                <Grid item xs={12} md={6}>
-                                  <TextField
-                                    label="Name"
-                                    variant="outlined"
-                                    fullWidth
-                                    value={habitante.name || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].name = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    error={!!errors.properties?.[index]?.habitantes?.[habitanteIndex]?.name}
-                                    helperText={errors.properties?.[index]?.habitantes?.[habitanteIndex]?.name?.message}
-                                    required
-                                  />
-                                </Grid>
-                                <Grid item xs={12} md={3}>
-                                  <TextField
-                                    label="Age"
-                                    variant="outlined"
-                                    fullWidth
-                                    type="number"
-                                    InputProps={{ inputProps: { min: 0 } }}
-                                    value={habitante.age || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].age = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    error={!!errors.properties?.[index]?.habitantes?.[habitanteIndex]?.age}
-                                    helperText={errors.properties?.[index]?.habitantes?.[habitanteIndex]?.age?.message}
-                                  />
-                                </Grid>
-                                <Grid item xs={12} md={3}>
-                                  <FormControl fullWidth>
-                                    <InputLabel>Category</InputLabel>
-                                    <Select
-                                      value={habitante.categoria}
-                                      onChange={(e) => {
-                                        const newHabitantes = [...field.value];
-                                        const value = e.target.value;
-                                        if (habitanteCategories.includes(value as any)) {
-                                          newHabitantes[habitanteIndex].categoria = value as (typeof habitanteCategories)[number];
-                                          field.onChange(newHabitantes);
-                                        }
-                                      }}
-                                      label="Category"
-                                    >
-                                      {habitanteCategories.map((cat) => (
-                                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                                      ))}
-                                    </Select>
-                                  </FormControl>
-                                </Grid>
-                                <Grid item xs={12} md={3}>
-                                  <FormControl fullWidth>
-                                    <InputLabel>Role</InputLabel>
-                                    <Select
-                                      value={habitante.rol}
-                                      onChange={(e) => {
-                                        const newHabitantes = [...field.value];
-                                        const value = e.target.value;
-                                        if (habitanteRoles.includes(value as any)) {
-                                          newHabitantes[habitanteIndex].rol = value as (typeof habitanteRoles)[number];
-                                          field.onChange(newHabitantes);
-                                        }
-                                      }}
-                                      label="Role"
-                                    >
-                                      {habitanteRoles.map((rol) => (
-                                        <MenuItem key={rol} value={rol}>{rol}</MenuItem>
-                                      ))}
-                                    </Select>
-                                  </FormControl>
-                                </Grid>
-                                
-                                {/* Family Section */}
-                                <Grid item xs={12}>
-                                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                                    Family Information (Required)
-                                  </Typography>
-                                  <FormControl fullWidth error={!habitante.familyId}>
-                                    <Autocomplete
-                                      freeSolo
-                                      options={familySearchResults}
-                                      getOptionLabel={(option) =>
-                                        typeof option === 'string' ? option : option.apellidos
-                                      }
-                                      loading={isSearchingFamily}
-                                      value={habitante.familyId === "new" ? 
-                                        { id: -1, apellidos: habitante.newFamilyApellidos || "New Family", description: "" } :
-                                        familySearchResults.find(f => String(f.id) === habitante.familyId) || null
-                                      }
-                                      onChange={(_, newValue) => {
-                                        const newHabitantes = [...field.value];
-                                        if (typeof newValue === 'string') {
-                                          // Handle string input (not an option from the list)
-                                          newHabitantes[habitanteIndex].familyId = "new";
-                                          newHabitantes[habitanteIndex].newFamilyApellidos = newValue;
-                                        } else if (newValue && 'id' in newValue) {
-                                          // Selected an existing family
-                                          newHabitantes[habitanteIndex].familyId = String(newValue.id);
-                                          // Clear new family fields
-                                          newHabitantes[habitanteIndex].newFamilyApellidos = "";
-                                          newHabitantes[habitanteIndex].newFamilyDescription = "";
-                                        } else {
-                                          // Cleared the selection
-                                          newHabitantes[habitanteIndex].familyId = "";
-                                        }
-                                        field.onChange(newHabitantes);
-                                      }}
-                                      onInputChange={(_, newValue) => {
-                                        debouncedFamilySearch(newValue);
-                                      }}
-                                      onFocus={() => {
-                                        // Load all families on focus if we don't have any loaded
-                                        if (familySearchResults.length === 0) {
-                                          searchFamilies('');
-                                        }
-                                      }}
-                                      renderInput={(params) => (
-                                        <TextField
-                                          {...params}
-                                          label="Family Last Names"
-                                          placeholder="Search or create a new family"
-                                          required
-                                          error={!habitante.familyId}
-                                          helperText={!habitante.familyId ? "Family is required" : ""}
-                                          InputProps={{
-                                            ...params.InputProps,
-                                            endAdornment: (
-                                              <>
-                                                {isSearchingFamily && <CircularProgress size={20} />}
-                                                {params.InputProps.endAdornment}
-                                              </>
-                                            ),
-                                          }}
-                                        />
-                                      )}
-                                      renderOption={(props, option) => (
-                                        <li {...props}>
-                                          <Box>
-                                            <Typography variant="body1">{option.apellidos}</Typography>
-                                            {option.description && (
-                                              <Typography variant="caption" color="textSecondary">
-                                                {option.description}
-                                              </Typography>
-                                            )}
-                                          </Box>
-                                        </li>
-                                      )}
-                                    />
-                                    <Button
-                                      size="small"
-                                      onClick={() => {
-                                        const newHabitantes = [...field.value];
-                                        // Toggle between new and empty
-                                        if (newHabitantes[habitanteIndex].familyId === "new") {
-                                          newHabitantes[habitanteIndex].familyId = "";
-                                        } else {
-                                          newHabitantes[habitanteIndex].familyId = "new";
-                                        }
-                                        field.onChange(newHabitantes);
-                                      }}
-                                      sx={{ mt: 1 }}
-                                      disabled={Boolean(habitante.familyId && habitante.familyId !== "new" && habitante.familyId !== "")}
-                                    >
-                                      + Create New Family
-                                    </Button>
-                                  </FormControl>
-                                </Grid>
-
-                                {/* New Family fields - shown when "new" is selected */}
-                                {habitante.familyId === "new" && (
-                                  <>
-                                    <Grid item xs={12} md={6}>
-                                      <TextField
-                                        fullWidth
-                                        label="New Family Last Names"
-                                        required
-                                        value={habitante.newFamilyApellidos || ""}
-                                        onChange={(e) => {
-                                          const newHabitantes = [...field.value];
-                                          newHabitantes[habitanteIndex].newFamilyApellidos = e.target.value;
-                                          field.onChange(newHabitantes);
-                                        }}
-                                        error={!habitante.newFamilyApellidos}
-                                        helperText={!habitante.newFamilyApellidos ? "Last names required" : ""}
-                                      />
-                                    </Grid>
-                                    <Grid item xs={12} md={6}>
-                                      <TextField
-                                        fullWidth
-                                        label="Family Description"
-                                        value={habitante.newFamilyDescription || ""}
-                                        onChange={(e) => {
-                                          const newHabitantes = [...field.value];
-                                          newHabitantes[habitanteIndex].newFamilyDescription = e.target.value;
-                                          field.onChange(newHabitantes);
-                                        }}
-                                        placeholder="Example: Family of 4 members"
-                                      />
-                                    </Grid>
-                                  </>
-                                )}
-                                
-                                <Grid item xs={12}>
-                                  <TextField
-                                    fullWidth
-                                    label="Limitation"
-                                    value={habitante.limitation || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].limitation = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    placeholder="Physical limitations, if any"
-                                  />
-                                </Grid>
-                                <Grid item xs={12}>
-                                  <TextField
-                                    fullWidth
-                                    label="Condition"
-                                    value={habitante.condition || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].condition = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    placeholder="Health conditions, if any"
-                                  />
-                                </Grid>
-                                <Grid item xs={12}>
-                                  <TextField
-                                    fullWidth
-                                    label="Disposition"
-                                    value={habitante.disposition || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].disposition = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    placeholder="Current disposition/status"
-                                  />
-                                </Grid>
-                                {habitanteIndex > 0 && (
-                                  <Grid item xs={12} display="flex" justifyContent="flex-end">
-                                    <Button 
-                                      variant="outlined" 
-                                      color="error"
-                                      size="small"
-                                      onClick={() => {
-                                        const newHabitantes = field.value.filter((_, idx) => idx !== habitanteIndex);
-                                        field.onChange(newHabitantes);
-                                      }}
-                                    >
-                                      Remove Resident
-                                    </Button>
-                                  </Grid>
-                                )}
-                              </Grid>
-                            </Card>
-                          ))}
-                        </Box>
-                      )}
-                    />
-                  </Box>
                 </Grid>
               </CardContent>
             </Card>
           ))}
         </Box>
+      </Paper>
+
+      {/* Residents Section - Now in its own Paper component */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">Residents</Typography>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              const currentProperties = getValues("properties");
+              const propertyIndex = 0; // Default to first property
+              const currentHabitantes = currentProperties[propertyIndex].habitantes || [];
+              setValue(`properties.${propertyIndex}.habitantes`, [
+                ...currentHabitantes,
+                {
+                  name: "",
+                  apellido1: "",
+                  apellido2: "",
+                  sex: "Male",
+                  categoria: "Adult",
+                  rol: "Resident",
+                  age: "",
+                  limitation: "",
+                  condition: "",
+                  disposition: "",
+                  contacto: "",
+                  familyId: "",
+                  newFamilyApellido1: "",
+                  newFamilyApellido2: "",
+                  newFamilyDescription: "",
+                }
+              ]);
+            }}
+            size="small"
+          >
+            Add Resident
+          </Button>
+        </Box>
+        
+        {properties.map((_, propertyIndex) => (
+          <Box key={propertyIndex} sx={{ mt: 1 }}>
+            <Controller
+              name={`properties.${propertyIndex}.habitantes`}
+              control={control}
+              defaultValue={[]}
+              render={({ field }) => (
+                <Box>
+                  {field.value?.map((habitante, habitanteIndex) => (
+                    <Card key={habitanteIndex} variant="outlined" sx={{ mb: 2, p: 2 }}>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            label="First Name"
+                            variant="outlined"
+                            fullWidth
+                            value={habitante.name || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].name = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                            error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.name}
+                            helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.name?.message}
+                            required
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            label="Last Name 1"
+                            variant="outlined"
+                            fullWidth
+                            value={habitante.apellido1 || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].apellido1 = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                            required
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            label="Last Name 2"
+                            variant="outlined"
+                            fullWidth
+                            value={habitante.apellido2 || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].apellido2 = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <FormControl fullWidth>
+                            <InputLabel>Sex</InputLabel>
+                            <Select
+                              value={habitante.sex}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                const value = e.target.value;
+                                if (sexOptions.includes(value as any)) {
+                                  newHabitantes[habitanteIndex].sex = value as (typeof sexOptions)[number];
+                                  field.onChange(newHabitantes);
+                                }
+                              }}
+                              label="Sex"
+                            >
+                              {sexOptions.map((sex) => (
+                                <MenuItem key={sex} value={sex}>{sex}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <FormControl fullWidth>
+                            <InputLabel>Category</InputLabel>
+                            <Select
+                              value={habitante.categoria}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                const value = e.target.value;
+                                if (habitanteCategories.includes(value as any)) {
+                                  newHabitantes[habitanteIndex].categoria = value as (typeof habitanteCategories)[number];
+                                  field.onChange(newHabitantes);
+                                }
+                              }}
+                              label="Category"
+                            >
+                              {habitanteCategories.map((cat) => (
+                                <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <FormControl fullWidth>
+                            <InputLabel>Role</InputLabel>
+                            <Select
+                              value={habitante.rol}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                const value = e.target.value;
+                                if (habitanteRoles.includes(value as any)) {
+                                  newHabitantes[habitanteIndex].rol = value as (typeof habitanteRoles)[number];
+                                  field.onChange(newHabitantes);
+                                }
+                              }}
+                              label="Role"
+                            >
+                              {habitanteRoles.map((rol) => (
+                                <MenuItem key={rol} value={rol}>{rol}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            label="Age"
+                            variant="outlined"
+                            fullWidth
+                            type="number"
+                            InputProps={{ inputProps: { min: 0 } }}
+                            value={habitante.age || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].age = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                            error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age}
+                            helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age?.message}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            fullWidth
+                            label="Contact"
+                            value={habitante.contacto || ""}
+                            onChange={(e) => {
+                              // Format phone number as (xxx)xxx-xxxx
+                              let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+                              if (value.length > 0) {
+                                // Format the phone number
+                                if (value.length <= 3) {
+                                  value = `(${value}`;
+                                } else if (value.length <= 6) {
+                                  value = `(${value.slice(0, 3)})${value.slice(3)}`;
+                                } else {
+                                  value = `(${value.slice(0, 3)})${value.slice(3, 6)}-${value.slice(6, 10)}`;
+                                }
+                              }
+                              
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].contacto = value;
+                              field.onChange(newHabitantes);
+                            }}
+                            placeholder="(123)456-7890"
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <Phone sx={{ color: 'text.secondary', fontSize: 20 }} />
+                                </InputAdornment>
+                              ),
+                            }}
+                          />
+                        </Grid>
+                          
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                            Family Information
+                          </Typography>
+                          <Typography variant="caption" gutterBottom sx={{ display: 'block', mb: 1 }}>
+                            Select an existing family or create a new one. The family shares the same last names.
+                          </Typography>
+                          <FormControl fullWidth error={!habitante.familyId}>
+                            <Autocomplete
+                              freeSolo
+                              options={familySearchResults}
+                              getOptionLabel={(option) =>
+                                typeof option === 'string' ? option : 
+                                `${option.apellidos || ''}`
+                              }
+                              loading={isSearchingFamily}
+                              value={habitante.familyId === "new" ? 
+                                { id: -1, apellidos: `${habitante.newFamilyApellido1 || ""} ${habitante.newFamilyApellido2 || ""}`.trim(), description: "" } :
+                                familySearchResults.find(f => String(f.id) === habitante.familyId) || null
+                              }
+                              onChange={(_, newValue) => {
+                                const newHabitantes = [...field.value];
+                                if (typeof newValue === 'string') {
+                                  // Handle string input (not an option from the list)
+                                  newHabitantes[habitanteIndex].familyId = "new";
+                                  // Try to parse the input string for last names
+                                  const parts = newValue.trim().split(/\s+/);
+                                  if (parts.length > 0) {
+                                    newHabitantes[habitanteIndex].newFamilyApellido1 = parts[0] || "";
+                                    newHabitantes[habitanteIndex].newFamilyApellido2 = parts.slice(1).join(' ') || "";
+                                    // Also set the resident's last names to match if they're empty
+                                    if (!newHabitantes[habitanteIndex].apellido1) {
+                                      newHabitantes[habitanteIndex].apellido1 = parts[0] || "";
+                                    }
+                                    if (!newHabitantes[habitanteIndex].apellido2) {
+                                      newHabitantes[habitanteIndex].apellido2 = parts.slice(1).join(' ') || "";
+                                    }
+                                  }
+                                } else if (newValue && 'id' in newValue) {
+                                  // Selected an existing family
+                                  newHabitantes[habitanteIndex].familyId = String(newValue.id);
+                                  // Clear new family fields
+                                  newHabitantes[habitanteIndex].newFamilyApellido1 = "";
+                                  newHabitantes[habitanteIndex].newFamilyApellido2 = "";
+                                  newHabitantes[habitanteIndex].newFamilyDescription = "";
+                                  // Optionally update the resident's last names to match the family
+                                  if (newValue.apellidos) {
+                                    const parts = newValue.apellidos.trim().split(/\s+/);
+                                    if (!newHabitantes[habitanteIndex].apellido1 && parts.length > 0) {
+                                      newHabitantes[habitanteIndex].apellido1 = parts[0] || "";
+                                    }
+                                    if (!newHabitantes[habitanteIndex].apellido2 && parts.length > 1) {
+                                      newHabitantes[habitanteIndex].apellido2 = parts.slice(1).join(' ') || "";
+                                    }
+                                  }
+                                } else {
+                                  // Cleared the selection
+                                  newHabitantes[habitanteIndex].familyId = "";
+                                }
+                                field.onChange(newHabitantes);
+                              }}
+                              onInputChange={(_, newValue) => {
+                                debouncedFamilySearch(newValue);
+                              }}
+                              onFocus={() => {
+                                // Load all families on focus if we don't have any loaded
+                                if (familySearchResults.length === 0) {
+                                  searchFamilies('');
+                                }
+                              }}
+                              renderInput={(params) => (
+                                <TextField
+                                  {...params}
+                                  label="Family Last Names"
+                                  placeholder="Search or create a new family"
+                                  required
+                                  error={!habitante.familyId}
+                                  helperText={!habitante.familyId ? "Family is required" : (
+                                    habitante.familyId && habitante.familyId !== "new" ? 
+                                    `Selected family ID: ${habitante.familyId}` : ""
+                                  )}
+                                  InputProps={{
+                                    ...params.InputProps,
+                                    endAdornment: (
+                                      <>
+                                        {isSearchingFamily && <CircularProgress size={20} />}
+                                        {params.InputProps.endAdornment}
+                                      </>
+                                    ),
+                                  }}
+                                />
+                              )}
+                              renderOption={(props, option) => (
+                                <li {...props}>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                    <Typography variant="body1">
+                                      <Typography component="span" fontWeight="bold">
+                                        {option.apellidos}
+                                      </Typography>
+                                      <Typography component="span" variant="caption" color="primary" sx={{ ml: 1 }}>
+                                        ID: {option.id}
+                                      </Typography>
+                                    </Typography>
+                                    {option.description && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {option.description}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                </li>
+                              )}
+                            />
+                            <Button
+                              size="small"
+                              onClick={() => {
+                                const newHabitantes = [...field.value];
+                                // Set the new family with the resident's last names
+                                newHabitantes[habitanteIndex].familyId = "new";
+                                if (newHabitantes[habitanteIndex].apellido1) {
+                                  newHabitantes[habitanteIndex].newFamilyApellido1 = newHabitantes[habitanteIndex].apellido1;
+                                  newHabitantes[habitanteIndex].newFamilyApellido2 = newHabitantes[habitanteIndex].apellido2 || "";
+                                }
+                                field.onChange(newHabitantes);
+                              }}
+                              sx={{ mt: 1 }}
+                              disabled={Boolean(habitante.familyId && habitante.familyId !== "new" && habitante.familyId !== "")}
+                              startIcon={<AddIcon />}
+                            >
+                              Create New Family Using Last Names
+                            </Button>
+                          </FormControl>
+                        </Grid>
+
+                        {/* New Family fields - shown when "new" is selected */}
+                        {habitante.familyId === "new" && (
+                          <Grid item xs={12}>
+                            <Paper elevation={1} sx={{ p: 2, mb: 2, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                              <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+                                Create New Family
+                              </Typography>
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} md={6}>
+                                  <TextField
+                                    fullWidth
+                                    label="Family Last Name 1"
+                                    required
+                                    value={habitante.newFamilyApellido1 || ""}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].newFamilyApellido1 = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                    error={!habitante.newFamilyApellido1}
+                                    helperText={!habitante.newFamilyApellido1 ? "Last name 1 required" : ""}
+                                    InputProps={{
+                                      endAdornment: (
+                                        <Button 
+                                          size="small"
+                                          onClick={() => {
+                                            const newHabitantes = [...field.value];
+                                            if (habitante.apellido1) {
+                                              newHabitantes[habitanteIndex].newFamilyApellido1 = habitante.apellido1;
+                                              field.onChange(newHabitantes);
+                                            }
+                                          }}
+                                          disabled={!habitante.apellido1}
+                                          sx={{ minWidth: 'auto', p: 0.5 }}
+                                        >
+                                          Use Resident's
+                                        </Button>
+                                      )
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <TextField
+                                    fullWidth
+                                    label="Family Last Name 2"
+                                    value={habitante.newFamilyApellido2 || ""}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].newFamilyApellido2 = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                    InputProps={{
+                                      endAdornment: (
+                                        <Button 
+                                          size="small"
+                                          onClick={() => {
+                                            const newHabitantes = [...field.value];
+                                            if (habitante.apellido2) {
+                                              newHabitantes[habitanteIndex].newFamilyApellido2 = habitante.apellido2;
+                                              field.onChange(newHabitantes);
+                                            }
+                                          }}
+                                          disabled={!habitante.apellido2}
+                                          sx={{ minWidth: 'auto', p: 0.5 }}
+                                        >
+                                          Use Resident's
+                                        </Button>
+                                      )
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    fullWidth
+                                    label="Family Description"
+                                    value={habitante.newFamilyDescription || ""}
+                                    onChange={(e) => {
+                                      const newHabitantes = [...field.value];
+                                      newHabitantes[habitanteIndex].newFamilyDescription = e.target.value;
+                                      field.onChange(newHabitantes);
+                                    }}
+                                    placeholder="Example: Family of 4 members"
+                                  />
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          </Grid>
+                        )}
+                        
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="Limitation"
+                            value={habitante.limitation || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].limitation = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                            placeholder="Physical limitations, if any"
+                          />
+                        </Grid>
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="Condition"
+                            value={habitante.condition || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].condition = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                            placeholder="Health conditions, if any"
+                          />
+                        </Grid>
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="Disposition"
+                            value={habitante.disposition || ""}
+                            onChange={(e) => {
+                              const newHabitantes = [...field.value];
+                              newHabitantes[habitanteIndex].disposition = e.target.value;
+                              field.onChange(newHabitantes);
+                            }}
+                            placeholder="Current disposition/status"
+                          />
+                        </Grid>
+                        {habitanteIndex > 0 && (
+                          <Grid item xs={12} display="flex" justifyContent="flex-end">
+                            <Button 
+                              variant="outlined" 
+                              color="error"
+                              size="small"
+                              onClick={() => {
+                                const newHabitantes = field.value.filter((_, idx) => idx !== habitanteIndex);
+                                field.onChange(newHabitantes);
+                              }}
+                            >
+                              Remove Resident
+                            </Button>
+                          </Grid>
+                        )}
+                      </Grid>
+                    </Card>
+                  ))}
+                </Box>
+              )}
+            />
+          </Box>
+        ))}
       </Paper>
 
       {/* Submit Button */}

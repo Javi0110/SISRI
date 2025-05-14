@@ -332,27 +332,50 @@ const handleHabitante = async (habitante: any, propiedadId: number) => {
 
     // Map fields accounting for both English and Spanish field names
     const nombre = habitante.name || habitante.nombre || '';
+    const apellido1 = habitante.apellido1 || '';
+    const apellido2 = habitante.apellido2 || '';
+    const sex = habitante.sex || '';
     const categoria = habitante.category || habitante.categoria || '';
     const rol = habitante.role || habitante.rol || '';
     const edad = habitante.age || habitante.edad || null;
     const limitacion = habitante.limitation || habitante.limitacion || null;
     const condicion = habitante.condition || habitante.condicion || null;
     const disposicion = habitante.disposition || habitante.disposicion || null;
+    const contacto = habitante.contacto || null;
+
+    // Get property information to include with the habitante
+    const propiedad = await prisma.propiedades_existentes.findUnique({
+      where: { id: propiedadId },
+      select: {
+        id_municipio: true,
+        id_barrio: true,
+        id_sector: true,
+        usngId: true
+      }
+    });
 
     // Create the habitante with family data included
     const habitanteResult = await prisma.$queryRaw`
       INSERT INTO sisri.habitantes 
-      (nombre, categoria, rol, edad, limitacion, condicion, disposicion, propiedad_id, family_id)
+      (nombre, apellido1, apellido2, sex, categoria, rol, edad, limitacion, condicion, disposicion, contacto, propiedad_id, family_id, id_municipio, id_barrio, id_sector, "usngId")
       VALUES (
         ${nombre}, 
+        ${apellido1},
+        ${apellido2},
+        ${sex},
         ${categoria}, 
         ${rol}, 
         ${edad}, 
         ${limitacion}, 
         ${condicion}, 
-        ${disposicion}, 
+        ${disposicion},
+        ${contacto},
         ${propiedadId},
-        ${family_id}
+        ${family_id},
+        ${propiedad?.id_municipio || null},
+        ${propiedad?.id_barrio || null},
+        ${propiedad?.id_sector || null},
+        ${propiedad?.usngId || null}
       )
       RETURNING id
     `;
@@ -365,26 +388,49 @@ const handleHabitante = async (habitante: any, propiedadId: number) => {
     
     // Map fields for fallback too
     const nombre = habitante.name || habitante.nombre || '';
+    const apellido1 = habitante.apellido1 || '';
+    const apellido2 = habitante.apellido2 || '';
+    const sex = habitante.sex || '';
     const categoria = habitante.category || habitante.categoria || '';
     const rol = habitante.role || habitante.rol || '';
     const edad = habitante.age || habitante.edad || null;
     const limitacion = habitante.limitation || habitante.limitacion || null;
     const condicion = habitante.condition || habitante.condicion || null;
     const disposicion = habitante.disposition || habitante.disposicion || null;
+    const contacto = habitante.contacto || null;
+    
+    // Get property information to include with the habitante
+    const propiedad = await prisma.propiedades_existentes.findUnique({
+      where: { id: propiedadId },
+      select: {
+        id_municipio: true,
+        id_barrio: true,
+        id_sector: true,
+        usngId: true
+      }
+    });
     
     // Fallback to basic insert without family if error occurs
     const fallbackResult = await prisma.$queryRaw`
       INSERT INTO sisri.habitantes 
-      (nombre, categoria, rol, edad, limitacion, condicion, disposicion, propiedad_id)
+      (nombre, apellido1, apellido2, sex, categoria, rol, edad, limitacion, condicion, disposicion, contacto, propiedad_id, id_municipio, id_barrio, id_sector, "usngId")
       VALUES (
-        ${nombre}, 
+        ${nombre},
+        ${apellido1},
+        ${apellido2},
+        ${sex},
         ${categoria}, 
         ${rol}, 
         ${edad}, 
         ${limitacion}, 
         ${condicion}, 
-        ${disposicion}, 
-        ${propiedadId}
+        ${disposicion},
+        ${contacto},
+        ${propiedadId},
+        ${propiedad?.id_municipio || null},
+        ${propiedad?.id_barrio || null},
+        ${propiedad?.id_sector || null},
+        ${propiedad?.usngId || null}
       )
       RETURNING id
     `;

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Bell, ChevronDown, ChevronRight, Clock, FileText, Home, MapPin, Printer, Search, Users } from "lucide-react";
+import { AlertCircle, Bell, ChevronDown, ChevronUp, Clock, FileText, Home, MapPin, Printer, Search, Users } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -75,6 +75,7 @@ interface ResidentData {
   limitacion: string;
   condicion: string;
   disposicion: string;
+  contacto?: string;
   propiedad_id: number;
   family_id?: number | null;
   family?: {
@@ -82,6 +83,14 @@ interface ResidentData {
     apellidos: string;
     description?: string;
   } | null;
+  propiedad_info?: {
+    id: number | null;
+    tipo: string;
+    municipio: string;
+    barrio: string;
+    sector: string;
+    usng: string;
+  };
 }
 
 interface NotificationData {
@@ -111,6 +120,7 @@ interface ReportData {
     limitacion: string;
     condicion: string;
     disposicion: string;
+    contacto?: string;
     propiedad_id: number;
     family_id?: number | null;
     family?: {
@@ -178,6 +188,103 @@ export function DataAnalytics() {
 
   // Add a state for quick filtering resident names
   const [quickResidentFilter, setQuickResidentFilter] = useState("");
+
+  // Modify sortConfig to be an array of sort configurations
+  const [sortConfigs, setSortConfigs] = useState<{
+    key: string;
+    direction: 'ascending' | 'descending';
+  }[]>([]);
+
+  // Update the sorting function to handle multiple sort criteria
+  const sortData = (data: any[]) => {
+    if (!sortConfigs.length) return data;
+    
+    return [...data].sort((a, b) => {
+      // Try each sort config in order until we find a difference
+      for (const sortConfig of sortConfigs) {
+        const { key, direction } = sortConfig;
+        
+        // Handle nested properties with dot notation
+        const aValue = key.includes('.') 
+          ? key.split('.').reduce((obj, prop) => obj && obj[prop], a) 
+          : a[key];
+        const bValue = key.includes('.') 
+          ? key.split('.').reduce((obj, prop) => obj && obj[prop], b) 
+          : b[key];
+        
+        // Handle null or undefined values
+        if (aValue == null && bValue != null) return direction === 'ascending' ? -1 : 1;
+        if (bValue == null && aValue != null) return direction === 'ascending' ? 1 : -1;
+        if (aValue == null && bValue == null) continue; // Try next sort config
+        
+        // Handle different data types
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          const compareResult = direction === 'ascending' 
+            ? aValue.localeCompare(bValue) 
+            : bValue.localeCompare(aValue);
+          
+          if (compareResult !== 0) return compareResult;
+          continue; // If values are equal, try next sort config
+        }
+        
+        if (aValue === bValue) continue; // Try next sort config
+        
+        return direction === 'ascending' 
+          ? (aValue > bValue ? 1 : -1) 
+          : (aValue < bValue ? 1 : -1);
+      }
+      
+      return 0; // All sort configs resulted in equality
+    });
+  };
+
+  // Update the request sort function to handle multiple sort configs
+  const requestSort = (key: string, event?: React.MouseEvent) => {
+    const isShiftPressed = event?.shiftKey;
+    
+    // Find if this key is already in the sort configs
+    const existingIndex = sortConfigs.findIndex(config => config.key === key);
+    
+    // Create a copy of the current sort configs
+    const newSortConfigs = [...sortConfigs];
+    
+    if (existingIndex >= 0) {
+      // Key exists, toggle direction or remove if already descending
+      if (newSortConfigs[existingIndex].direction === 'ascending') {
+        newSortConfigs[existingIndex].direction = 'descending';
+      } else {
+        // Remove this sort config
+        newSortConfigs.splice(existingIndex, 1);
+      }
+    } else {
+      // Key doesn't exist, add it
+      const newConfig = { key, direction: 'ascending' as const };
+      
+      if (isShiftPressed) {
+        // Add as additional sort criteria
+        newSortConfigs.push(newConfig);
+      } else {
+        // Replace all existing sort criteria
+        newSortConfigs.length = 0;
+        newSortConfigs.push(newConfig);
+      }
+    }
+    
+    setSortConfigs(newSortConfigs);
+  };
+
+  // Update the function to get the sort direction indicator
+  const getSortDirectionIndicator = (key: string) => {
+    const sortConfig = sortConfigs.find(config => config.key === key);
+    if (!sortConfig) return null;
+    
+    const index = sortConfigs.findIndex(config => config.key === key);
+    const prefix = sortConfigs.length > 1 ? `${index + 1}` : '';
+    
+    return sortConfig.direction === 'ascending' 
+      ? `${prefix}↑` 
+      : `${prefix}↓`;
+  };
 
   // Add debounce function
   const debounce = (func: Function, wait: number) => {
@@ -782,6 +889,31 @@ export function DataAnalytics() {
       return;
     }
     
+    // Prepare data for the report
+    const hasProperties = reportData.propiedades && reportData.propiedades.length > 0;
+    const hasResidents = reportData.residentes && reportData.residentes.length > 0;
+    const propertiesCount = hasProperties ? reportData.propiedades.length : 0;
+    const residentsCount = hasResidents && reportData.residentes ? reportData.residentes.length : 0;
+    
+    // Apply current sorting to the data
+    const sortedProperties = hasProperties 
+      ? sortConfigs.length > 0 ? sortData(reportData.propiedades) : reportData.propiedades
+      : [];
+      
+    const sortedResidents = hasResidents && reportData.residentes 
+      ? sortConfigs.length > 0 ? sortData(reportData.residentes) : reportData.residentes
+      : [];
+      
+    const sortedNotifications = reportData.notificaciones && reportData.notificaciones.length > 0
+      ? sortConfigs.length > 0 ? sortData(reportData.notificaciones) : reportData.notificaciones
+      : [];
+    
+    // Create sort information text
+    const sortInfoText = sortConfigs.length > 0 
+      ? `Sorted by: ${sortConfigs.map((config, index) => 
+          `${index + 1}. ${config.key} (${config.direction})`).join(', ')}`
+      : '';
+    
     // Create the HTML content for the report
     printWindow.document.write(`
       <html>
@@ -914,6 +1046,7 @@ export function DataAnalytics() {
           <div class="report-header">
             <h1>SISRI-PR ANALYTICS REPORT</h1>
             <h3>Generated: ${new Date().toLocaleString()}</h3>
+            ${sortInfoText ? `<p style="font-style: italic; color: #666;">${sortInfoText}</p>` : ''}
           </div>
           
           <div class="section">
@@ -962,16 +1095,27 @@ export function DataAnalytics() {
                 <div class="label">Municipality:</div>
                 <div class="value">${reportData.municipioQuery}</div>
               </div>
+            ` : reportData.searchType === 'residente' ? `
+              <div class="row">
+                <div class="label">Resident Search:</div>
+                <div class="value">${reportData.searchQuery || 'All Residents'}</div>
+              </div>
+              <div class="row">
+                <div class="label">Results:</div>
+                <div class="value">${residentsCount} residents found</div>
+              </div>
             ` : ''}
           </div>
           
+          ${hasProperties ? `
           <div class="section">
-            <div class="section-title">Properties (${reportData.propiedades.length})</div>
-            ${reportData.propiedades.length > 0 ? `
+            <div class="section-title">Properties (${propertiesCount})</div>
+            ${propertiesCount > 0 ? `
               <table>
                 <thead>
                   <tr>
-                    <th>Type</th>
+                    <th>ID</th>
+                    <th>Property</th>
                     <th>Location</th>
                     <th>USNG</th>
                     <th>Damage</th>
@@ -980,57 +1124,28 @@ export function DataAnalytics() {
                   </tr>
                 </thead>
                 <tbody>
-                  ${reportData.propiedades.map((property) => `
-                    <tr class="property-row">
+                  ${sortedProperties.map((property) => `
+                    <tr>
+                      <td>${property.id}</td>
                       <td>${property.tipo}</td>
                       <td>
-                        <strong>${property.municipio}</strong><br>
-                        <span style="font-size: 13px; color: #666;">
-                          ${property.barrio} • ${property.sector}
-                        </span>
+                        <div>
+                          <span>${property.municipio}</span>
+                          <br>
+                          <span style="font-size: 0.9em; color: #666;">
+                            ${property.barrio} • ${property.sector}
+                          </span>
+                        </div>
                       </td>
-                      <td><span class="badge badge-outline">${property.usng}</span></td>
+                      <td>${property.usng}</td>
                       <td>${property.daños || 'N/A'}</td>
-                      <td>${property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}</td>
-                      <td>${property.habitantes.length}</td>
+                      <td>
+                        ${property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td>
+                        ${property.habitantes.length}
+                      </td>
                     </tr>
-                    ${property.habitantes.length > 0 ? `
-                      <tr>
-                        <td colspan="6" style="padding: 0;">
-                          <table class="nested-table">
-                            <thead>
-                              <tr>
-                                <th class="nested-th">Name</th>
-                                <th class="nested-th">Age</th>
-                                <th class="nested-th">Category</th>
-                                <th class="nested-th">Family</th>
-                                <th class="nested-th">Limitation</th>
-                                <th class="nested-th">Condition</th>
-                                <th class="nested-th">Disposition</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              ${property.habitantes.map((resident) => `
-                                <tr>
-                                  <td class="nested-td">${resident.nombre}</td>
-                                  <td class="nested-td">${resident.edad}</td>
-                                  <td class="nested-td">${resident.categoria}</td>
-                                  <td class="nested-td">
-                                    ${resident.family ? 
-                                      `<span style="background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 11px; color: #334155;">${resident.family.apellidos}</span>` : 
-                                      '<span style="color: #64748b; font-size: 11px;">No family</span>'
-                                    }
-                                  </td>
-                                  <td class="nested-td">${resident.limitacion || 'None'}</td>
-                                  <td class="nested-td">${resident.condicion || 'None'}</td>
-                                  <td class="nested-td">${resident.disposicion || 'None'}</td>
-                                </tr>
-                              `).join('')}
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
-                    ` : ''}
                   `).join('')}
                 </tbody>
               </table>
@@ -1038,6 +1153,57 @@ export function DataAnalytics() {
               <p>No properties found for this search.</p>
             `}
           </div>
+          ` : ''}
+          
+          ${hasResidents && reportData.residentes ? `
+          <div class="section">
+            <div class="section-title">Residents (${residentsCount})</div>
+            ${residentsCount > 0 ? `
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Age</th>
+                    <th>Category</th>
+                    <th>Family</th>
+                    <th>Contact</th>
+                    <th>Limitation</th>
+                    <th>Condition</th>
+                    <th>Disposition</th>
+                    <th>Property</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${sortedResidents.map((resident) => `
+                    <tr>
+                      <td>${resident.family_id || '0'}-${resident.id}</td>
+                      <td>${resident.nombre}</td>
+                      <td>${resident.edad}</td>
+                      <td>${resident.categoria}</td>
+                      <td>${resident.family ? resident.family.apellidos : 'N/A'}</td>
+                      <td>${resident.contacto || 'N/A'}</td>
+                      <td>${resident.limitacion || 'N/A'}</td>
+                      <td>${resident.condicion || 'N/A'}</td>
+                      <td>${resident.disposicion || 'N/A'}</td>
+                      <td>${resident.propiedad_info ? resident.propiedad_info.tipo : 'N/A'}</td>
+                      <td>
+                        ${resident.propiedad_info ? `
+                          ${resident.propiedad_info.municipio}, 
+                          ${resident.propiedad_info.barrio}, 
+                          ${resident.propiedad_info.sector}
+                        ` : 'N/A'}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            ` : `
+              <p>No residents found for this search.</p>
+            `}
+          </div>
+          ` : ''}
           
           ${reportData.notificaciones && reportData.notificaciones.length > 0 ? `
             <div class="section">
@@ -1045,6 +1211,7 @@ export function DataAnalytics() {
               <table>
                 <thead>
                   <tr>
+                    <th>ID</th>
                     <th>Notification #</th>
                     <th>Type</th>
                     <th>Status</th>
@@ -1053,9 +1220,10 @@ export function DataAnalytics() {
                   </tr>
                 </thead>
                 <tbody>
-                  ${reportData.notificaciones.map((notification) => `
+                  ${sortedNotifications.map((notification) => `
                     <tr>
-                      <td>${notification.numero_notificacion || `NOT-${notification.id}`}</td>
+                      <td>${notification.id}</td>
+                      <td>${notification.numero_notificacion || 'NOT-' + notification.id}</td>
                       <td>${notification.tipo}</td>
                       <td>
                         <span class="status-badge badge-${(notification.estado || 'pending').toLowerCase()}">
@@ -1297,60 +1465,50 @@ export function DataAnalytics() {
               </TabsList>
               
               <TabsContent value="properties" className="pt-4">
+                <div className="text-xs text-muted-foreground mb-2">
+                  <span className="font-medium">Tip:</span> Click column headers to sort. Hold Shift + Click to add secondary sort criteria.
+                </div>
                 <div className="rounded-md border">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="bg-muted/50">
-                          <th className="py-3 px-4 text-left font-medium">Property</th>
-                          <th className="py-3 px-4 text-left font-medium">Location</th>
-                          <th className="py-3 px-4 text-left font-medium">USNG</th>
-                          <th className="py-3 px-4 text-left font-medium">Damage</th>
-                          <th className="py-3 px-4 text-left font-medium">Date</th>
-                          <th className="py-3 px-4 text-left font-medium">Residents</th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('tipo', e)}>
+                            Property {getSortDirectionIndicator('tipo')}
+                          </th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
+                            Location {getSortDirectionIndicator('municipio')}
+                          </th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
+                            USNG {getSortDirectionIndicator('usng')}
+                          </th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('daños', e)}>
+                            Damage {getSortDirectionIndicator('daños')}
+                          </th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('fecha', e)}>
+                            Date {getSortDirectionIndicator('fecha')}
+                          </th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('habitantes.length', e)}>
+                            Residents {getSortDirectionIndicator('habitantes.length')}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {reportData.propiedades.map((property) => (
+                        {(sortConfigs 
+                          ? sortData(reportData.propiedades) 
+                          : reportData.propiedades).map((property) => (
                           <>
                             <tr key={property.id} className="border-t hover:bg-muted/50 transition-colors">
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="p-0 h-auto"
-                                    onClick={() => toggleProperty(property.id)}
-                                  >
-                                    {expandedProperties[property.id] ? (
-                                      <ChevronDown className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                  <Home className="h-4 w-4" />
-                                  <span>{property.tipo}</span>
-                                </div>
-                                {property.notificaciones && property.notificaciones.length > 0 && (
-                                  <div className="ml-7 mt-1 flex items-center gap-1">
-                                    <Bell className="h-3 w-3 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground">
-                                      {property.notificaciones[0].numero_notificacion || `NOT-${property.notificaciones[0].id}`}
-                                    </span>
-                                  </div>
-                                )}
-                              </td>
+                              <td className="py-3 px-4">{property.tipo}</td>
                               <td className="py-3 px-4">
                                 <div className="flex flex-col">
-                                  <span className="font-medium">{property.municipio}</span>
+                                  <span>{property.municipio}</span>
                                   <span className="text-sm text-muted-foreground">
                                     {property.barrio} • {property.sector}
                                   </span>
                                 </div>
                               </td>
-                              <td className="py-3 px-4">
-                                <Badge variant="outline">{property.usng}</Badge>
-                              </td>
+                              <td className="py-3 px-4">{property.usng}</td>
                               <td className="py-3 px-4">{property.daños || 'N/A'}</td>
                               <td className="py-3 px-4">
                                 {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
@@ -1359,6 +1517,20 @@ export function DataAnalytics() {
                                 <div className="flex items-center gap-1">
                                   <Users className="h-4 w-4" />
                                   <span>{property.habitantes.length}</span>
+                                  {property.habitantes.length > 0 && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 ml-1"
+                                      onClick={() => toggleProperty(property.id)}
+                                    >
+                                      {expandedProperties[property.id] ? (
+                                        <ChevronUp className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1369,18 +1541,45 @@ export function DataAnalytics() {
                                     <table className="w-full">
                                       <thead>
                                         <tr className="text-sm text-muted-foreground">
-                                          <th className="py-2 px-3 text-left font-medium">Name</th>
-                                          <th className="py-2 px-3 text-left font-medium">Age</th>
-                                          <th className="py-2 px-3 text-left font-medium">Category</th>
-                                          <th className="py-2 px-3 text-left font-medium">Family</th>
-                                          <th className="py-2 px-3 text-left font-medium">Limitation</th>
-                                          <th className="py-2 px-3 text-left font-medium">Condition</th>
-                                          <th className="py-2 px-3 text-left font-medium">Disposition</th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
+                                            ID {getSortDirectionIndicator('id')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
+                                            Name {getSortDirectionIndicator('nombre')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
+                                            Age {getSortDirectionIndicator('edad')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
+                                            Category {getSortDirectionIndicator('categoria')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
+                                            Family {getSortDirectionIndicator('family.apellidos')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
+                                            Contact {getSortDirectionIndicator('contacto')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
+                                            Limitation {getSortDirectionIndicator('limitacion')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
+                                            Condition {getSortDirectionIndicator('condicion')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
+                                            Disposition {getSortDirectionIndicator('disposicion')}
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {property.habitantes.map((resident) => (
+                                        {(sortConfigs && expandedProperties[property.id]
+                                          ? sortData(property.habitantes)
+                                          : property.habitantes).map((resident: ResidentData) => (
                                           <tr key={resident.id} className="text-sm">
+                                            <td className="py-2 px-3">
+                                              <Badge variant="outline" className="font-mono text-xs">
+                                                {resident.family_id || '0'}-{resident.id}
+                                              </Badge>
+                                            </td>
                                             <td className="py-2 px-3">{resident.nombre}</td>
                                             <td className="py-2 px-3">{resident.edad}</td>
                                             <td className="py-2 px-3">
@@ -1393,6 +1592,7 @@ export function DataAnalytics() {
                                                 <span className="text-muted-foreground text-xs">No family</span>
                                               )}
                                             </td>
+                                            <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
                                             <td className="py-2 px-3">{resident.limitacion}</td>
                                             <td className="py-2 px-3">{resident.condicion}</td>
                                             <td className="py-2 px-3">{resident.disposicion}</td>
@@ -1462,60 +1662,50 @@ export function DataAnalytics() {
           
           {(reportData.searchType !== 'evento' || !reportData.evento) && reportData.searchType !== 'residente' && (
             <CardContent>
+              <div className="text-xs text-muted-foreground mb-2">
+                <span className="font-medium">Tip:</span> Click column headers to sort. Hold Shift + Click to add secondary sort criteria.
+              </div>
               <div className="rounded-md border">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-muted/50">
-                        <th className="py-3 px-4 text-left font-medium">Property</th>
-                        <th className="py-3 px-4 text-left font-medium">Location</th>
-                        <th className="py-3 px-4 text-left font-medium">USNG</th>
-                        <th className="py-3 px-4 text-left font-medium">Damage</th>
-                        <th className="py-3 px-4 text-left font-medium">Date</th>
-                        <th className="py-3 px-4 text-left font-medium">Residents</th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('tipo', e)}>
+                          Property {getSortDirectionIndicator('tipo')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
+                          Location {getSortDirectionIndicator('municipio')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
+                          USNG {getSortDirectionIndicator('usng')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('daños', e)}>
+                          Damage {getSortDirectionIndicator('daños')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('fecha', e)}>
+                          Date {getSortDirectionIndicator('fecha')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('habitantes.length', e)}>
+                          Residents {getSortDirectionIndicator('habitantes.length')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {reportData.propiedades && reportData.propiedades.map((property) => (
+                      {(sortConfigs 
+                        ? sortData(reportData.propiedades) 
+                        : reportData.propiedades).map((property) => (
                         <>
                           <tr key={property.id} className="border-t hover:bg-muted/50 transition-colors">
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="p-0 h-auto"
-                                  onClick={() => toggleProperty(property.id)}
-                                >
-                                  {expandedProperties[property.id] ? (
-                                    <ChevronDown className="h-4 w-4" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4" />
-                                  )}
-                                </Button>
-                                <Home className="h-4 w-4" />
-                                <span>{property.tipo}</span>
-                              </div>
-                              {property.notificaciones && property.notificaciones.length > 0 && (
-                                <div className="ml-7 mt-1 flex items-center gap-1">
-                                  <Bell className="h-3 w-3 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    {property.notificaciones[0].numero_notificacion || `NOT-${property.notificaciones[0].id}`}
-                                  </span>
-                                </div>
-                              )}
-                            </td>
+                            <td className="py-3 px-4">{property.tipo}</td>
                             <td className="py-3 px-4">
                               <div className="flex flex-col">
-                                <span className="font-medium">{property.municipio}</span>
+                                <span>{property.municipio}</span>
                                 <span className="text-sm text-muted-foreground">
                                   {property.barrio} • {property.sector}
                                 </span>
                               </div>
                             </td>
-                            <td className="py-3 px-4">
-                              <Badge variant="outline">{property.usng}</Badge>
-                            </td>
+                            <td className="py-3 px-4">{property.usng}</td>
                             <td className="py-3 px-4">{property.daños || 'N/A'}</td>
                             <td className="py-3 px-4">
                               {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
@@ -1524,6 +1714,20 @@ export function DataAnalytics() {
                               <div className="flex items-center gap-1">
                                 <Users className="h-4 w-4" />
                                 <span>{property.habitantes.length}</span>
+                                {property.habitantes.length > 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 ml-1"
+                                    onClick={() => toggleProperty(property.id)}
+                                  >
+                                    {expandedProperties[property.id] ? (
+                                      <ChevronUp className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1534,18 +1738,45 @@ export function DataAnalytics() {
                                   <table className="w-full">
                                     <thead>
                                       <tr className="text-sm text-muted-foreground">
-                                        <th className="py-2 px-3 text-left font-medium">Name</th>
-                                        <th className="py-2 px-3 text-left font-medium">Age</th>
-                                        <th className="py-2 px-3 text-left font-medium">Category</th>
-                                        <th className="py-2 px-3 text-left font-medium">Family</th>
-                                        <th className="py-2 px-3 text-left font-medium">Limitation</th>
-                                        <th className="py-2 px-3 text-left font-medium">Condition</th>
-                                        <th className="py-2 px-3 text-left font-medium">Disposition</th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
+                                          ID {getSortDirectionIndicator('id')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
+                                          Name {getSortDirectionIndicator('nombre')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
+                                          Age {getSortDirectionIndicator('edad')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
+                                          Category {getSortDirectionIndicator('categoria')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
+                                          Family {getSortDirectionIndicator('family.apellidos')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
+                                          Contact {getSortDirectionIndicator('contacto')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
+                                          Limitation {getSortDirectionIndicator('limitacion')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
+                                          Condition {getSortDirectionIndicator('condicion')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
+                                          Disposition {getSortDirectionIndicator('disposicion')}
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {property.habitantes.map((resident) => (
+                                      {(sortConfigs && expandedProperties[property.id]
+                                        ? sortData(property.habitantes)
+                                        : property.habitantes).map((resident: ResidentData) => (
                                         <tr key={resident.id} className="text-sm">
+                                          <td className="py-2 px-3">
+                                            <Badge variant="outline" className="font-mono text-xs">
+                                              {resident.family_id || '0'}-{resident.id}
+                                            </Badge>
+                                          </td>
                                           <td className="py-2 px-3">{resident.nombre}</td>
                                           <td className="py-2 px-3">{resident.edad}</td>
                                           <td className="py-2 px-3">
@@ -1558,6 +1789,7 @@ export function DataAnalytics() {
                                               <span className="text-muted-foreground text-xs">No family</span>
                                             )}
                                           </td>
+                                          <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
                                           <td className="py-2 px-3">{resident.limitacion}</td>
                                           <td className="py-2 px-3">{resident.condicion}</td>
                                           <td className="py-2 px-3">{resident.disposicion}</td>
@@ -1603,94 +1835,152 @@ export function DataAnalytics() {
                 </div>
               </div>
               
+              <div className="text-xs text-muted-foreground mb-2">
+                <span className="font-medium">Tip:</span> Click column headers to sort. Hold Shift + Click to add secondary sort criteria.
+              </div>
               <div className="rounded-md border">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-muted/50">
-                        <th className="py-3 px-4 text-left font-medium">Name</th>
-                        <th className="py-3 px-4 text-left font-medium">Age</th>
-                        <th className="py-3 px-4 text-left font-medium">Category</th>
-                        <th className="py-3 px-4 text-left font-medium">Family</th>
-                        <th className="py-3 px-4 text-left font-medium">Limitation</th>
-                        <th className="py-3 px-4 text-left font-medium">Condition</th>
-                        <th className="py-3 px-4 text-left font-medium">Disposition</th>
-                        <th className="py-3 px-4 text-left font-medium">Property</th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
+                          ID {getSortDirectionIndicator('id')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
+                          Name {getSortDirectionIndicator('nombre')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
+                          Age {getSortDirectionIndicator('edad')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
+                          Category {getSortDirectionIndicator('categoria')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
+                          Family {getSortDirectionIndicator('family.apellidos')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
+                          Contact {getSortDirectionIndicator('contacto')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
+                          Limitation {getSortDirectionIndicator('limitacion')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
+                          Condition {getSortDirectionIndicator('condicion')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
+                          Disposition {getSortDirectionIndicator('disposicion')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
+                          Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {reportData.residentes ? (
-                        // Filter the flat list of residents by name
-                        reportData.residentes
-                          .filter(resident => {
-                            if (!quickResidentFilter) return true;
-                            return resident.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase());
-                          })
-                          .map(resident => (
-                            <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
-                              <td className="py-3 px-4">{resident.nombre}</td>
-                              <td className="py-3 px-4">{resident.edad}</td>
-                              <td className="py-3 px-4">
-                                <Badge variant="outline">{resident.categoria}</Badge>
-                              </td>
-                              <td className="py-3 px-4">
-                                {resident.family ? (
-                                  <Badge variant="secondary">{resident.family.apellidos}</Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">No family</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
-                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
-                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
-                              <td className="py-3 px-4">
-                                <div className="flex flex-col">
-                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
-                                  </span>
-                                  <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
+                        // Filter and sort the residents
+                        (sortConfigs 
+                          ? sortData(
+                              reportData.residentes.filter(resident => {
+                                if (!quickResidentFilter) return true;
+                                return resident.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase());
+                              })
+                            )
+                          : reportData.residentes.filter(resident => {
+                              if (!quickResidentFilter) return true;
+                              return resident.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase());
+                            })
+                        ).map((resident: ResidentData) => (
+                          <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
+                            <td className="py-3 px-4">
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {resident.family_id || '0'}-{resident.id}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4">{resident.nombre}</td>
+                            <td className="py-3 px-4">{resident.edad}</td>
+                            <td className="py-3 px-4">
+                              <Badge variant="outline">{resident.categoria}</Badge>
+                            </td>
+                            <td className="py-3 px-4">
+                              {resident.family ? (
+                                <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">No family</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
+                                </span>
+                                <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
                       ) : (
-                        // Fallback to the old way for backward compatibility
-                        reportData.propiedades.flatMap(property => 
-                          applyResidentFilters(property.habitantes).map(resident => (
-                            <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
-                              <td className="py-3 px-4">{resident.nombre}</td>
-                              <td className="py-3 px-4">{resident.edad}</td>
-                              <td className="py-3 px-4">
-                                <Badge variant="outline">{resident.categoria}</Badge>
-                              </td>
-                              <td className="py-3 px-4">
-                                {resident.family ? (
-                                  <Badge variant="secondary">{resident.family.apellidos}</Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">No family</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
-                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
-                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
-                              <td className="py-3 px-4">
-                                <div className="flex flex-col">
-                                  <Badge variant="outline" className="mb-1">{property.tipo}</Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {property.municipio}, {property.barrio}, {property.sector}
-                                  </span>
-                                  <span className="text-xs font-mono mt-1">{property.usng}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )
+                        // Fix the property reference error
+                        (sortConfigs 
+                          ? sortData(
+                              reportData.propiedades.flatMap(property => {
+                                // Create residents with property reference
+                                return applyResidentFilters(property.habitantes).map(resident => ({
+                                  ...resident,
+                                  _property: property // Add property reference
+                                }));
+                              })
+                            )
+                          : reportData.propiedades.flatMap(property => {
+                              // Create residents with property reference
+                              return applyResidentFilters(property.habitantes).map(resident => ({
+                                ...resident,
+                                _property: property // Add property reference
+                              }));
+                            })
+                        ).map((resident: ResidentData & { _property?: PropertyData }) => (
+                          <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
+                            <td className="py-3 px-4">
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {resident.family_id || '0'}-{resident.id}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4">{resident.nombre}</td>
+                            <td className="py-3 px-4">{resident.edad}</td>
+                            <td className="py-3 px-4">
+                              <Badge variant="outline">{resident.categoria}</Badge>
+                            </td>
+                            <td className="py-3 px-4">
+                              {resident.family ? (
+                                <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">No family</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident._property?.tipo || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident._property?.municipio || 'N/A'}, {resident._property?.barrio || 'N/A'}, {resident._property?.sector || 'N/A'}
+                                </span>
+                                <span className="text-xs font-mono mt-1">{resident._property?.usng || 'N/A'}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
                       )}
                       {((reportData.residentes && reportData.residentes.filter(r => !quickResidentFilter || r.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase())).length === 0) || 
                         (!reportData.residentes && reportData.propiedades.flatMap(property => applyResidentFilters(property.habitantes)).length === 0)) && (
                         <tr className="border-t">
-                          <td colSpan={7} className="py-6 px-4 text-center text-muted-foreground">
+                          <td colSpan={10} className="py-6 px-4 text-center text-muted-foreground">
                             No residents found matching the search criteria.
                           </td>
                         </tr>
@@ -1699,63 +1989,6 @@ export function DataAnalytics() {
                   </table>
                 </div>
               </div>
-              
-              {/* Results counter */}
-              <div className="mt-2 text-sm text-muted-foreground">
-                {reportData.residentes 
-                  ? reportData.residentes.filter(r => !quickResidentFilter || r.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase())).length
-                  : reportData.propiedades.flatMap(property => applyResidentFilters(property.habitantes)).length} 
-                {' residents found'}
-              </div>
-              
-              {/* Show feedback on active filters for resident search */}
-              {(quickResidentFilter || filters.residentName || filters.residentCategory || 
-                filters.residentCondition || filters.residentLimitation || 
-                filters.residentDisposition || filters.familyName ||
-                (filters.ageRange?.min || filters.ageRange?.max)) && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {quickResidentFilter && !filters.residentName && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Name: {quickResidentFilter}</span>
-                    </Badge>
-                  )}
-                  {filters.residentName && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Name: {filters.residentName}</span>
-                    </Badge>
-                  )}
-                  {filters.familyName && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Family: {filters.familyName}</span>
-                    </Badge>
-                  )}
-                  {filters.residentCategory && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Category: {filters.residentCategory}</span>
-                    </Badge>
-                  )}
-                  {filters.residentCondition && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Condition: {filters.residentCondition}</span>
-                    </Badge>
-                  )}
-                  {filters.residentLimitation && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Limitation: {filters.residentLimitation}</span>
-                    </Badge>
-                  )}
-                  {filters.residentDisposition && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Disposition: {filters.residentDisposition}</span>
-                    </Badge>
-                  )}
-                  {(filters.ageRange?.min || filters.ageRange?.max) && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <span>Age: {filters.ageRange?.min || '0'} - {filters.ageRange?.max || '∞'}</span>
-                    </Badge>
-                  )}
-                </div>
-              )}
             </CardContent>
           )}
         </Card>
@@ -1837,7 +2070,7 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
                         <td className="py-2 px-3">
                           <div className="flex flex-col">
                             <span>{property.municipio}</span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-sm text-muted-foreground">
                               {property.barrio} • {property.sector}
                             </span>
                           </div>
@@ -1857,6 +2090,7 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
                                   <div key={resident.id} className="pl-2 border-l-2 border-muted-foreground/20">
                                     <p><strong>{resident.nombre}</strong> ({resident.edad} years)
                                       {resident.family && <span className="ml-1">• Family: {resident.family.apellidos}</span>}
+                                      {resident.contacto && <span className="ml-1">• Contact: {resident.contacto}</span>}
                                     </p>
                                     <p className="text-muted-foreground">
                                       {resident.categoria}

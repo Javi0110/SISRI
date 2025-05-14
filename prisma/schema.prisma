@@ -173,12 +173,16 @@ model families {
 model habitantes {
   id           Int                     @id @default(autoincrement())
   nombre       String?                 @db.VarChar(100)
+  apellido1    String?                 @db.VarChar(100)
+  apellido2    String?                 @db.VarChar(100)
+  sex          String?                 @db.VarChar(10)
   categoria    String?                 @db.VarChar(50)
   rol          String?                 @db.VarChar(50)
   edad         Int?
   limitacion   String?                 @db.VarChar(100)
   condicion    String?                 @db.VarChar(100)
   disposicion  String?                 @db.VarChar(100)
+  contacto     String?                 @db.VarChar(50)
   propiedad_id Int?
   id_municipio Int?
   id_barrio    Int?

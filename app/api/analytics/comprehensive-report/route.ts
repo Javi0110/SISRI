@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
+import { Prisma } from "@prisma/client";
     
 // type PropiedadAfectada = {
 //   propiedadId: number;
@@ -46,25 +47,72 @@ interface SearchRequest {
 
 // Helper function to get the latest damage report for a property
 async function getPropertyDamageInfo(propertyId: number) {
-  const latestDamage = await prisma.propiedades_afectadas.findFirst({
-    where: {
-      propiedadId: propertyId
-    },
-    orderBy: {
-      fecha: 'desc'
-    },
-    include: {
-      evento: true
-    }
-  });
+  try {
+    const latestDamage = await prisma.propiedades_afectadas.findFirst({
+      where: {
+        propiedadId: propertyId
+      },
+      orderBy: {
+        fecha: 'desc'
+      },
+      include: {
+        evento: true
+      }
+    });
 
-  return latestDamage ? {
-    daños: latestDamage.daños,
-    fecha: latestDamage.fecha
-  } : {
-    daños: null,
-    fecha: null
-  };
+    return latestDamage ? {
+      daños: latestDamage.daños,
+      fecha: latestDamage.fecha
+    } : {
+      daños: null,
+      fecha: null
+    };
+  } catch (error) {
+    console.error(`Error fetching damage info for property ${propertyId}:`, error);
+    return {
+      daños: null,
+      fecha: null
+    };
+  }
+}
+
+// New helper function to get property damage info in bulk
+async function getBulkPropertyDamageInfo(propertyIds: number[]) {
+  try {
+    if (!propertyIds.length) return new Map();
+    
+    // Get the latest damage report for each property in a single query
+    const latestDamages = await prisma.$queryRaw`
+      WITH RankedDamages AS (
+        SELECT 
+          "propiedadId", 
+          "daños", 
+          fecha,
+          ROW_NUMBER() OVER (PARTITION BY "propiedadId" ORDER BY fecha DESC) as rn
+        FROM sisri."propiedades_afectadas"
+        WHERE "propiedadId" IN (${Prisma.join(propertyIds)})
+      )
+      SELECT "propiedadId", "daños", fecha
+      FROM RankedDamages
+      WHERE rn = 1
+    `;
+
+    // Create a map of propertyId -> damage info
+    const damageMap = new Map();
+    if (Array.isArray(latestDamages)) {
+      latestDamages.forEach((damage: any) => {
+        damageMap.set(damage.propiedadId, {
+          daños: damage.daños,
+          fecha: damage.fecha
+        });
+      });
+    }
+
+    return damageMap;
+  } catch (error) {
+    console.error("Error fetching bulk property damage info:", error);
+    return new Map();
+  }
 }
 
 export async function POST(req: Request) {
@@ -188,6 +236,7 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         limitacion: h.limitacion,
         condicion: h.condicion,
         disposicion: h.disposicion,
+        contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
         family: h.family ? {
@@ -281,6 +330,7 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         limitacion: h.limitacion,
         condicion: h.condicion,
         disposicion: h.disposicion,
+        contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
         family: h.family ? {
@@ -366,6 +416,7 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         limitacion: h.limitacion,
         condicion: h.condicion,
         disposicion: h.disposicion,
+        contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
         family: h.family ? {
@@ -516,40 +567,47 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
       });
     }
 
-    // Now process the residents to include property information
-    const processedResidents = await Promise.all(
-      residents.map(async (resident: any) => {
-        const property = resident.propiedad;
-        const damageInfo = await getPropertyDamageInfo(resident.propiedad_id);
+    // Extract all property IDs to fetch damage info in bulk
+    const propertyIds = residents
+      .filter((resident: any) => resident.propiedad_id)
+      .map((resident: any) => resident.propiedad_id);
+    
+    // Get damage info for all properties in a single query
+    const propertyDamageMap = await getBulkPropertyDamageInfo(propertyIds);
 
-        return {
-          id: resident.id,
-          nombre: resident.nombre,
-          edad: resident.edad,
-          categoria: resident.categoria,
-          limitacion: resident.limitacion,
-          condicion: resident.condicion,
-          disposicion: resident.disposicion,
-          propiedad_id: resident.propiedad_id,
-          family_id: resident.family_id,
-          family: resident.family ? {
-            id: resident.family.id,
-            apellidos: resident.family.apellidos,
-            description: resident.family.description
-          } : null,
-          property: property ? {
-            id: property.id,
-            tipo: property.tipo,
-            daños: damageInfo.daños,
-            fecha: damageInfo.fecha,
-            municipio: property.municipio?.nombre || 'N/A',
-            barrio: property.barrio?.nombre || 'N/A',
-            sector: property.sector?.nombre || 'N/A',
-            usng: property.usngsquare?.usng || 'N/A'
-          } : null
-        };
-      })
-    );
+    // Now process the residents to include property information
+    const processedResidents = residents.map((resident: any) => {
+      const property = resident.propiedad;
+      const damageInfo = propertyDamageMap.get(resident.propiedad_id) || { daños: null, fecha: null };
+
+      return {
+        id: resident.id,
+        nombre: resident.nombre,
+        edad: resident.edad,
+        categoria: resident.categoria,
+        limitacion: resident.limitacion,
+        condicion: resident.condicion,
+        disposicion: resident.disposicion,
+        contacto: resident.contacto,
+        propiedad_id: resident.propiedad_id,
+        family_id: resident.family_id,
+        family: resident.family ? {
+          id: resident.family.id,
+          apellidos: resident.family.apellidos,
+          description: resident.family.description
+        } : null,
+        propiedad_info: property ? {
+          id: property.id,
+          tipo: property.tipo,
+          daños: damageInfo.daños,
+          fecha: damageInfo.fecha,
+          municipio: property.municipio?.nombre || 'N/A',
+          barrio: property.barrio?.nombre || 'N/A',
+          sector: property.sector?.nombre || 'N/A',
+          usng: property.usngsquare?.usng || 'N/A'
+        } : null
+      };
+    });
 
     return NextResponse.json({
       searchType: 'residente',
