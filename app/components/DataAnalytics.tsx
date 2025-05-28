@@ -81,6 +81,8 @@ interface ResidentData {
   family_id?: number | null;
   apellido1?: string | null;
   apellido2?: string | null;
+  sex?: string;
+  sexo?: string;
   family?: {
     id: number;
     apellidos: string;
@@ -89,6 +91,18 @@ interface ResidentData {
   propiedad_info?: {
     id: number | null;
     tipo: string;
+    municipio: string;
+    barrio: string;
+    sector: string;
+    usng: string;
+    direccion?: string | null;
+  };
+  // Include _property field which might be used in some parts of the code
+  _property?: {
+    id: number;
+    tipo: string;
+    daños?: string | null;
+    fecha?: string | null;
     municipio: string;
     barrio: string;
     sector: string;
@@ -183,7 +197,6 @@ export function DataAnalytics() {
     ageRange?: { min: number; max: number };
     propertyType?: string;
     incidentType?: string;
-    damageType?: string;
     residentCategory?: string;
     residentCondition?: string;
     residentLimitation?: string;
@@ -191,6 +204,7 @@ export function DataAnalytics() {
     residentName?: string;
     familyName?: string;
     dateRange?: { start: string; end: string };
+    sex?: string;
   }>({});
 
   // Add a state for quick filtering resident names
@@ -442,6 +456,7 @@ export function DataAnalytics() {
       if (filters.residentDisposition) filterObj.residentDisposition = filters.residentDisposition;
       if (filters.residentName) filterObj.residentName = filters.residentName;
       if (filters.familyName) filterObj.familyName = filters.familyName;
+      if (filters.sex) filterObj.sex = filters.sex;
       
       if (filters.dateRange?.start || filters.dateRange?.end) {
         filterObj.dateRange = {};
@@ -456,6 +471,8 @@ export function DataAnalytics() {
         filters: filterObj
       };
 
+      console.log("Sending search payload:", searchPayload); // Debug log
+
       const response = await fetch("/api/analytics/comprehensive-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -463,10 +480,81 @@ export function DataAnalytics() {
       });
 
       const data = await response.json();
+      console.log("Received response data:", data); // Debug log
 
       if (data.error) {
         setError(data.error);
       } else {
+        // If we're searching for residents and have location filters, apply them to the results
+        if (searchType === 'residente' && data.residentes && 
+            (filters.municipio || filters.barrio || filters.sector)) {
+          console.log("Applying client-side location filters", filters);
+          
+          // Apply municipio filter
+          if (filters.municipio) {
+            const municipioFilter = filters.municipio.toLowerCase();
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
+              const propInfoMunicipio = resident.propiedad_info?.municipio?.toLowerCase() || '';
+              const propMunicipio = resident._property?.municipio?.toLowerCase() || '';
+              return propInfoMunicipio === municipioFilter || propMunicipio === municipioFilter;
+            });
+            console.log(`Filtered residents by municipio "${filters.municipio}": ${data.residentes.length} results`);
+          }
+          
+          // Apply barrio filter
+          if (filters.barrio) {
+            const barrioFilter = filters.barrio.toLowerCase();
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
+              const propInfoBarrio = resident.propiedad_info?.barrio?.toLowerCase() || '';
+              const propBarrio = resident._property?.barrio?.toLowerCase() || '';
+              return propInfoBarrio === barrioFilter || propBarrio === barrioFilter;
+            });
+            console.log(`Filtered residents by barrio "${filters.barrio}": ${data.residentes.length} results`);
+          }
+          
+          // Apply sector filter
+          if (filters.sector) {
+            const sectorFilter = filters.sector.toLowerCase();
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
+              const propInfoSector = resident.propiedad_info?.sector?.toLowerCase() || '';
+              const propSector = resident._property?.sector?.toLowerCase() || '';
+              return propInfoSector === sectorFilter || propSector === sectorFilter;
+            });
+            console.log(`Filtered residents by sector "${filters.sector}": ${data.residentes.length} results`);
+          }
+          
+          // Apply property type filter if needed
+          if (filters.propertyType) {
+            const propertyTypeFilter = filters.propertyType.toLowerCase();
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
+              const propInfoTipo = resident.propiedad_info?.tipo?.toLowerCase() || '';
+              const propTipo = resident._property?.tipo?.toLowerCase() || '';
+              return propInfoTipo === propertyTypeFilter || propTipo === propertyTypeFilter;
+            });
+            console.log(`Filtered residents by property type "${filters.propertyType}": ${data.residentes.length} results`);
+          }
+          
+          // Apply category filter if needed
+          if (filters.residentCategory) {
+            const categoryFilter = filters.residentCategory.toLowerCase();
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
+              return resident.categoria.toLowerCase() === categoryFilter;
+            });
+            console.log(`Filtered residents by category "${filters.residentCategory}": ${data.residentes.length} results`);
+          }
+          
+          // Apply sex filter if needed
+          if (filters.sex) {
+            const sexFilter = filters.sex.toLowerCase();
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
+              const sex = resident.sex?.toLowerCase() || '';
+              const sexo = resident.sexo?.toLowerCase() || '';
+              return sex === sexFilter || sexo === sexFilter;
+            });
+            console.log(`Filtered residents by sex "${filters.sex}": ${data.residentes.length} results`);
+          }
+        }
+        
         // Add the searchQuery to the reportData
         setReportData({
           ...data,
@@ -511,6 +599,7 @@ export function DataAnalytics() {
   const [propertyTypeOptions] = useState(["residencial", "comercial", "industrial", "hospital"]);
   const [incidentTypeOptions] = useState(["inundacion", "deslizamiento", "derrumbe"]);
   const [residentCategoryOptions] = useState(["Adulto", "Niño", "Adulto Mayor"]);
+  const [sexOptions] = useState(["Masculino", "Femenino"]);
   const [conditionOptions, setConditionOptions] = useState<string[]>([]);
   const [limitationOptions, setLimitationOptions] = useState<string[]>([]);
   const [dispositionOptions, setDispositionOptions] = useState<string[]>([]);
@@ -787,6 +876,28 @@ export function DataAnalytics() {
                     {category === 'Adulto' ? 'Adult' : 
                      category === 'Niño' ? 'Minor' : 
                      category === 'Adulto Mayor' ? 'Elderly' : category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Sex Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Sex</label>
+            <Select
+              value={filters.sex || 'all'}
+              onValueChange={(value) => handleFilterChange('sex', value === 'all' ? '' : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select sex" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {sexOptions.map((sex) => (
+                  <SelectItem key={sex} value={sex}>
+                    {sex === 'Masculino' ? 'Male' : 
+                     sex === 'Femenino' ? 'Female' : sex}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1547,9 +1658,10 @@ export function DataAnalytics() {
     
     // Apply category filter
     if (filters.residentCategory) {
-      filteredResidents = filteredResidents.filter(resident => 
-        resident.categoria.toLowerCase() === filters.residentCategory?.toLowerCase()
-      );
+      const categoryFilter = filters.residentCategory.toLowerCase();
+      filteredResidents = filteredResidents.filter((resident: ResidentData) => {
+        return resident.categoria.toLowerCase() === categoryFilter;
+      });
     }
     
     // Apply condition filter
@@ -1601,6 +1713,81 @@ export function DataAnalytics() {
         const min = Number(filters.ageRange?.min || 0);
         const max = Number(filters.ageRange?.max || 200);
         return resident.edad >= min && resident.edad <= max;
+      });
+    }
+    
+    // Apply sex filter
+    if (filters.sex) {
+      const sexFilter = filters.sex.toLowerCase();
+      filteredResidents = filteredResidents.filter((resident: ResidentData) => {
+        const sex = resident.sex?.toLowerCase() || '';
+        const sexo = resident.sexo?.toLowerCase() || '';
+        return sex === sexFilter || sexo === sexFilter;
+      });
+    }
+    
+    // Apply location filters (USNG, municipio, barrio, sector)
+    if (filters.usng) {
+      const usngFilter = filters.usng.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => {
+        const propInfoUsng = resident.propiedad_info?.usng?.toLowerCase() || '';
+        const propUsng = resident._property?.usng?.toLowerCase() || '';
+        return propInfoUsng.includes(usngFilter) || propUsng.includes(usngFilter);
+      });
+    }
+    
+    if (filters.municipio) {
+      const municipioFilter = filters.municipio.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => {
+        const propInfoMunicipio = resident.propiedad_info?.municipio?.toLowerCase() || '';
+        const propMunicipio = resident._property?.municipio?.toLowerCase() || '';
+        return propInfoMunicipio === municipioFilter || propMunicipio === municipioFilter;
+      });
+    }
+    
+    if (filters.barrio) {
+      const barrioFilter = filters.barrio.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => {
+        const propInfoBarrio = resident.propiedad_info?.barrio?.toLowerCase() || '';
+        const propBarrio = resident._property?.barrio?.toLowerCase() || '';
+        return propInfoBarrio === barrioFilter || propBarrio === barrioFilter;
+      });
+    }
+    
+    if (filters.sector) {
+      const sectorFilter = filters.sector.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => {
+        const propInfoSector = resident.propiedad_info?.sector?.toLowerCase() || '';
+        const propSector = resident._property?.sector?.toLowerCase() || '';
+        return propInfoSector === sectorFilter || propSector === sectorFilter;
+      });
+    }
+    
+    // Apply property type filter
+    if (filters.propertyType) {
+      const propertyTypeFilter = filters.propertyType.toLowerCase();
+      filteredResidents = filteredResidents.filter(resident => {
+        const propInfoTipo = resident.propiedad_info?.tipo?.toLowerCase() || '';
+        const propTipo = resident._property?.tipo?.toLowerCase() || '';
+        return propInfoTipo === propertyTypeFilter || propTipo === propertyTypeFilter;
+      });
+    }
+    
+    // Apply category filter if needed
+    if (filters.residentCategory) {
+      const categoryFilter = filters.residentCategory.toLowerCase();
+      filteredResidents = filteredResidents.filter((resident: ResidentData) => {
+        return resident.categoria.toLowerCase() === categoryFilter;
+      });
+    }
+    
+    // Apply sex filter if needed
+    if (filters.sex) {
+      const sexFilter = filters.sex.toLowerCase();
+      filteredResidents = filteredResidents.filter((resident: ResidentData) => {
+        const sex = resident.sex?.toLowerCase() || '';
+        const sexo = resident.sexo?.toLowerCase() || '';
+        return sex === sexFilter || sexo === sexFilter;
       });
     }
     
@@ -1847,6 +2034,9 @@ export function DataAnalytics() {
                                           <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
                                             Age {getSortDirectionIndicator('edad')}
                                           </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
+                                            Sex {getSortDirectionIndicator('sex')}
+                                          </th>
                                           <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
                                             Category {getSortDirectionIndicator('categoria')}
                                           </th>
@@ -1865,6 +2055,21 @@ export function DataAnalytics() {
                                           <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
                                             Disposition {getSortDirectionIndicator('disposicion')}
                                           </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
+                                            Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
+                                            Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
+                                            Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
+                                            Sector {getSortDirectionIndicator('propiedad_info.sector')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
+                                            Address {getSortDirectionIndicator('propiedad_info.direccion')}
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -1881,6 +2086,7 @@ export function DataAnalytics() {
                                             <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
                                             <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
                                             <td className="py-2 px-3">{resident.edad}</td>
+                                            <td className="py-2 px-3">{resident.sex || resident.sexo || 'N/A'}</td>
                                             <td className="py-2 px-3">
                                               <Badge variant="outline">{resident.categoria}</Badge>
                                             </td>
@@ -1895,6 +2101,47 @@ export function DataAnalytics() {
                                             <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
                                             <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
                                             <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
+                                                </span>
+                                                <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                                              </div>
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.municipio || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.barrio || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.sector || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.direccion || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -2056,6 +2303,9 @@ export function DataAnalytics() {
                                         <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
                                           Age {getSortDirectionIndicator('edad')}
                                         </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
+                                          Sex {getSortDirectionIndicator('sex')}
+                                        </th>
                                         <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
                                           Category {getSortDirectionIndicator('categoria')}
                                         </th>
@@ -2074,6 +2324,21 @@ export function DataAnalytics() {
                                         <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
                                           Disposition {getSortDirectionIndicator('disposicion')}
                                         </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
+                                          Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
+                                          Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
+                                          Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
+                                          Sector {getSortDirectionIndicator('propiedad_info.sector')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
+                                          Address {getSortDirectionIndicator('propiedad_info.direccion')}
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -2090,6 +2355,7 @@ export function DataAnalytics() {
                                           <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
                                           <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
                                           <td className="py-2 px-3">{resident.edad}</td>
+                                          <td className="py-2 px-3">{resident.sex || resident.sexo || 'N/A'}</td>
                                           <td className="py-2 px-3">
                                             <Badge variant="outline">{resident.categoria}</Badge>
                                           </td>
@@ -2104,6 +2370,47 @@ export function DataAnalytics() {
                                           <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
                                           <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
                                           <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
+                                          <td className="py-2 px-3">
+                                            <div className="flex flex-col">
+                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                                              <span className="text-xs text-muted-foreground">
+                                                {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
+                                              </span>
+                                              <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                                            </div>
+                                          </td>
+                                          <td className="py-2 px-3">
+                                            <div className="flex flex-col">
+                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
+                                              <span className="text-xs text-muted-foreground">
+                                                {resident.propiedad_info?.municipio || 'N/A'}
+                                              </span>
+                                            </div>
+                                          </td>
+                                          <td className="py-2 px-3">
+                                            <div className="flex flex-col">
+                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
+                                              <span className="text-xs text-muted-foreground">
+                                                {resident.propiedad_info?.barrio || 'N/A'}
+                                              </span>
+                                            </div>
+                                          </td>
+                                          <td className="py-2 px-3">
+                                            <div className="flex flex-col">
+                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
+                                              <span className="text-xs text-muted-foreground">
+                                                {resident.propiedad_info?.sector || 'N/A'}
+                                              </span>
+                                            </div>
+                                          </td>
+                                          <td className="py-2 px-3">
+                                            <div className="flex flex-col">
+                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
+                                              <span className="text-xs text-muted-foreground">
+                                                {resident.propiedad_info?.direccion || 'N/A'}
+                                              </span>
+                                            </div>
+                                          </td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -2169,6 +2476,9 @@ export function DataAnalytics() {
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
                           Age {getSortDirectionIndicator('edad')}
                         </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
+                          Sex {getSortDirectionIndicator('sex')}
+                        </th>
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
                           Category {getSortDirectionIndicator('categoria')}
                         </th>
@@ -2189,6 +2499,18 @@ export function DataAnalytics() {
                         </th>
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
                           Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
+                          Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
+                          Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
+                          Sector {getSortDirectionIndicator('propiedad_info.sector')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
+                          Address {getSortDirectionIndicator('propiedad_info.direccion')}
                         </th>
                       </tr>
                     </thead>
@@ -2217,6 +2539,7 @@ export function DataAnalytics() {
                             <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
                             <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
                             <td className="py-3 px-4">{resident.edad}</td>
+                            <td className="py-3 px-4">{resident.sex || resident.sexo || 'N/A'}</td>
                             <td className="py-3 px-4">
                               <Badge variant="outline">{resident.categoria}</Badge>
                             </td>
@@ -2238,6 +2561,38 @@ export function DataAnalytics() {
                                   {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
                                 </span>
                                 <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident.propiedad_info?.municipio || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident.propiedad_info?.barrio || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident.propiedad_info?.sector || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident.propiedad_info?.direccion || 'N/A'}
+                                </span>
                               </div>
                             </td>
                           </tr>
@@ -2272,6 +2627,7 @@ export function DataAnalytics() {
                             <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
                             <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
                             <td className="py-3 px-4">{resident.edad}</td>
+                            <td className="py-3 px-4">{resident.sex || resident.sexo || 'N/A'}</td>
                             <td className="py-3 px-4">
                               <Badge variant="outline">{resident.categoria}</Badge>
                             </td>
@@ -2295,13 +2651,45 @@ export function DataAnalytics() {
                                 <span className="text-xs font-mono mt-1">{resident._property?.usng || 'N/A'}</span>
                               </div>
                             </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident._property?.municipio || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident._property?.municipio || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident._property?.barrio || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident._property?.barrio || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident._property?.sector || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident._property?.sector || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col">
+                                <Badge variant="outline" className="mb-1">{resident._property?.direccion || 'N/A'}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {resident._property?.direccion || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
                           </tr>
                         ))
                       )}
                       {((reportData.residentes && reportData.residentes.filter(r => !quickResidentFilter || r.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase())).length === 0) || 
                         (!reportData.residentes && reportData.propiedades.flatMap(property => applyResidentFilters(property.habitantes)).length === 0)) && (
                         <tr className="border-t">
-                          <td colSpan={10} className="py-6 px-4 text-center text-muted-foreground">
+                          <td colSpan={17} className="py-6 px-4 text-center text-muted-foreground">
                             No residents found matching the search criteria.
                           </td>
                         </tr>
