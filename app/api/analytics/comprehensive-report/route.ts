@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
-import { Prisma } from "@prisma/client";
     
 // type PropiedadAfectada = {
 //   propiedadId: number;
@@ -77,43 +76,6 @@ async function getPropertyDamageInfo(propertyId: number) {
 }
 
 // New helper function to get property damage info in bulk
-async function getBulkPropertyDamageInfo(propertyIds: number[]) {
-  try {
-    if (!propertyIds.length) return new Map();
-    
-    // Get the latest damage report for each property in a single query
-    const latestDamages = await prisma.$queryRaw`
-      WITH RankedDamages AS (
-        SELECT 
-          "propiedadId", 
-          "daños", 
-          fecha,
-          ROW_NUMBER() OVER (PARTITION BY "propiedadId" ORDER BY fecha DESC) as rn
-        FROM sisri."propiedades_afectadas"
-        WHERE "propiedadId" IN (${Prisma.join(propertyIds)})
-      )
-      SELECT "propiedadId", "daños", fecha
-      FROM RankedDamages
-      WHERE rn = 1
-    `;
-
-    // Create a map of propertyId -> damage info
-    const damageMap = new Map();
-    if (Array.isArray(latestDamages)) {
-      latestDamages.forEach((damage: any) => {
-        damageMap.set(damage.propiedadId, {
-          daños: damage.daños,
-          fecha: damage.fecha
-        });
-      });
-    }
-
-    return damageMap;
-  } catch (error) {
-    console.error("Error fetching bulk property damage info:", error);
-    return new Map();
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -227,10 +189,13 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
       barrio: property.barrio?.nombre || 'N/A',
       sector: property.sector?.nombre || 'N/A',
       usng: property.usngsquare?.usng || 'N/A',
+      direccion: property.direccion || 'N/A',
       notificaciones: propertyNotifs,
       habitantes: property.habitantes.map((h: any) => ({
         id: h.id,
         nombre: h.nombre,
+        apellido1: h.apellido1,
+        apellido2: h.apellido2,
         edad: h.edad,
         categoria: h.categoria,
         limitacion: h.limitacion,
@@ -322,9 +287,12 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
       barrio: property.barrio?.nombre || 'N/A',
       sector: property.sector?.nombre || 'N/A',
       usng: property.usngsquare?.usng || 'N/A',
+      direccion: property.direccion || 'N/A',
       habitantes: property.habitantes.map((h: any) => ({
         id: h.id,
         nombre: h.nombre,
+        apellido1: h.apellido1,
+        apellido2: h.apellido2,
         edad: h.edad,
         categoria: h.categoria,
         limitacion: h.limitacion,
@@ -408,9 +376,12 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
       barrio: property.barrio?.nombre || 'N/A',
       sector: property.sector?.nombre || 'N/A',
       usng: property.usngsquare?.usng || 'N/A',
+      direccion: property.direccion || 'N/A',
       habitantes: property.habitantes.map((h: any) => ({
         id: h.id,
         nombre: h.nombre,
+        apellido1: h.apellido1,
+        apellido2: h.apellido2,
         edad: h.edad,
         categoria: h.categoria,
         limitacion: h.limitacion,
@@ -442,7 +413,31 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
       }
 
       if (filters.propertyType && property.tipo !== filters.propertyType) {
-        matches = false;
+        // Use case-insensitive comparison with additional mapping
+        const propertyType = property.tipo?.toLowerCase() || '';
+        const filterType = filters.propertyType.toLowerCase();
+        
+        const residentialTerms = ['residencial', 'residential', 'residencia'];
+        const commercialTerms = ['comercial', 'commercial', 'comercio'];
+        const industrialTerms = ['industrial', 'industria'];
+        const hospitalTerms = ['hospital', 'médico', 'medico', 'salud'];
+        
+        let typeMatches = propertyType === filterType;
+        
+        // Check for type mappings
+        if (residentialTerms.includes(filterType)) {
+          typeMatches = residentialTerms.includes(propertyType);
+        } else if (commercialTerms.includes(filterType)) {
+          typeMatches = commercialTerms.includes(propertyType);
+        } else if (industrialTerms.includes(filterType)) {
+          typeMatches = industrialTerms.includes(propertyType);
+        } else if (hospitalTerms.includes(filterType)) {
+          typeMatches = hospitalTerms.includes(propertyType);
+        }
+        
+        if (!typeMatches) {
+          matches = false;
+        }
       }
 
       if (filters.ageRange) {
@@ -509,12 +504,38 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
       };
     }
     
-    // Add limitation filter
+    // Add limitation filter with special handling for diabetes
     if (filters?.residentLimitation) {
-      whereClause.limitacion = {
-        contains: filters.residentLimitation,
-        mode: 'insensitive'
-      };
+      // Special handling for diabetes
+      if (filters.residentLimitation.toLowerCase() === 'diabetes') {
+        whereClause.OR = [
+          { limitacion: { equals: 'Diabetes', mode: 'insensitive' } },
+          { limitacion: { contains: 'diabetes', mode: 'insensitive' } },
+          { limitacion: { contains: 'diabetico', mode: 'insensitive' } },
+          { limitacion: { contains: 'diabética', mode: 'insensitive' } },
+          { limitacion: { contains: 'diabetica', mode: 'insensitive' } },
+          { limitacion: { contains: 'diabetis', mode: 'insensitive' } },
+          { limitacion: { contains: 'tipo 1', mode: 'insensitive' } },
+          { limitacion: { contains: 'tipo 2', mode: 'insensitive' } },
+          { limitacion: { contains: 'azucar', mode: 'insensitive' } }
+        ];
+      } else {
+        // For other limitations, use both exact and contains
+        whereClause.OR = [
+          {
+            limitacion: {
+              equals: filters.residentLimitation,
+              mode: 'insensitive'
+            }
+          },
+          {
+            limitacion: {
+              contains: filters.residentLimitation,
+              mode: 'insensitive'
+            }
+          }
+        ];
+      }
     }
     
     // Add disposition filter
@@ -568,21 +589,17 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
     }
 
     // Extract all property IDs to fetch damage info in bulk
-    const propertyIds = residents
-      .filter((resident: any) => resident.propiedad_id)
-      .map((resident: any) => resident.propiedad_id);
     
     // Get damage info for all properties in a single query
-    const propertyDamageMap = await getBulkPropertyDamageInfo(propertyIds);
 
     // Now process the residents to include property information
     const processedResidents = residents.map((resident: any) => {
-      const property = resident.propiedad;
-      const damageInfo = propertyDamageMap.get(resident.propiedad_id) || { daños: null, fecha: null };
 
       return {
         id: resident.id,
         nombre: resident.nombre,
+        apellido1: resident.apellido1,
+        apellido2: resident.apellido2,
         edad: resident.edad,
         categoria: resident.categoria,
         limitacion: resident.limitacion,
@@ -596,16 +613,15 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
           apellidos: resident.family.apellidos,
           description: resident.family.description
         } : null,
-        propiedad_info: property ? {
-          id: property.id,
-          tipo: property.tipo,
-          daños: damageInfo.daños,
-          fecha: damageInfo.fecha,
-          municipio: property.municipio?.nombre || 'N/A',
-          barrio: property.barrio?.nombre || 'N/A',
-          sector: property.sector?.nombre || 'N/A',
-          usng: property.usngsquare?.usng || 'N/A'
-        } : null
+        propiedad_info: {
+          id: resident.propiedad?.id || null,
+          tipo: resident.propiedad?.tipo || 'N/A',
+          municipio: resident.propiedad?.municipio?.nombre || 'N/A',
+          barrio: resident.propiedad?.barrio?.nombre || 'N/A',
+          sector: resident.propiedad?.sector?.nombre || 'N/A',
+          usng: resident.propiedad?.usngsquare?.usng || 'N/A',
+          direccion: resident.propiedad?.direccion || 'N/A'
+        }
       };
     });
 

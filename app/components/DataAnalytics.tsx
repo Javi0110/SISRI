@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Bell, ChevronDown, ChevronUp, Clock, FileText, Home, MapPin, Printer, Search, Users } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
@@ -57,6 +57,7 @@ interface PropertyData {
   barrio: string;
   sector: string;
   usng: string;
+  direccion?: string | null;
   notificaciones?: {
     id: number;
     numero_notificacion: string | null;
@@ -78,6 +79,8 @@ interface ResidentData {
   contacto?: string;
   propiedad_id: number;
   family_id?: number | null;
+  apellido1?: string | null;
+  apellido2?: string | null;
   family?: {
     id: number;
     apellidos: string;
@@ -90,6 +93,7 @@ interface ResidentData {
     barrio: string;
     sector: string;
     usng: string;
+    direccion?: string | null;
   };
 }
 
@@ -115,6 +119,8 @@ interface ReportData {
   residentes?: {
     id: number;
     nombre: string;
+    apellido1?: string | null;
+    apellido2?: string | null;
     edad: number;
     categoria: string;
     limitacion: string;
@@ -135,6 +141,7 @@ interface ReportData {
       barrio: string;
       sector: string;
       usng: string;
+      direccion?: string | null;
     }
   }[];
 }
@@ -424,10 +431,8 @@ export function DataAnalytics() {
       }
       
       if (filters.propertyType) {
-        filterObj.propertyType = filters.propertyType === 'residencial' ? 'Residential' :
-                               filters.propertyType === 'comercial' ? 'Commercial' :
-                               filters.propertyType === 'industrial' ? 'Industrial' :
-                               filters.propertyType;
+        // Don't translate property types, send the exact value to backend
+        filterObj.propertyType = filters.propertyType;
       }
       
       if (filters.incidentType) filterObj.incidentType = filters.incidentType;
@@ -499,6 +504,106 @@ export function DataAnalytics() {
     }));
   };
 
+  // Add state for filter options
+  const [municipalityOptions, setMunicipalityOptions] = useState<{id_municipio: number, nombre: string}[]>([]);
+  const [barrioOptions, setBarrioOptions] = useState<{id_barrio: number, nombre: string}[]>([]);
+  const [sectorOptions, setSectorOptions] = useState<{id_sector: number, nombre: string}[]>([]);
+  const [propertyTypeOptions] = useState(["residencial", "comercial", "industrial", "hospital"]);
+  const [incidentTypeOptions] = useState(["inundacion", "deslizamiento", "derrumbe"]);
+  const [residentCategoryOptions] = useState(["Adulto", "Niño", "Adulto Mayor"]);
+  const [conditionOptions, setConditionOptions] = useState<string[]>([]);
+  const [limitationOptions, setLimitationOptions] = useState<string[]>([]);
+  const [dispositionOptions, setDispositionOptions] = useState<string[]>([]);
+  
+  // Fetch filter options on component mount
+  useEffect(() => {
+    const fetchMunicipalities = async () => {
+      try {
+        const response = await fetch('/api/municipios');
+        if (response.ok) {
+          const data = await response.json();
+          setMunicipalityOptions(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch municipalities:", error);
+      }
+    };
+    
+    // Fetch common conditions, limitations, and dispositions from resident data
+    const fetchResidentOptions = async () => {
+      try {
+        const response = await fetch('/api/residentes/options');
+        if (response.ok) {
+          const data = await response.json();
+          setConditionOptions(data.conditions || []);
+          setLimitationOptions(data.limitations || []);
+          setDispositionOptions(data.dispositions || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch resident options:", error);
+      }
+    };
+    
+    fetchMunicipalities();
+    fetchResidentOptions();
+  }, []);
+  
+  // Fetch barrios when municipality changes
+  useEffect(() => {
+    const fetchBarrios = async () => {
+      if (!filters.municipio) {
+        setBarrioOptions([]);
+        return;
+      }
+      
+      try {
+        const municipioId = municipalityOptions.find(m => 
+          m.nombre.toLowerCase() === filters.municipio?.toLowerCase()
+        )?.id_municipio;
+        
+        if (municipioId) {
+          const response = await fetch(`/api/barrios/search?term=&municipioId=${municipioId}`);
+          if (response.ok) {
+            const data = await response.json();
+            setBarrioOptions(data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch barrios:", error);
+      }
+    };
+    
+    fetchBarrios();
+  }, [filters.municipio, municipalityOptions]);
+  
+  // Fetch sectors when barrio changes
+  useEffect(() => {
+    const fetchSectors = async () => {
+      if (!filters.barrio) {
+        setSectorOptions([]);
+        return;
+      }
+      
+      try {
+        const barrioId = barrioOptions.find(b => 
+          b.nombre.toLowerCase() === filters.barrio?.toLowerCase()
+        )?.id_barrio;
+        
+        if (barrioId) {
+          const response = await fetch(`/api/sectores/search?term=&barrioId=${barrioId}`);
+          if (response.ok) {
+            const data = await response.json();
+            setSectorOptions(data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch sectors:", error);
+      }
+    };
+    
+    fetchSectors();
+  }, [filters.barrio, barrioOptions]);
+
   const renderAdvancedFilters = () => {
     if (!showAdvancedFilters) return null;
 
@@ -531,31 +636,66 @@ export function DataAnalytics() {
           {/* Municipality Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Municipality</label>
-            <Input
-              placeholder="Filter by municipality"
-              value={filters.municipio || ''}
-              onChange={(e) => handleFilterChange('municipio', e.target.value)}
-            />
+            <Select
+              value={filters.municipio || 'all'}
+              onValueChange={(value) => handleFilterChange('municipio', value === 'all' ? '' : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select municipality" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All municipalities</SelectItem>
+                {municipalityOptions.map((municipality) => (
+                  <SelectItem key={municipality.id_municipio} value={municipality.nombre}>
+                    {municipality.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Barrio Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Barrio</label>
-            <Input
-              placeholder="Filter by barrio"
-              value={filters.barrio || ''}
-              onChange={(e) => handleFilterChange('barrio', e.target.value)}
-            />
+            <Select
+              value={filters.barrio || 'all'}
+              onValueChange={(value) => handleFilterChange('barrio', value === 'all' ? '' : value)}
+              disabled={!filters.municipio || barrioOptions.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select barrio" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All barrios</SelectItem>
+                {barrioOptions.map((barrio) => (
+                  <SelectItem key={barrio.id_barrio} value={barrio.nombre}>
+                    {barrio.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Sector Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Sector</label>
-            <Input
-              placeholder="Filter by sector"
-              value={filters.sector || ''}
-              onChange={(e) => handleFilterChange('sector', e.target.value)}
-            />
+            <Select
+              value={filters.sector || 'all'}
+              onValueChange={(value) => handleFilterChange('sector', value === 'all' ? '' : value)}
+              disabled={!filters.barrio || sectorOptions.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select sector" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sectors</SelectItem>
+                {sectorOptions.map((sector) => (
+                  <SelectItem key={sector.id_sector} value={sector.nombre}>
+                    {sector.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Age Range Filter */}
@@ -587,16 +727,22 @@ export function DataAnalytics() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Property Type</label>
             <Select
-              value={filters.propertyType}
-              onValueChange={(value) => handleFilterChange('propertyType', value)}
+              value={filters.propertyType || 'all'}
+              onValueChange={(value) => handleFilterChange('propertyType', value === 'all' ? '' : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="residencial">Residential</SelectItem>
-                <SelectItem value="comercial">Commercial</SelectItem>
-                <SelectItem value="industrial">Industrial</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
+                {propertyTypeOptions.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type === 'residencial' ? 'Residential' : 
+                     type === 'comercial' ? 'Commercial' : 
+                     type === 'industrial' ? 'Industrial' : 
+                     type === 'hospital' ? 'Hospital' : type}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -605,16 +751,21 @@ export function DataAnalytics() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Incident Type</label>
             <Select
-              value={filters.incidentType}
-              onValueChange={(value) => handleFilterChange('incidentType', value)}
+              value={filters.incidentType || 'all'}
+              onValueChange={(value) => handleFilterChange('incidentType', value === 'all' ? '' : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="inundacion">Flood</SelectItem>
-                <SelectItem value="deslizamiento">Landslide</SelectItem>
-                <SelectItem value="derrumbe">Collapse</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
+                {incidentTypeOptions.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type === 'inundacion' ? 'Flood' : 
+                     type === 'deslizamiento' ? 'Landslide' : 
+                     type === 'derrumbe' ? 'Collapse' : type}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -624,16 +775,20 @@ export function DataAnalytics() {
             <label className="text-sm font-medium">Resident Category</label>
             <Select
               value={filters.residentCategory || 'all'}
-              onValueChange={(value) => handleFilterChange('residentCategory', value)}
+              onValueChange={(value) => handleFilterChange('residentCategory', value === 'all' ? '' : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
-                <SelectItem value="Adulto">Adult</SelectItem>
-                <SelectItem value="Niño">Minor</SelectItem>
-                <SelectItem value="Adulto Mayor">Elderly</SelectItem>
+                {residentCategoryOptions.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category === 'Adulto' ? 'Adult' : 
+                     category === 'Niño' ? 'Minor' : 
+                     category === 'Adulto Mayor' ? 'Elderly' : category}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -641,31 +796,64 @@ export function DataAnalytics() {
           {/* Resident Condition Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Resident Condition</label>
-            <Input
-              placeholder="Filter by condition"
-              value={filters.residentCondition || ''}
-              onChange={(e) => handleFilterChange('residentCondition', e.target.value)}
-            />
+            <Select
+              value={filters.residentCondition || 'all'}
+              onValueChange={(value) => handleFilterChange('residentCondition', value === 'all' ? '' : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select condition" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All conditions</SelectItem>
+                {conditionOptions.map((condition) => (
+                  <SelectItem key={condition} value={condition}>
+                    {condition || 'None'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Resident Limitation Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Resident Limitation</label>
-            <Input
-              placeholder="Filter by limitation"
-              value={filters.residentLimitation || ''}
-              onChange={(e) => handleFilterChange('residentLimitation', e.target.value)}
-            />
+            <Select
+              value={filters.residentLimitation || 'all'}
+              onValueChange={(value) => handleFilterChange('residentLimitation', value === 'all' ? '' : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select limitation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All limitations</SelectItem>
+                {limitationOptions.map((limitation) => (
+                  <SelectItem key={limitation} value={limitation}>
+                    {limitation || 'None'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Resident Disposition Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Resident Disposition</label>
-            <Input
-              placeholder="Filter by disposition"
-              value={filters.residentDisposition || ''}
-              onChange={(e) => handleFilterChange('residentDisposition', e.target.value)}
-            />
+            <Select
+              value={filters.residentDisposition || 'all'}
+              onValueChange={(value) => handleFilterChange('residentDisposition', value === 'all' ? '' : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select disposition" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dispositions</SelectItem>
+                {dispositionOptions.map((disposition) => (
+                  <SelectItem key={disposition} value={disposition}>
+                    {disposition || 'None'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Date Range Filter */}
@@ -1137,6 +1325,7 @@ export function DataAnalytics() {
                     <th>ID</th>
                     <th>Property</th>
                     <th>Location</th>
+                    <th>Address</th>
                     <th>USNG</th>
                     <th>Damage</th>
                     <th>Date</th>
@@ -1157,6 +1346,7 @@ export function DataAnalytics() {
                           </span>
                         </div>
                       </td>
+                      <td>${property.direccion || 'N/A'}</td>
                       <td>${property.usng}</td>
                       <td>${property.daños || 'N/A'}</td>
                       <td>
@@ -1168,12 +1358,14 @@ export function DataAnalytics() {
                     </tr>
                     ${property.habitantes.length > 0 ? `
                     <tr>
-                      <td colspan="7" style="padding: 0;">
+                      <td colspan="8" style="padding: 0;">
                         <table class="residents-table">
                           <thead>
                             <tr>
                               <th>ID</th>
                               <th>Name</th>
+                              <th>Last Name 1</th>
+                              <th>Last Name 2</th>
                               <th>Age</th>
                               <th>Category</th>
                               <th>Family</th>
@@ -1184,22 +1376,20 @@ export function DataAnalytics() {
                             </tr>
                           </thead>
                           <tbody>
-                            ${(sortConfigs ? sortData(property.habitantes) : property.habitantes).map((resident) => `
+                            ${(sortConfigs ? sortData(property.habitantes) : property.habitantes).map((resident: ResidentData) => `
                               <tr>
                                 <td>
                                   <span class="badge badge-outline">${resident.family_id || '0'}-${resident.id}</span>
                                 </td>
                                 <td>${resident.nombre}</td>
+                                <td>${(resident.apellido1 || '') + ' ' + (resident.apellido2 || '')}</td>
+                                <td>${resident.apellido1 || 'N/A'}</td>
+                                <td>${resident.apellido2 || 'N/A'}</td>
                                 <td>${resident.edad}</td>
                                 <td>
                                   <span class="badge badge-outline">${resident.categoria}</span>
                                 </td>
-                                <td>
-                                  ${resident.family ? 
-                                    `<span class="badge">${resident.family.apellidos}</span>` : 
-                                    `<span style="color: #666; font-size: 0.9em;">No family</span>`
-                                  }
-                                </td>
+                                <td>${resident.family ? resident.family.apellidos : 'N/A'}</td>
                                 <td>${resident.contacto || 'N/A'}</td>
                                 <td>${resident.limitacion || 'N/A'}</td>
                                 <td>${resident.condicion || 'N/A'}</td>
@@ -1210,7 +1400,7 @@ export function DataAnalytics() {
                         </table>
                       </td>
                     </tr>
-                    <tr><td colspan="7" class="property-divider"></td></tr>
+                    <tr><td colspan="8" class="property-divider"></td></tr>
                     ` : ''}
                   `).join('')}
                 </tbody>
@@ -1230,6 +1420,8 @@ export function DataAnalytics() {
                   <tr>
                     <th>ID</th>
                     <th>Name</th>
+                    <th>Last Name 1</th>
+                    <th>Last Name 2</th>
                     <th>Age</th>
                     <th>Category</th>
                     <th>Family</th>
@@ -1239,6 +1431,8 @@ export function DataAnalytics() {
                     <th>Disposition</th>
                     <th>Property</th>
                     <th>Location</th>
+                    <th>Address</th>
+                    <th>USNG</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1246,6 +1440,9 @@ export function DataAnalytics() {
                     <tr>
                       <td>${resident.family_id || '0'}-${resident.id}</td>
                       <td>${resident.nombre}</td>
+                      <td>${(resident.apellido1 || '') + ' ' + (resident.apellido2 || '')}</td>
+                      <td>${resident.apellido1 || 'N/A'}</td>
+                      <td>${resident.apellido2 || 'N/A'}</td>
                       <td>${resident.edad}</td>
                       <td>${resident.categoria}</td>
                       <td>${resident.family ? resident.family.apellidos : 'N/A'}</td>
@@ -1261,6 +1458,8 @@ export function DataAnalytics() {
                           ${resident.propiedad_info.sector}
                         ` : 'N/A'}
                       </td>
+                      <td>${resident.propiedad_info ? resident.propiedad_info.direccion || 'N/A' : 'N/A'}</td>
+                      <td>${resident.propiedad_info ? resident.propiedad_info.usng : 'N/A'}</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -1362,9 +1561,31 @@ export function DataAnalytics() {
     
     // Apply limitation filter
     if (filters.residentLimitation) {
-      filteredResidents = filteredResidents.filter(resident => 
-        resident.limitacion?.toLowerCase().includes(filters.residentLimitation!.toLowerCase())
-      );
+      filteredResidents = filteredResidents.filter((resident: ResidentData) => {
+        const limitationFilter = filters.residentLimitation!.toLowerCase();
+        const residentLimitation = resident.limitacion?.toLowerCase() || "";
+        
+        // Special cases handling for diabetes
+        if (limitationFilter === "diabetes" && 
+            (residentLimitation.includes("diabetes") || 
+             residentLimitation.includes("diabetico") || 
+             residentLimitation.includes("diabética") ||
+             residentLimitation.includes("diabetica") || 
+             residentLimitation.includes("diabetis") ||
+             residentLimitation.includes("tipo 1") ||
+             residentLimitation.includes("tipo 2") ||
+             residentLimitation.includes("azucar"))) {
+          return true;
+        }
+        
+        // Handle exact matches
+        if (residentLimitation === limitationFilter) {
+          return true;
+        }
+        
+        // Fall back to contains for partial matches
+        return residentLimitation.includes(limitationFilter);
+      });
     }
     
     // Apply disposition filter
@@ -1545,6 +1766,9 @@ export function DataAnalytics() {
                           <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
                             Location {getSortDirectionIndicator('municipio')}
                           </th>
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('direccion', e)}>
+                            Address {getSortDirectionIndicator('direccion')}
+                          </th>
                           <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
                             USNG {getSortDirectionIndicator('usng')}
                           </th>
@@ -1574,6 +1798,7 @@ export function DataAnalytics() {
                                   </span>
                                 </div>
                               </td>
+                              <td className="py-3 px-4">{property.direccion || 'N/A'}</td>
                               <td className="py-3 px-4">{property.usng}</td>
                               <td className="py-3 px-4">{property.daños || 'N/A'}</td>
                               <td className="py-3 px-4">
@@ -1602,7 +1827,7 @@ export function DataAnalytics() {
                             </tr>
                             {expandedProperties[property.id] && property.habitantes.length > 0 && (
                               <tr className="bg-muted/30">
-                                <td colSpan={6} className="py-2 px-4">
+                                <td colSpan={7} className="py-2 px-4">
                                   <div className="ml-8">
                                     <table className="w-full">
                                       <thead>
@@ -1612,6 +1837,12 @@ export function DataAnalytics() {
                                           </th>
                                           <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
                                             Name {getSortDirectionIndicator('nombre')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
+                                            Last Name 1 {getSortDirectionIndicator('apellido1')}
+                                          </th>
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
+                                            Last Name 2 {getSortDirectionIndicator('apellido2')}
                                           </th>
                                           <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
                                             Age {getSortDirectionIndicator('edad')}
@@ -1647,6 +1878,8 @@ export function DataAnalytics() {
                                               </Badge>
                                             </td>
                                             <td className="py-2 px-3">{resident.nombre}</td>
+                                            <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
+                                            <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
                                             <td className="py-2 px-3">{resident.edad}</td>
                                             <td className="py-2 px-3">
                                               <Badge variant="outline">{resident.categoria}</Badge>
@@ -1659,9 +1892,9 @@ export function DataAnalytics() {
                                               )}
                                             </td>
                                             <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
-                                            <td className="py-2 px-3">{resident.limitacion}</td>
-                                            <td className="py-2 px-3">{resident.condicion}</td>
-                                            <td className="py-2 px-3">{resident.disposicion}</td>
+                                            <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
+                                            <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
+                                            <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -1742,6 +1975,9 @@ export function DataAnalytics() {
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
                           Location {getSortDirectionIndicator('municipio')}
                         </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('direccion', e)}>
+                          Address {getSortDirectionIndicator('direccion')}
+                        </th>
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
                           USNG {getSortDirectionIndicator('usng')}
                         </th>
@@ -1771,6 +2007,7 @@ export function DataAnalytics() {
                                 </span>
                               </div>
                             </td>
+                            <td className="py-3 px-4">{property.direccion || 'N/A'}</td>
                             <td className="py-3 px-4">{property.usng}</td>
                             <td className="py-3 px-4">{property.daños || 'N/A'}</td>
                             <td className="py-3 px-4">
@@ -1799,7 +2036,7 @@ export function DataAnalytics() {
                           </tr>
                           {expandedProperties[property.id] && property.habitantes.length > 0 && (
                             <tr className="bg-muted/30">
-                              <td colSpan={6} className="py-2 px-4">
+                              <td colSpan={7} className="py-2 px-4">
                                 <div className="ml-8">
                                   <table className="w-full">
                                     <thead>
@@ -1809,6 +2046,12 @@ export function DataAnalytics() {
                                         </th>
                                         <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
                                           Name {getSortDirectionIndicator('nombre')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
+                                          Last Name 1 {getSortDirectionIndicator('apellido1')}
+                                        </th>
+                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
+                                          Last Name 2 {getSortDirectionIndicator('apellido2')}
                                         </th>
                                         <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
                                           Age {getSortDirectionIndicator('edad')}
@@ -1844,6 +2087,8 @@ export function DataAnalytics() {
                                             </Badge>
                                           </td>
                                           <td className="py-2 px-3">{resident.nombre}</td>
+                                          <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
+                                          <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
                                           <td className="py-2 px-3">{resident.edad}</td>
                                           <td className="py-2 px-3">
                                             <Badge variant="outline">{resident.categoria}</Badge>
@@ -1856,9 +2101,9 @@ export function DataAnalytics() {
                                             )}
                                           </td>
                                           <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
-                                          <td className="py-2 px-3">{resident.limitacion}</td>
-                                          <td className="py-2 px-3">{resident.condicion}</td>
-                                          <td className="py-2 px-3">{resident.disposicion}</td>
+                                          <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
+                                          <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
+                                          <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -1915,6 +2160,12 @@ export function DataAnalytics() {
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
                           Name {getSortDirectionIndicator('nombre')}
                         </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
+                          Last Name 1 {getSortDirectionIndicator('apellido1')}
+                        </th>
+                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
+                          Last Name 2 {getSortDirectionIndicator('apellido2')}
+                        </th>
                         <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
                           Age {getSortDirectionIndicator('edad')}
                         </th>
@@ -1963,6 +2214,8 @@ export function DataAnalytics() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4">{resident.nombre}</td>
+                            <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
                             <td className="py-3 px-4">{resident.edad}</td>
                             <td className="py-3 px-4">
                               <Badge variant="outline">{resident.categoria}</Badge>
@@ -2016,6 +2269,8 @@ export function DataAnalytics() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4">{resident.nombre}</td>
+                            <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
+                            <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
                             <td className="py-3 px-4">{resident.edad}</td>
                             <td className="py-3 px-4">
                               <Badge variant="outline">{resident.categoria}</Badge>
@@ -2187,3 +2442,4 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
     </Dialog>
   );
 }
+

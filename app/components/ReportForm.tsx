@@ -72,6 +72,14 @@ const sexOptions = [
   "Female"
 ] as const
 
+// Add form mode options after the constants
+const formModes = [
+  "Full Report",
+  "Event Only", 
+  "Property Only",
+  "Resident Only"
+] as const;
+
 // Types
 interface Municipio {
   id_municipio: number
@@ -189,6 +197,7 @@ const generateNotificationNumber = () =>
 // Main component
 export function ReportForm() {
   // State
+  const [formMode, setFormMode] = useState<typeof formModes[number]>("Full Report")
   const [municipios, setMunicipios] = useState<Municipio[]>([])
   const [cuencas, setCuencas] = useState<Cuenca[]>([])
   const [selectedMunicipios, setSelectedMunicipios] = useState<Record<number, number>>({})
@@ -527,7 +536,33 @@ export function ReportForm() {
     [searchFamilies]
   );
 
-  // Update the onSubmit function to properly reset the form after successful submission
+  // Add this function to handle form mode change
+  const handleFormModeChange = useCallback((mode: typeof formModes[number]) => {
+    setFormMode(mode);
+
+    // Reset relevant form sections based on selected mode
+    if (mode === "Event Only") {
+      // Keep event info, reset properties and residents
+      setValue("properties", [{ 
+        type: propertyTypes[0],
+        municipioId: "", 
+        address: "",
+        habitantes: [],
+      }]);
+    } else if (mode === "Property Only") {
+      // Reset event info, keep properties
+      setValue("eventName", "Property Registration");
+      setValue("tipo", incidentTypes[0]);
+      setValue("incidents", [{ type: incidentTypes[0], description: "Property Registration", cuencaId: "" }]);
+    } else if (mode === "Resident Only") {
+      // Reset event info, keep residents
+      setValue("eventName", "Resident Registration");
+      setValue("tipo", incidentTypes[0]);
+      setValue("incidents", [{ type: incidentTypes[0], description: "Resident Registration", cuencaId: "" }]);
+    }
+  }, [setValue]);
+
+  // Modify the onSubmit function to adapt to different form modes
   const onSubmit = useCallback(async (values: z.infer<typeof formSchema>) => {
     try {
       setIsSubmitting(true);
@@ -573,12 +608,15 @@ export function ReportForm() {
         console.warn('No USNG ID found, continuing without it');
       }
       
-      // Format the data to match new Prisma schema
-      const formattedData = {
+      // Adjust formattedData based on form mode
+      let formattedData: any = {};
+      
+      // Common fields for all modes
+      if (formMode === "Full Report" || formMode === "Event Only") {
         // If we have a selected event, use its ID
-        eventoId: selectedEvent?.id,
+        formattedData.eventoId = selectedEvent?.id;
         // Only include event creation data if no existing event was selected
-        evento: !selectedEvent ? {
+        formattedData.evento = !selectedEvent ? {
           create: {
             titulo: values.eventName,
             tipo: values.tipo,
@@ -586,24 +624,29 @@ export function ReportForm() {
             descripcion: values.incidents[0].description,
             fecha: new Date(values.date).toISOString(),
           }
-        } : undefined,
+        } : undefined;
+        
         // Notification specific data
-        notificacion: {
+        formattedData.notificacion = {
           numero_notificacion: values.notificationNumber,
           tipo: values.tipo,
           mensaje: values.incidents[0].description,
           estado: values.estado,
           fecha: new Date(values.date).toISOString(),
-          // Add other notification fields as needed
-        },
+        };
+        
         // Format incidents with cuenca
-        incidentes: values.incidents.map(incident => ({
+        formattedData.incidentes = values.incidents.map(incident => ({
           tipo: incident.type,
           descripcion: incident.description,
           cuencaId: incident.cuencaId ? parseInt(incident.cuencaId) : parseInt(values.cuencaIds[0])
-        })),
+        }));
+      }
+      
+      // Add properties data for Full Report, Property Only, and Resident Only modes
+      if (formMode === "Full Report" || formMode === "Property Only" || formMode === "Resident Only") {
         // Format properties with required fields and habitantes
-        propiedades_afectadas: values.properties.map(property => {
+        formattedData.propiedades_afectadas = values.properties.map(property => {
           // Handle new barrio or sector creation
           const propertyData: any = {
             tipo: property.type,
@@ -653,59 +696,77 @@ export function ReportForm() {
             propertyData.id_sector = parseInt(property.sectorId);
           }
 
-          // Add habitantes with family information
-          propertyData.habitantes = {
-            create: property.habitantes?.map(habitante => {
-              const habitanteData: any = {
-                name: habitante.name,
-                apellido1: habitante.apellido1,
-                apellido2: habitante.apellido2 || "",
-                sex: habitante.sex,
-                categoria: habitante.categoria,
-                rol: habitante.rol,
-                age: parseInt(habitante.age),
-                limitation: habitante.limitation,
-                condition: habitante.condition,
-                disposition: habitante.disposition,
-                contacto: habitante.contacto,
-              };
+          // Add habitantes with family information if in Full Report or Resident Only mode
+          if (formMode === "Full Report" || formMode === "Resident Only") {
+            propertyData.habitantes = {
+              create: property.habitantes?.map(habitante => {
+                const habitanteData: any = {
+                  name: habitante.name,
+                  apellido1: habitante.apellido1,
+                  apellido2: habitante.apellido2 || "",
+                  sex: habitante.sex,
+                  categoria: habitante.categoria,
+                  rol: habitante.rol,
+                  age: parseInt(habitante.age),
+                  limitation: habitante.limitation,
+                  condition: habitante.condition,
+                  disposition: habitante.disposition,
+                  contacto: habitante.contacto,
+                };
 
-              // For family information, use the apellidos from the habitante
-              if (habitante.familyId === "new") {
-                // Create a new family using the habitante's apellidos
-                if (habitante.newFamilyApellido1) {
-                  habitanteData.newFamily = {
-                    apellidos: `${habitante.newFamilyApellido1} ${habitante.newFamilyApellido2 || ""}`,
-                    description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
-                  };
-                } else {
-                  // Use the habitante's last names if no specific family names provided
-                  habitanteData.newFamily = {
-                    apellidos: `${habitante.apellido1} ${habitante.apellido2 || ""}`,
-                    description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
-                  };
+                // For family information, use the apellidos from the habitante
+                if (habitante.familyId === "new") {
+                  // Create a new family using the habitante's apellidos
+                  if (habitante.newFamilyApellido1) {
+                    habitanteData.newFamily = {
+                      apellidos: `${habitante.newFamilyApellido1} ${habitante.newFamilyApellido2 || ""}`,
+                      description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
+                    };
+                  } else {
+                    // Use the habitante's last names if no specific family names provided
+                    habitanteData.newFamily = {
+                      apellidos: `${habitante.apellido1} ${habitante.apellido2 || ""}`,
+                      description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
+                    };
+                  }
+                } else if (habitante.familyId !== "new") {
+                  // Link to existing family
+                  habitanteData.family_id = parseInt(habitante.familyId);
                 }
-              } else if (habitante.familyId !== "new") {
-                // Link to existing family
-                habitanteData.family_id = parseInt(habitante.familyId);
-              }
 
-              return habitanteData;
-            }) || []
-          };
+                return habitanteData;
+              }) || []
+            };
+          } else {
+            // For Property Only mode, initialize empty habitantes array
+            propertyData.habitantes = { create: [] };
+          }
 
           return {
-            daños: property.value || "No damage reported",
+            daños: property.value || (formMode === "Property Only" || formMode === "Resident Only" ? "No damage" : "No damage reported"),
             propiedad: {
               create: propertyData
             }
           };
-        })
-      };
+        });
+      }
+      
+      // For Event Only mode, include minimal property info if required by API
+      if (formMode === "Event Only") {
+        formattedData.propiedades_afectadas = [];
+      }
       
       console.log('Submitting formatted data:', formattedData);
 
-      const response = await fetch('/api/eventos', {
+      // Use different endpoint based on form mode
+      let endpoint = '/api/eventos';
+      if (formMode === "Property Only") {
+        endpoint = '/api/properties';
+      } else if (formMode === "Resident Only") {
+        endpoint = '/api/residents';
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -719,9 +780,9 @@ export function ReportForm() {
       }
       
       const responseData = await response.json();
-      console.log('Event submitted successfully:', responseData);
+      console.log(`${formMode} submitted successfully:`, responseData);
       
-      window.alert('Event submitted successfully!');
+      window.alert(`${formMode} submitted successfully!`);
       
       // Reset form completely using react-hook-form's reset method
       handleEventSelect(null);
@@ -749,12 +810,12 @@ export function ReportForm() {
       });
       
     } catch (error) {
-      console.error('Error submitting event:', error);
-      window.alert(`Failed to submit event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(`Error submitting ${formMode}:`, error);
+      window.alert(`Failed to submit ${formMode}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);
     }
-  }, [validateUsngCode, reset, selectedEvent, handleEventSelect, setSelectedMunicipios, setSelectedBarrios, setBarrioSearchResults, setSectorSearchResults, setFamilySearchResults]);
+  }, [validateUsngCode, reset, selectedEvent, handleEventSelect, setSelectedMunicipios, setSelectedBarrios, setBarrioSearchResults, setSectorSearchResults, setFamilySearchResults, formMode]);
 
   // Handlers
   const handleAddIncident = useCallback(() => {
@@ -834,706 +895,617 @@ export function ReportForm() {
   // Render form
   return (
     <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 2 }}>
-      {/* Event Information Section */}
+      {/* Form Mode Selection */}
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Event Information</Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Controller
-              name="notificationNumber"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  label="Notification #"
-                  variant="outlined"
-                  fullWidth
-                  disabled
-                />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Controller
-              name="eventName"
-              control={control}
-              render={({ field }) => (
-                <Autocomplete
-                  {...field}
-                  freeSolo
-                  options={eventSearchResults}
-                  getOptionLabel={(option) => 
-                    typeof option === 'string' ? option : option.titulo
-                  }
-                  loading={isSearchingEvent}
-                  value={selectedEvent}
-                  onChange={(_, newValue) => {
-                    if (typeof newValue === 'string') {
-                      field.onChange(newValue);
-                    } else {
-                      handleEventSelect(newValue as EventSearchResult | null);
-                      field.onChange(newValue?.titulo || '');
-                    }
-                  }}
-                  onInputChange={(_, newValue) => {
-                    field.onChange(newValue)
-                    debouncedEventSearch(newValue)
-                  }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Event Name"
-                      variant="outlined"
-                      fullWidth
-                      error={!!errors.eventName}
-                      helperText={errors.eventName?.message || (selectedEvent ? 'Using existing event' : '')}
-                      InputProps={{
-                        ...params.InputProps,
-                        endAdornment: (
-                          <>
-                            {isSearchingEvent && <CircularProgress size={20} />}
-                            {params.InputProps.endAdornment}
-                          </>
-                        ),
-                      }}
-                    />
-                  )}
-                  renderOption={(props, option) => (
-                    <li {...props}>
-                      <Box>
-                        <Typography variant="body1">{option.titulo}</Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          {`Type: ${option.tipo} | Status: ${option.estado} | Date: ${new Date(option.fecha).toLocaleDateString()}`}
-                        </Typography>
-                      </Box>
-                    </li>
-                  )}
-                />
-              )}
-            />
-          </Grid>
-
-          {/* Show these fields only when creating a new event (no selected event) */}
-          {!selectedEvent && (
-            <>
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="date"
-                  control={control}
-                  render={({ field: { value, onChange, ...field } }) => (
-                    <TextField
-                      {...field}
-                      value={value || ''}
-                      onChange={(e) => {
-                        onChange(e.target.value)
-                      }}
-                      type="date"
-                      label="Event Date"
-                      variant="outlined"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      error={!!errors.date}
-                      helperText={errors.date?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="time"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      type="time"
-                      label="Event Time"
-                      variant="outlined"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      error={!!errors.time}
-                      helperText={errors.time?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="tipo"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth error={!!errors.tipo}>
-                      <InputLabel>Event Type</InputLabel>
-                      <Select
-                        {...field}
-                        label="Event Type"
-                      >
-                        {incidentTypes.map((type) => (
-                          <MenuItem key={type} value={type}>
-                            {type}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                      {errors.tipo && (
-                        <FormHelperText>
-                          {errors.tipo.message}
-                        </FormHelperText>
-                      )}
-                    </FormControl>
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="estado"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth error={!!errors.estado}>
-                      <InputLabel>Event Status</InputLabel>
-                      <Select
-                        {...field}
-                        label="Event Status"
-                      >
-                        {eventStatus.map((status) => (
-                          <MenuItem key={status} value={status}>
-                            {status.charAt(0).toUpperCase() + status.slice(1)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                      {errors.estado && (
-                        <FormHelperText>
-                          {errors.estado.message}
-                        </FormHelperText>
-                      )}
-                    </FormControl>
-                  )}
-                />
-              </Grid>
-            </>
-          )}
-        </Grid>
-      </Paper>
-
-      {/* Notification Information Section */}
-      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Notification Information</Typography>
-        <Grid container spacing={3}>
-          {/* Date and Time */}
-          <Grid item xs={12} md={6}>
-            <Controller
-              name="date"
-              control={control}
-              render={({ field: { value, onChange, ...field } }) => (
-                <TextField
-                  {...field}
-                  value={value || ''}
-                  onChange={(e) => {
-                    onChange(e.target.value)
-                  }}
-                  type="date"
-                  label="Date"
-                  variant="outlined"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  error={!!errors.date}
-                  helperText={errors.date?.message}
-                />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Controller
-              name="time"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  type="time"
-                  label="Time"
-                  variant="outlined"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  error={!!errors.time}
-                  helperText={errors.time?.message}
-                />
-              )}
-            />
-          </Grid>
-
-          {/* Type and Status */}
-          <Grid item xs={12} md={6}>
-            <Controller
-              name="tipo"
-              control={control}
-              render={({ field }) => (
-                <FormControl fullWidth error={!!errors.tipo}>
-                  <InputLabel>Event Type</InputLabel>
-                  <Select
-                    {...field}
-                    label="Event Type"
-                  >
-                    {incidentTypes.map((type) => (
-                      <MenuItem key={type} value={type}>
-                        {type}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {errors.tipo && (
-                    <FormHelperText>
-                      {errors.tipo.message}
-                    </FormHelperText>
-                  )}
-                </FormControl>
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Controller
-              name="estado"
-              control={control}
-              render={({ field }) => (
-                <FormControl fullWidth error={!!errors.estado}>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    {...field}
-                    label="Status"
-                  >
-                    {eventStatus.map((status) => (
-                      <MenuItem key={status} value={status}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {errors.estado && (
-                    <FormHelperText>
-                      {errors.estado.message}
-                    </FormHelperText>
-                  )}
-                </FormControl>
-              )}
-            />
-          </Grid>
-
-          {/* USNG Code */}
-          <Grid item xs={12}>
-            <Controller
-              name="usngCode"
-              control={control}
-              render={({ field }) => (
-                <Autocomplete
-                  freeSolo
-                  options={usngSuggestions}
-                  getOptionLabel={(option) => 
-                    typeof option === 'string' ? option : option.usng
-                  }
-                  loading={isLoadingUsngSuggestions}
-                  onInputChange={(_, newValue) => {
-                    setValue("usngCode", newValue)
-                    searchUsngCodes(newValue)
-                  }}
-                  onChange={(_, newValue) => {
-                    const value = typeof newValue === 'string' 
-                      ? newValue 
-                      : newValue?.usng || ''
-                    setValue("usngCode", value)
-                    validateUsngCode(value)
-                  }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      {...field} 
-                      label="USNG Coordinates"
-                      variant="outlined"
-                      fullWidth
-                      error={!!errors.usngCode}
-                      helperText={
-                        errors.usngCode?.message || 
-                        (usngValidationResult && (
-                          <Typography 
-                            component="span" 
-                            color={usngValidationResult.valid ? "success.main" : "error"}
-                          >
-                            {usngValidationResult.message}
-                          </Typography>
-                        ))
-                      }
-                      InputProps={{
-                        ...params.InputProps,
-                        endAdornment: (
-                          <>
-                            {isValidatingUsng || isLoadingUsngSuggestions ? (
-                              <CircularProgress color="inherit" size={20} />
-                            ) : null}
-                            {params.InputProps.endAdornment}
-                          </>
-                        ),
-                      }}
-                      onChange={handleUsngInputChange}
-                      onBlur={() => {
-                        if (field.value) {
-                          validateUsngCode(field.value)
-                        }
-                      }}
-                    />
-                  )}
-                />
-              )}
-            />
-          </Grid>
-
-          {/* Incidents */}
-          <Grid item xs={12}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="subtitle1">Incidents</Typography>
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={handleAddIncident}
-                size="small"
-              >
-                Add Incident
-              </Button>
-            </Box>
-            
-            <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
-              {incidents.map((_, index) => (
-                <Card key={index} variant="outlined" sx={{ mb: 2 }}>
-                  <CardContent>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} md={6}>
-                        <Controller
-                          name={`incidents.${index}.type`}
-                          control={control}
-                          render={({ field }) => (
-                            <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
-                              <InputLabel>Incident Type</InputLabel>
-                              <Select
-                                {...field}
-                                label="Incident Type"
-                              >
-                                {incidentTypes.map((type) => (
-                                  <MenuItem key={type} value={type}>
-                                    {type}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                              {errors.incidents?.[index]?.type && (
-                                <FormHelperText>
-                                  {String(errors.incidents[index]?.type || "Invalid type")}
-                                </FormHelperText>
-                              )}
-                            </FormControl>
-                          )}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <Controller
-                          name={`incidents.${index}.description`}
-                          control={control}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              label="Description"
-                              variant="outlined"
-                              fullWidth
-                              multiline
-                              rows={2}
-                              error={!!errors.incidents?.[index]?.description}
-                              helperText={errors.incidents?.[index]?.description?.message}
-                            />
-                          )}
-                        />
-                      </Grid>
-                    </Grid>
-                  </CardContent>
-                </Card>
-              ))}
-            </Box>
-          </Grid>
-
-          {/* Affected Cuencas */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" gutterBottom>Affected Cuencas (Optional)</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Select Cuencas</InputLabel>
-                  <Select
-                    label="Select Cuencas"
-                    value=""
-                    onChange={(e) => {
-                      const target = e.target as HTMLInputElement;
-                      handleCuencaSelect(target.value);
-                    }}
-                  >
-                    {cuencas.map((cuenca) => (
-                      <MenuItem key={cuenca.id} value={String(cuenca.id)}>
-                        {cuenca.nombre} ({cuenca.codigo_cuenca})
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
-                  {cuencaIds?.map((cuencaId) => {
-                    const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
-                    return cuenca ? (
-                      <Chip
-                        key={cuenca.id}
-                        label={cuenca.nombre}
-                        onDelete={() => handleRemoveCuenca(cuencaId)}
-                        color="primary"
-                        variant="outlined"
-                      />
-                    ) : null
-                  })}
-                </Box>
-              </Grid>
-            </Grid>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Properties Section */}
-      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">Affected Properties</Typography>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={handleAddProperty}
-            size="small"
-          >
-            Add Property
-          </Button>
+        <Typography variant="h6" gutterBottom>Report Type</Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+          {formModes.map((mode) => (
+            <Button
+              key={mode}
+              variant={formMode === mode ? "contained" : "outlined"}
+              onClick={() => handleFormModeChange(mode)}
+              sx={{ minWidth: '150px' }}
+            >
+              {mode}
+            </Button>
+          ))}
         </Box>
+        <Typography variant="body2" color="text.secondary" mt={2}>
+          {formMode === "Full Report" && "Create a complete report with event information, properties, and residents."}
+          {formMode === "Event Only" && "Create only an event without adding properties or residents."}
+          {formMode === "Property Only" && "Register properties without creating a full incident report."}
+          {formMode === "Resident Only" && "Register residents associated with properties."}
+        </Typography>
+      </Paper>
 
-        <Box sx={{ maxHeight: 500, overflow: 'auto', pr: 1 }}>
-          {properties.map((_, index) => (
-            <Card key={index} variant="outlined" sx={{ mb: 2 }}>
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Controller
-                      name={`properties.${index}.type`}
-                      control={control}
-                      render={({ field }) => (
-                        <FormControl fullWidth error={!!errors.properties?.[index]?.type}>
-                          <InputLabel>Property Type</InputLabel>
-                          <Select
-                            {...field}
-                            label="Property Type"
-                          >
-                            {propertyTypes.map((type) => (
-                              <MenuItem key={type} value={type}>
-                                {type}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          {errors.properties?.[index]?.type && (
-                            <FormHelperText>
-                              {String(errors.properties[index]?.type || "Invalid type")}
-                            </FormHelperText>
-                          )}
-                        </FormControl>
-                      )}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Controller
-                      name={`properties.${index}.municipioId`}
-                      control={control}
-                      render={({ field }) => (
-                        <FormControl fullWidth error={!!errors.properties?.[index]?.municipioId}>
-                          <Autocomplete
-                            value={municipios.find(m => String(m.id_municipio) === field.value) || null}
-                            options={municipios}
-                            getOptionLabel={(option) => option.nombre}
-                            loading={isMunicipiosLoading}
-                            onChange={(_, newValue) => {
-                              const municipioId = newValue ? String(newValue.id_municipio) : "";
-                              field.onChange(municipioId);
-                              handleMunicipioSelect(index, municipioId);
-                            }}
-                            renderInput={(params) => (
+      {/* Show Event Information Section if form mode is Full Report or Event Only */}
+      {(formMode === "Full Report" || formMode === "Event Only") && (
+        <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Event Information</Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Controller
+                name="notificationNumber"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Notification #"
+                    variant="outlined"
+                    fullWidth
+                    disabled
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Controller
+                name="eventName"
+                control={control}
+                render={({ field }) => (
+                  <Autocomplete
+                    {...field}
+                    freeSolo
+                    options={eventSearchResults}
+                    getOptionLabel={(option) => 
+                      typeof option === 'string' ? option : option.titulo
+                    }
+                    loading={isSearchingEvent}
+                    value={selectedEvent}
+                    onChange={(_, newValue) => {
+                      if (typeof newValue === 'string') {
+                        field.onChange(newValue);
+                      } else {
+                        handleEventSelect(newValue as EventSearchResult | null);
+                        field.onChange(newValue?.titulo || '');
+                      }
+                    }}
+                    onInputChange={(_, newValue) => {
+                      field.onChange(newValue)
+                      debouncedEventSearch(newValue)
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Event Name"
+                        variant="outlined"
+                        fullWidth
+                        error={!!errors.eventName}
+                        helperText={errors.eventName?.message || (selectedEvent ? 'Using existing event' : '')}
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {isSearchingEvent && <CircularProgress size={20} />}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                    renderOption={(props, option) => (
+                      <li {...props}>
+                        <Box>
+                          <Typography variant="body1">{option.titulo}</Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            {`Type: ${option.tipo} | Status: ${option.estado} | Date: ${new Date(option.fecha).toLocaleDateString()}`}
+                          </Typography>
+                        </Box>
+                      </li>
+                    )}
+                  />
+                )}
+              />
+            </Grid>
+
+            {/* Show these fields only when creating a new event (no selected event) */}
+            {!selectedEvent && (
+              <>
+                <Grid item xs={12} md={6}>
+                  <Controller
+                    name="date"
+                    control={control}
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <TextField
+                        {...field}
+                        value={value || ''}
+                        onChange={(e) => {
+                          onChange(e.target.value)
+                        }}
+                        type="date"
+                        label="Event Date"
+                        variant="outlined"
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                        error={!!errors.date}
+                        helperText={errors.date?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Controller
+                    name="time"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        type="time"
+                        label="Event Time"
+                        variant="outlined"
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                        error={!!errors.time}
+                        helperText={errors.time?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Controller
+                    name="tipo"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControl fullWidth error={!!errors.tipo}>
+                        <InputLabel>Event Type</InputLabel>
+                        <Select
+                          {...field}
+                          label="Event Type"
+                        >
+                          {incidentTypes.map((type) => (
+                            <MenuItem key={type} value={type}>
+                              {type}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {errors.tipo && (
+                          <FormHelperText>
+                            {errors.tipo.message}
+                          </FormHelperText>
+                        )}
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Controller
+                    name="estado"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControl fullWidth error={!!errors.estado}>
+                        <InputLabel>Event Status</InputLabel>
+                        <Select
+                          {...field}
+                          label="Event Status"
+                        >
+                          {eventStatus.map((status) => (
+                            <MenuItem key={status} value={status}>
+                              {status.charAt(0).toUpperCase() + status.slice(1)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {errors.estado && (
+                          <FormHelperText>
+                            {errors.estado.message}
+                          </FormHelperText>
+                        )}
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+              </>
+            )}
+          </Grid>
+        </Paper>
+      )}
+
+      {/* Show Notification Information Section if form mode is Full Report or Event Only */}
+      {(formMode === "Full Report" || formMode === "Event Only") && (
+        <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Notification Information</Typography>
+          <Grid container spacing={3}>
+            {/* Date and Time */}
+            <Grid item xs={12} md={6}>
+              <Controller
+                name="date"
+                control={control}
+                render={({ field: { value, onChange, ...field } }) => (
+                  <TextField
+                    {...field}
+                    value={value || ''}
+                    onChange={(e) => {
+                      onChange(e.target.value)
+                    }}
+                    type="date"
+                    label="Date"
+                    variant="outlined"
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.date}
+                    helperText={errors.date?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Controller
+                name="time"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    type="time"
+                    label="Time"
+                    variant="outlined"
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.time}
+                    helperText={errors.time?.message}
+                  />
+                )}
+              />
+            </Grid>
+
+            {/* Type and Status */}
+            <Grid item xs={12} md={6}>
+              <Controller
+                name="tipo"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.tipo}>
+                    <InputLabel>Event Type</InputLabel>
+                    <Select
+                      {...field}
+                      label="Event Type"
+                    >
+                      {incidentTypes.map((type) => (
+                        <MenuItem key={type} value={type}>
+                          {type}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.tipo && (
+                      <FormHelperText>
+                        {errors.tipo.message}
+                      </FormHelperText>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Controller
+                name="estado"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.estado}>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      {...field}
+                      label="Status"
+                    >
+                      {eventStatus.map((status) => (
+                        <MenuItem key={status} value={status}>
+                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.estado && (
+                      <FormHelperText>
+                        {errors.estado.message}
+                      </FormHelperText>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            {/* USNG Code */}
+            <Grid item xs={12}>
+              <Controller
+                name="usngCode"
+                control={control}
+                render={({ field }) => (
+                  <Autocomplete
+                    freeSolo
+                    options={usngSuggestions}
+                    getOptionLabel={(option) => 
+                      typeof option === 'string' ? option : option.usng
+                    }
+                    loading={isLoadingUsngSuggestions}
+                    onInputChange={(_, newValue) => {
+                      setValue("usngCode", newValue)
+                      searchUsngCodes(newValue)
+                    }}
+                    onChange={(_, newValue) => {
+                      const value = typeof newValue === 'string' 
+                        ? newValue 
+                        : newValue?.usng || ''
+                      setValue("usngCode", value)
+                      validateUsngCode(value)
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        {...field} 
+                        label="USNG Coordinates"
+                        variant="outlined"
+                        fullWidth
+                        error={!!errors.usngCode}
+                        helperText={
+                          errors.usngCode?.message || 
+                          (usngValidationResult && (
+                            <Typography 
+                              component="span" 
+                              color={usngValidationResult.valid ? "success.main" : "error"}
+                            >
+                              {usngValidationResult.message}
+                            </Typography>
+                          ))
+                        }
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {isValidatingUsng || isLoadingUsngSuggestions ? (
+                                <CircularProgress color="inherit" size={20} />
+                              ) : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                        onChange={handleUsngInputChange}
+                        onBlur={() => {
+                          if (field.value) {
+                            validateUsngCode(field.value)
+                          }
+                        }}
+                      />
+                    )}
+                  />
+                )}
+              />
+            </Grid>
+
+            {/* Incidents */}
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="subtitle1">Incidents</Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddIncident}
+                  size="small"
+                >
+                  Add Incident
+                </Button>
+              </Box>
+              
+              <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
+                {incidents.map((_, index) => (
+                  <Card key={index} variant="outlined" sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <Controller
+                            name={`incidents.${index}.type`}
+                            control={control}
+                            render={({ field }) => (
+                              <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
+                                <InputLabel>Incident Type</InputLabel>
+                                <Select
+                                  {...field}
+                                  label="Incident Type"
+                                >
+                                  {incidentTypes.map((type) => (
+                                    <MenuItem key={type} value={type}>
+                                      {type}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                                {errors.incidents?.[index]?.type && (
+                                  <FormHelperText>
+                                    {String(errors.incidents[index]?.type || "Invalid type")}
+                                  </FormHelperText>
+                                )}
+                              </FormControl>
+                            )}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <Controller
+                            name={`incidents.${index}.description`}
+                            control={control}
+                            render={({ field }) => (
                               <TextField
-                                {...params}
-                                label="Municipality"
-                                error={!!errors.properties?.[index]?.municipioId}
-                                helperText={errors.properties?.[index]?.municipioId?.message}
-                                required
+                                {...field}
+                                label="Description"
+                                variant="outlined"
+                                fullWidth
+                                multiline
+                                rows={2}
+                                error={!!errors.incidents?.[index]?.description}
+                                helperText={errors.incidents?.[index]?.description?.message}
                               />
                             )}
                           />
-                        </FormControl>
-                      )}
-                    />
-                  </Grid>
-
-                  {selectedMunicipios[index] && (
-                    <>
-                      <Grid item xs={12} md={6}>
-                        <Controller
-                          name={`properties.${index}.barrioId`}
-                          control={control}
-                          render={({ field }) => (
-                            <FormControl fullWidth>
-                              <Autocomplete
-                                freeSolo
-                                options={barrioSearchResults}
-                                getOptionLabel={(option) => 
-                                  typeof option === 'string' ? option : option.nombre
-                                }
-                                loading={isSearchingBarrio}
-                                // Don't use a value from state, use the field value to get the selected option
-                                value={field.value === "new" 
-                                  ? null 
-                                  : barrioSearchResults.find(b => String(b.id_barrio) === field.value) || null}
-                                onChange={(_, newValue) => {
-                                  if (typeof newValue === 'string') {
-                                    field.onChange(newValue);
-                                  } else if (newValue) {
-                                    field.onChange(String(newValue.id_barrio));
-                                    handleBarrioSelect(index, String(newValue.id_barrio));
-                                  } else {
-                                    field.onChange("");
-                                  }
-                                }}
-                                onInputChange={(_, newValue) => {
-                                  if (selectedMunicipios[index]) {
-                                    debouncedBarrioSearch(newValue, selectedMunicipios[index]);
-                                  }
-                                }}
-                                renderInput={(params) => (
-                                  <TextField
-                                    {...params}
-                                    label="Neighborhood"
-                                    error={!!errors.properties?.[index]?.barrioId}
-                                    helperText={errors.properties?.[index]?.barrioId?.message}
-                                    InputProps={{
-                                      ...params.InputProps,
-                                      endAdornment: (
-                                        <>
-                                          {isSearchingBarrio && <CircularProgress size={20} />}
-                                          {params.InputProps.endAdornment}
-                                        </>
-                                      ),
-                                    }}
-                                  />
-                                )}
-                                renderOption={(props, option) => (
-                                  <li {...props}>
-                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                      <Typography variant="body1">
-                                        <Typography component="span" fontWeight="bold">
-                                          {option.nombre}
-                                        </Typography>
-                                      </Typography>
-                                      {option.codigo_barrio && (
-                                        <Typography variant="caption" color="text.secondary">
-                                          Código: {option.codigo_barrio}
-                                        </Typography>
-                                      )}
-                                    </Box>
-                                  </li>
-                                )}
-                              />
-                              <Button
-                                size="small"
-                                onClick={() => {
-                                  setValue(`properties.${index}.barrioId`, "new");
-                                  handleBarrioSelect(index, "new", true);
-                                }}
-                                sx={{ mt: 1 }}
-                              >
-                                + Add New Neighborhood
-                              </Button>
-                            </FormControl>
-                          )}
-                        />
+                        </Grid>
                       </Grid>
-                      
-                      {/* New Barrio Name Fields - shown when "new" is selected */}
-                      {getValues(`properties.${index}.barrioId`) === "new" && (
-                        <>
-                          <Grid item xs={12} md={6}>
-                            <Controller
-                              name={`properties.${index}.newBarrioName`}
-                              control={control}
-                              defaultValue=""
-                              render={({ field }) => (
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
+            </Grid>
+
+            {/* Affected Cuencas */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>Affected Cuencas (Optional)</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Select Cuencas</InputLabel>
+                    <Select
+                      label="Select Cuencas"
+                      value=""
+                      onChange={(e) => {
+                        const target = e.target as HTMLInputElement;
+                        handleCuencaSelect(target.value);
+                      }}
+                    >
+                      {cuencas.map((cuenca) => (
+                        <MenuItem key={cuenca.id} value={String(cuenca.id)}>
+                          {cuenca.nombre} ({cuenca.codigo_cuenca})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
+                    {cuencaIds?.map((cuencaId) => {
+                      const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
+                      return cuenca ? (
+                        <Chip
+                          key={cuenca.id}
+                          label={cuenca.nombre}
+                          onDelete={() => handleRemoveCuenca(cuencaId)}
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ) : null
+                    })}
+                  </Box>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
+
+      {/* Properties Section */}
+      {(formMode === "Full Report" || formMode === "Property Only" || formMode === "Resident Only") && (
+        <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">
+              {formMode === "Resident Only" ? "Property for Residents" : "Affected Properties"}
+            </Typography>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={handleAddProperty}
+              size="small"
+            >
+              Add Property
+            </Button>
+          </Box>
+
+          <Box sx={{ maxHeight: 500, overflow: 'auto', pr: 1 }}>
+            {properties.map((_, index) => (
+              <Card key={index} variant="outlined" sx={{ mb: 2 }}>
+                <CardContent>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Controller
+                        name={`properties.${index}.type`}
+                        control={control}
+                        render={({ field }) => (
+                          <FormControl fullWidth error={!!errors.properties?.[index]?.type}>
+                            <InputLabel>Property Type</InputLabel>
+                            <Select
+                              {...field}
+                              label="Property Type"
+                            >
+                              {propertyTypes.map((type) => (
+                                <MenuItem key={type} value={type}>
+                                  {type}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                            {errors.properties?.[index]?.type && (
+                              <FormHelperText>
+                                {String(errors.properties[index]?.type || "Invalid type")}
+                              </FormHelperText>
+                            )}
+                          </FormControl>
+                        )}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Controller
+                        name={`properties.${index}.municipioId`}
+                        control={control}
+                        render={({ field }) => (
+                          <FormControl fullWidth error={!!errors.properties?.[index]?.municipioId}>
+                            <Autocomplete
+                              value={municipios.find(m => String(m.id_municipio) === field.value) || null}
+                              options={municipios}
+                              getOptionLabel={(option) => option.nombre}
+                              loading={isMunicipiosLoading}
+                              onChange={(_, newValue) => {
+                                const municipioId = newValue ? String(newValue.id_municipio) : "";
+                                field.onChange(municipioId);
+                                handleMunicipioSelect(index, municipioId);
+                              }}
+                              renderInput={(params) => (
                                 <TextField
-                                  {...field}
-                                  label="New Neighborhood Name"
-                                  variant="outlined"
-                                  fullWidth
+                                  {...params}
+                                  label="Municipality"
+                                  error={!!errors.properties?.[index]?.municipioId}
+                                  helperText={errors.properties?.[index]?.municipioId?.message}
                                   required
                                 />
                               )}
                             />
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <Controller
-                              name={`properties.${index}.newBarrioCode`}
-                              control={control}
-                              defaultValue=""
-                              render={({ field }) => (
-                                <TextField
-                                  {...field}
-                                  label="New Neighborhood Code (Optional)"
-                                  variant="outlined"
-                                  fullWidth
-                                />
-                              )}
-                            />
-                          </Grid>
-                        </>
-                      )}
-                      
-                      {/* Sector Selection with Add New Option */}
-                      {(selectedBarrios[index] || getValues(`properties.${index}.barrioId`) === "new") && (
+                          </FormControl>
+                        )}
+                      />
+                    </Grid>
+
+                    {selectedMunicipios[index] && (
+                      <>
                         <Grid item xs={12} md={6}>
                           <Controller
-                            name={`properties.${index}.sectorId`}
+                            name={`properties.${index}.barrioId`}
                             control={control}
                             render={({ field }) => (
                               <FormControl fullWidth>
                                 <Autocomplete
                                   freeSolo
-                                  options={sectorSearchResults}
+                                  options={barrioSearchResults}
                                   getOptionLabel={(option) => 
                                     typeof option === 'string' ? option : option.nombre
                                   }
-                                  loading={isSearchingSector}
+                                  loading={isSearchingBarrio}
                                   // Don't use a value from state, use the field value to get the selected option
                                   value={field.value === "new" 
                                     ? null 
-                                    : sectorSearchResults.find(s => String(s.id_sector) === field.value) || null}
+                                    : barrioSearchResults.find(b => String(b.id_barrio) === field.value) || null}
                                   onChange={(_, newValue) => {
                                     if (typeof newValue === 'string') {
                                       field.onChange(newValue);
                                     } else if (newValue) {
-                                      field.onChange(String(newValue.id_sector));
+                                      field.onChange(String(newValue.id_barrio));
+                                      handleBarrioSelect(index, String(newValue.id_barrio));
                                     } else {
                                       field.onChange("");
                                     }
                                   }}
                                   onInputChange={(_, newValue) => {
-                                    if (selectedBarrios[index]) {
-                                      debouncedSectorSearch(newValue, selectedBarrios[index]);
+                                    if (selectedMunicipios[index]) {
+                                      debouncedBarrioSearch(newValue, selectedMunicipios[index]);
                                     }
                                   }}
                                   renderInput={(params) => (
                                     <TextField
                                       {...params}
-                                      label="Sector"
-                                      error={!!errors.properties?.[index]?.sectorId}
-                                      helperText={errors.properties?.[index]?.sectorId?.message}
+                                      label="Neighborhood"
+                                      error={!!errors.properties?.[index]?.barrioId}
+                                      helperText={errors.properties?.[index]?.barrioId?.message}
                                       InputProps={{
                                         ...params.InputProps,
                                         endAdornment: (
                                           <>
-                                            {isSearchingSector && <CircularProgress size={20} />}
+                                            {isSearchingBarrio && <CircularProgress size={20} />}
                                             {params.InputProps.endAdornment}
                                           </>
                                         ),
@@ -1548,9 +1520,9 @@ export function ReportForm() {
                                             {option.nombre}
                                           </Typography>
                                         </Typography>
-                                        {option.codigo_sector && (
+                                        {option.codigo_barrio && (
                                           <Typography variant="caption" color="text.secondary">
-                                            Código: {option.codigo_sector}
+                                            Código: {option.codigo_barrio}
                                           </Typography>
                                         )}
                                       </Box>
@@ -1560,571 +1532,693 @@ export function ReportForm() {
                                 <Button
                                   size="small"
                                   onClick={() => {
-                                    setValue(`properties.${index}.sectorId`, "new");
+                                    setValue(`properties.${index}.barrioId`, "new");
+                                    handleBarrioSelect(index, "new", true);
                                   }}
                                   sx={{ mt: 1 }}
                                 >
-                                  + Add New Sector
+                                  + Add New Neighborhood
                                 </Button>
                               </FormControl>
                             )}
                           />
                         </Grid>
-                      )}
-                      
-                      {/* New Sector Name Fields - shown when "new" is selected */}
-                      {getValues(`properties.${index}.sectorId`) === "new" && (
-                        <>
-                          <Grid item xs={12} md={6}>
-                            <Controller
-                              name={`properties.${index}.newSectorName`}
-                              control={control}
-                              defaultValue=""
-                              render={({ field }) => (
-                                <TextField
-                                  {...field}
-                                  label="New Sector Name"
-                                  variant="outlined"
-                                  fullWidth
-                                  required
-                                />
-                              )}
-                            />
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <Controller
-                              name={`properties.${index}.newSectorCode`}
-                              control={control}
-                              defaultValue=""
-                              render={({ field }) => (
-                                <TextField
-                                  {...field}
-                                  label="New Sector Code (Optional)"
-                                  variant="outlined"
-                                  fullWidth
-                                />
-                              )}
-                            />
-                          </Grid>
-                        </>
-                      )}
-                      
-                      <Grid item xs={12} md={6}>
-                        <Controller
-                          name={`properties.${index}.address`}
-                          control={control}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              label="Address"
-                              variant="outlined"
-                              fullWidth
-                              error={!!errors.properties?.[index]?.address}
-                              helperText={errors.properties?.[index]?.address?.message}
-                            />
-                          )}
-                        />
-                      </Grid>
-                    </>
-                  )}
-                </Grid>
-              </CardContent>
-            </Card>
-          ))}
-        </Box>
-      </Paper>
-
-      {/* Residents Section - Now in its own Paper component */}
-      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">Residents</Typography>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              const currentProperties = getValues("properties");
-              const propertyIndex = 0; // Default to first property
-              const currentHabitantes = currentProperties[propertyIndex].habitantes || [];
-              setValue(`properties.${propertyIndex}.habitantes`, [
-                ...currentHabitantes,
-                {
-                  name: "",
-                  apellido1: "",
-                  apellido2: "",
-                  sex: "Male",
-                  categoria: "Adult",
-                  rol: "Resident",
-                  age: "",
-                  limitation: "",
-                  condition: "",
-                  disposition: "",
-                  contacto: "",
-                  familyId: "",
-                  newFamilyApellido1: "",
-                  newFamilyApellido2: "",
-                  newFamilyDescription: "",
-                }
-              ]);
-            }}
-            size="small"
-          >
-            Add Resident
-          </Button>
-        </Box>
-        
-        {properties.map((_, propertyIndex) => (
-          <Box key={propertyIndex} sx={{ mt: 1 }}>
-            <Controller
-              name={`properties.${propertyIndex}.habitantes`}
-              control={control}
-              defaultValue={[]}
-              render={({ field }) => (
-                <Box>
-                  {field.value?.map((habitante, habitanteIndex) => (
-                    <Card key={habitanteIndex} variant="outlined" sx={{ mb: 2, p: 2 }}>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            label="First Name"
-                            variant="outlined"
-                            fullWidth
-                            value={habitante.name || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].name = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                            error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.name}
-                            helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.name?.message}
-                            required
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            label="Last Name 1"
-                            variant="outlined"
-                            fullWidth
-                            value={habitante.apellido1 || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].apellido1 = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                            required
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            label="Last Name 2"
-                            variant="outlined"
-                            fullWidth
-                            value={habitante.apellido2 || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].apellido2 = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <FormControl fullWidth>
-                            <InputLabel>Sex</InputLabel>
-                            <Select
-                              value={habitante.sex}
-                              onChange={(e) => {
-                                const newHabitantes = [...field.value];
-                                const value = e.target.value;
-                                if (sexOptions.includes(value as any)) {
-                                  newHabitantes[habitanteIndex].sex = value as (typeof sexOptions)[number];
-                                  field.onChange(newHabitantes);
-                                }
-                              }}
-                              label="Sex"
-                            >
-                              {sexOptions.map((sex) => (
-                                <MenuItem key={sex} value={sex}>{sex}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <FormControl fullWidth>
-                            <InputLabel>Category</InputLabel>
-                            <Select
-                              value={habitante.categoria}
-                              onChange={(e) => {
-                                const newHabitantes = [...field.value];
-                                const value = e.target.value;
-                                if (habitanteCategories.includes(value as any)) {
-                                  newHabitantes[habitanteIndex].categoria = value as (typeof habitanteCategories)[number];
-                                  field.onChange(newHabitantes);
-                                }
-                              }}
-                              label="Category"
-                            >
-                              {habitanteCategories.map((cat) => (
-                                <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <FormControl fullWidth>
-                            <InputLabel>Role</InputLabel>
-                            <Select
-                              value={habitante.rol}
-                              onChange={(e) => {
-                                const newHabitantes = [...field.value];
-                                const value = e.target.value;
-                                if (habitanteRoles.includes(value as any)) {
-                                  newHabitantes[habitanteIndex].rol = value as (typeof habitanteRoles)[number];
-                                  field.onChange(newHabitantes);
-                                }
-                              }}
-                              label="Role"
-                            >
-                              {habitanteRoles.map((rol) => (
-                                <MenuItem key={rol} value={rol}>{rol}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            label="Age"
-                            variant="outlined"
-                            fullWidth
-                            type="number"
-                            InputProps={{ inputProps: { min: 0 } }}
-                            value={habitante.age || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].age = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                            error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age}
-                            helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age?.message}
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            fullWidth
-                            label="Contact"
-                            value={habitante.contacto || ""}
-                            onChange={(e) => {
-                              // Format phone number as (xxx)xxx-xxxx
-                              let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
-                              if (value.length > 0) {
-                                // Format the phone number
-                                if (value.length <= 3) {
-                                  value = `(${value}`;
-                                } else if (value.length <= 6) {
-                                  value = `(${value.slice(0, 3)})${value.slice(3)}`;
-                                } else {
-                                  value = `(${value.slice(0, 3)})${value.slice(3, 6)}-${value.slice(6, 10)}`;
-                                }
-                              }
-                              
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].contacto = value;
-                              field.onChange(newHabitantes);
-                            }}
-                            placeholder="(123)456-7890"
-                            InputProps={{
-                              startAdornment: (
-                                <InputAdornment position="start">
-                                  <Phone sx={{ color: 'text.secondary', fontSize: 20 }} />
-                                </InputAdornment>
-                              ),
-                            }}
-                          />
-                        </Grid>
-                          
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                            Family Information
-                          </Typography>
-                          <Typography variant="caption" gutterBottom sx={{ display: 'block', mb: 1 }}>
-                            Select an existing family or create a new one. The family shares the same last names.
-                          </Typography>
-                          <FormControl fullWidth error={!habitante.familyId}>
-                            <Autocomplete
-                              freeSolo
-                              options={familySearchResults}
-                              getOptionLabel={(option) =>
-                                typeof option === 'string' ? option : 
-                                `${option.apellidos || ''}`
-                              }
-                              loading={isSearchingFamily}
-                              value={habitante.familyId === "new" ? 
-                                { id: -1, apellidos: `${habitante.newFamilyApellido1 || ""} ${habitante.newFamilyApellido2 || ""}`.trim(), description: "" } :
-                                familySearchResults.find(f => String(f.id) === habitante.familyId) || null
-                              }
-                              onChange={(_, newValue) => {
-                                const newHabitantes = [...field.value];
-                                if (typeof newValue === 'string') {
-                                  // Handle string input (not an option from the list)
-                                  newHabitantes[habitanteIndex].familyId = "new";
-                                  // Try to parse the input string for last names
-                                  const parts = newValue.trim().split(/\s+/);
-                                  if (parts.length > 0) {
-                                    newHabitantes[habitanteIndex].newFamilyApellido1 = parts[0] || "";
-                                    newHabitantes[habitanteIndex].newFamilyApellido2 = parts.slice(1).join(' ') || "";
-                                    // Also set the resident's last names to match if they're empty
-                                    if (!newHabitantes[habitanteIndex].apellido1) {
-                                      newHabitantes[habitanteIndex].apellido1 = parts[0] || "";
-                                    }
-                                    if (!newHabitantes[habitanteIndex].apellido2) {
-                                      newHabitantes[habitanteIndex].apellido2 = parts.slice(1).join(' ') || "";
-                                    }
-                                  }
-                                } else if (newValue && 'id' in newValue) {
-                                  // Selected an existing family
-                                  newHabitantes[habitanteIndex].familyId = String(newValue.id);
-                                  // Clear new family fields
-                                  newHabitantes[habitanteIndex].newFamilyApellido1 = "";
-                                  newHabitantes[habitanteIndex].newFamilyApellido2 = "";
-                                  newHabitantes[habitanteIndex].newFamilyDescription = "";
-                                  // Optionally update the resident's last names to match the family
-                                  if (newValue.apellidos) {
-                                    const parts = newValue.apellidos.trim().split(/\s+/);
-                                    if (!newHabitantes[habitanteIndex].apellido1 && parts.length > 0) {
-                                      newHabitantes[habitanteIndex].apellido1 = parts[0] || "";
-                                    }
-                                    if (!newHabitantes[habitanteIndex].apellido2 && parts.length > 1) {
-                                      newHabitantes[habitanteIndex].apellido2 = parts.slice(1).join(' ') || "";
-                                    }
-                                  }
-                                } else {
-                                  // Cleared the selection
-                                  newHabitantes[habitanteIndex].familyId = "";
-                                }
-                                field.onChange(newHabitantes);
-                              }}
-                              onInputChange={(_, newValue) => {
-                                debouncedFamilySearch(newValue);
-                              }}
-                              onFocus={() => {
-                                // Load all families on focus if we don't have any loaded
-                                if (familySearchResults.length === 0) {
-                                  searchFamilies('');
-                                }
-                              }}
-                              renderInput={(params) => (
-                                <TextField
-                                  {...params}
-                                  label="Family Last Names"
-                                  placeholder="Search or create a new family"
-                                  required
-                                  error={!habitante.familyId}
-                                  helperText={!habitante.familyId ? "Family is required" : (
-                                    habitante.familyId && habitante.familyId !== "new" ? 
-                                    `Selected family ID: ${habitante.familyId}` : ""
-                                  )}
-                                  InputProps={{
-                                    ...params.InputProps,
-                                    endAdornment: (
-                                      <>
-                                        {isSearchingFamily && <CircularProgress size={20} />}
-                                        {params.InputProps.endAdornment}
-                                      </>
-                                    ),
-                                  }}
-                                />
-                              )}
-                              renderOption={(props, option) => (
-                                <li {...props}>
-                                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                    <Typography variant="body1">
-                                      <Typography component="span" fontWeight="bold">
-                                        {option.apellidos}
-                                      </Typography>
-                                      <Typography component="span" variant="caption" color="primary" sx={{ ml: 1 }}>
-                                        ID: {option.id}
-                                      </Typography>
-                                    </Typography>
-                                    {option.description && (
-                                      <Typography variant="caption" color="text.secondary">
-                                        {option.description}
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                </li>
-                              )}
-                            />
-                            <Button
-                              size="small"
-                              onClick={() => {
-                                const newHabitantes = [...field.value];
-                                // Set the new family with the resident's last names
-                                newHabitantes[habitanteIndex].familyId = "new";
-                                if (newHabitantes[habitanteIndex].apellido1) {
-                                  newHabitantes[habitanteIndex].newFamilyApellido1 = newHabitantes[habitanteIndex].apellido1;
-                                  newHabitantes[habitanteIndex].newFamilyApellido2 = newHabitantes[habitanteIndex].apellido2 || "";
-                                }
-                                field.onChange(newHabitantes);
-                              }}
-                              sx={{ mt: 1 }}
-                              disabled={Boolean(habitante.familyId && habitante.familyId !== "new" && habitante.familyId !== "")}
-                              startIcon={<AddIcon />}
-                            >
-                              Create New Family Using Last Names
-                            </Button>
-                          </FormControl>
-                        </Grid>
-
-                        {/* New Family fields - shown when "new" is selected */}
-                        {habitante.familyId === "new" && (
-                          <Grid item xs={12}>
-                            <Paper elevation={1} sx={{ p: 2, mb: 2, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
-                              <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
-                                Create New Family
-                              </Typography>
-                              <Grid container spacing={2}>
-                                <Grid item xs={12} md={6}>
+                        
+                        {/* New Barrio Name Fields - shown when "new" is selected */}
+                        {getValues(`properties.${index}.barrioId`) === "new" && (
+                          <>
+                            <Grid item xs={12} md={6}>
+                              <Controller
+                                name={`properties.${index}.newBarrioName`}
+                                control={control}
+                                defaultValue=""
+                                render={({ field }) => (
                                   <TextField
+                                    {...field}
+                                    label="New Neighborhood Name"
+                                    variant="outlined"
                                     fullWidth
-                                    label="Family Last Name 1"
                                     required
-                                    value={habitante.newFamilyApellido1 || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].newFamilyApellido1 = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    error={!habitante.newFamilyApellido1}
-                                    helperText={!habitante.newFamilyApellido1 ? "Last name 1 required" : ""}
-                                    InputProps={{
-                                      endAdornment: (
-                                        <Button 
-                                          size="small"
-                                          onClick={() => {
-                                            const newHabitantes = [...field.value];
-                                            if (habitante.apellido1) {
-                                              newHabitantes[habitanteIndex].newFamilyApellido1 = habitante.apellido1;
-                                              field.onChange(newHabitantes);
-                                            }
-                                          }}
-                                          disabled={!habitante.apellido1}
-                                          sx={{ minWidth: 'auto', p: 0.5 }}
-                                        >
-                                          Use Resident's
-                                        </Button>
-                                      )
-                                    }}
                                   />
-                                </Grid>
-                                <Grid item xs={12} md={6}>
+                                )}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                              <Controller
+                                name={`properties.${index}.newBarrioCode`}
+                                control={control}
+                                defaultValue=""
+                                render={({ field }) => (
                                   <TextField
+                                    {...field}
+                                    label="New Neighborhood Code (Optional)"
+                                    variant="outlined"
                                     fullWidth
-                                    label="Family Last Name 2"
-                                    value={habitante.newFamilyApellido2 || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].newFamilyApellido2 = e.target.value;
-                                      field.onChange(newHabitantes);
-                                    }}
-                                    InputProps={{
-                                      endAdornment: (
-                                        <Button 
-                                          size="small"
-                                          onClick={() => {
-                                            const newHabitantes = [...field.value];
-                                            if (habitante.apellido2) {
-                                              newHabitantes[habitanteIndex].newFamilyApellido2 = habitante.apellido2;
-                                              field.onChange(newHabitantes);
-                                            }
-                                          }}
-                                          disabled={!habitante.apellido2}
-                                          sx={{ minWidth: 'auto', p: 0.5 }}
-                                        >
-                                          Use Resident's
-                                        </Button>
-                                      )
-                                    }}
                                   />
-                                </Grid>
-                                <Grid item xs={12}>
-                                  <TextField
-                                    fullWidth
-                                    label="Family Description"
-                                    value={habitante.newFamilyDescription || ""}
-                                    onChange={(e) => {
-                                      const newHabitantes = [...field.value];
-                                      newHabitantes[habitanteIndex].newFamilyDescription = e.target.value;
-                                      field.onChange(newHabitantes);
+                                )}
+                              />
+                            </Grid>
+                          </>
+                        )}
+                        
+                        {/* Sector Selection with Add New Option */}
+                        {(selectedBarrios[index] || getValues(`properties.${index}.barrioId`) === "new") && (
+                          <Grid item xs={12} md={6}>
+                            <Controller
+                              name={`properties.${index}.sectorId`}
+                              control={control}
+                              render={({ field }) => (
+                                <FormControl fullWidth>
+                                  <Autocomplete
+                                    freeSolo
+                                    options={sectorSearchResults}
+                                    getOptionLabel={(option) => 
+                                      typeof option === 'string' ? option : option.nombre
+                                    }
+                                    loading={isSearchingSector}
+                                    // Don't use a value from state, use the field value to get the selected option
+                                    value={field.value === "new" 
+                                      ? null 
+                                      : sectorSearchResults.find(s => String(s.id_sector) === field.value) || null}
+                                    onChange={(_, newValue) => {
+                                      if (typeof newValue === 'string') {
+                                        field.onChange(newValue);
+                                      } else if (newValue) {
+                                        field.onChange(String(newValue.id_sector));
+                                      } else {
+                                        field.onChange("");
+                                      }
                                     }}
-                                    placeholder="Example: Family of 4 members"
+                                    onInputChange={(_, newValue) => {
+                                      if (selectedBarrios[index]) {
+                                        debouncedSectorSearch(newValue, selectedBarrios[index]);
+                                      }
+                                    }}
+                                    renderInput={(params) => (
+                                      <TextField
+                                        {...params}
+                                        label="Sector"
+                                        error={!!errors.properties?.[index]?.sectorId}
+                                        helperText={errors.properties?.[index]?.sectorId?.message}
+                                        InputProps={{
+                                          ...params.InputProps,
+                                          endAdornment: (
+                                            <>
+                                              {isSearchingSector && <CircularProgress size={20} />}
+                                              {params.InputProps.endAdornment}
+                                            </>
+                                          ),
+                                        }}
+                                      />
+                                    )}
+                                    renderOption={(props, option) => (
+                                      <li {...props}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                          <Typography variant="body1">
+                                            <Typography component="span" fontWeight="bold">
+                                              {option.nombre}
+                                            </Typography>
+                                          </Typography>
+                                          {option.codigo_sector && (
+                                            <Typography variant="caption" color="text.secondary">
+                                              Código: {option.codigo_sector}
+                                            </Typography>
+                                          )}
+                                        </Box>
+                                      </li>
+                                    )}
                                   />
-                                </Grid>
-                              </Grid>
-                            </Paper>
+                                  <Button
+                                    size="small"
+                                    onClick={() => {
+                                      setValue(`properties.${index}.sectorId`, "new");
+                                    }}
+                                    sx={{ mt: 1 }}
+                                  >
+                                    + Add New Sector
+                                  </Button>
+                                </FormControl>
+                              )}
+                            />
                           </Grid>
                         )}
                         
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="Limitation"
-                            value={habitante.limitation || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].limitation = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                            placeholder="Physical limitations, if any"
+                        {/* New Sector Name Fields - shown when "new" is selected */}
+                        {getValues(`properties.${index}.sectorId`) === "new" && (
+                          <>
+                            <Grid item xs={12} md={6}>
+                              <Controller
+                                name={`properties.${index}.newSectorName`}
+                                control={control}
+                                defaultValue=""
+                                render={({ field }) => (
+                                  <TextField
+                                    {...field}
+                                    label="New Sector Name"
+                                    variant="outlined"
+                                    fullWidth
+                                    required
+                                  />
+                                )}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                              <Controller
+                                name={`properties.${index}.newSectorCode`}
+                                control={control}
+                                defaultValue=""
+                                render={({ field }) => (
+                                  <TextField
+                                    {...field}
+                                    label="New Sector Code (Optional)"
+                                    variant="outlined"
+                                    fullWidth
+                                  />
+                                )}
+                              />
+                            </Grid>
+                          </>
+                        )}
+                        
+                        <Grid item xs={12} md={6}>
+                          <Controller
+                            name={`properties.${index}.address`}
+                            control={control}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                label="Address"
+                                variant="outlined"
+                                fullWidth
+                                error={!!errors.properties?.[index]?.address}
+                                helperText={errors.properties?.[index]?.address?.message}
+                              />
+                            )}
                           />
                         </Grid>
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="Condition"
-                            value={habitante.condition || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].condition = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                            placeholder="Health conditions, if any"
-                          />
-                        </Grid>
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="Disposition"
-                            value={habitante.disposition || ""}
-                            onChange={(e) => {
-                              const newHabitantes = [...field.value];
-                              newHabitantes[habitanteIndex].disposition = e.target.value;
-                              field.onChange(newHabitantes);
-                            }}
-                            placeholder="Current disposition/status"
-                          />
-                        </Grid>
-                        {habitanteIndex > 0 && (
-                          <Grid item xs={12} display="flex" justifyContent="flex-end">
-                            <Button 
-                              variant="outlined" 
-                              color="error"
-                              size="small"
-                              onClick={() => {
-                                const newHabitantes = field.value.filter((_, idx) => idx !== habitanteIndex);
+                      </>
+                    )}
+                  </Grid>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
+        </Paper>
+      )}
+
+      {/* Residents Section - Now in its own Paper component */}
+      {(formMode === "Full Report" || formMode === "Resident Only") && (
+        <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Residents</Typography>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                const currentProperties = getValues("properties");
+                const propertyIndex = 0; // Default to first property
+                const currentHabitantes = currentProperties[propertyIndex].habitantes || [];
+                setValue(`properties.${propertyIndex}.habitantes`, [
+                  ...currentHabitantes,
+                  {
+                    name: "",
+                    apellido1: "",
+                    apellido2: "",
+                    sex: "Male",
+                    categoria: "Adult",
+                    rol: "Resident",
+                    age: "",
+                    limitation: "",
+                    condition: "",
+                    disposition: "",
+                    contacto: "",
+                    familyId: "",
+                    newFamilyApellido1: "",
+                    newFamilyApellido2: "",
+                    newFamilyDescription: "",
+                  }
+                ]);
+              }}
+              size="small"
+            >
+              Add Resident
+            </Button>
+          </Box>
+          
+          {properties.map((_, propertyIndex) => (
+            <Box key={propertyIndex} sx={{ mt: 1 }}>
+              <Controller
+                name={`properties.${propertyIndex}.habitantes`}
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
+                  <Box>
+                    {field.value?.map((habitante, habitanteIndex) => (
+                      <Card key={habitanteIndex} variant="outlined" sx={{ mb: 2, p: 2 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={3}>
+                            <TextField
+                              label="First Name"
+                              variant="outlined"
+                              fullWidth
+                              value={habitante.name || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].name = e.target.value;
                                 field.onChange(newHabitantes);
                               }}
-                            >
-                              Remove Resident
-                            </Button>
+                              error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.name}
+                              helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.name?.message}
+                              required
+                            />
                           </Grid>
-                        )}
-                      </Grid>
-                    </Card>
-                  ))}
-                </Box>
-              )}
-            />
-          </Box>
-        ))}
-      </Paper>
+                          <Grid item xs={12} md={3}>
+                            <TextField
+                              label="Last Name 1"
+                              variant="outlined"
+                              fullWidth
+                              value={habitante.apellido1 || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].apellido1 = e.target.value;
+                                field.onChange(newHabitantes);
+                              }}
+                              required
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <TextField
+                              label="Last Name 2"
+                              variant="outlined"
+                              fullWidth
+                              value={habitante.apellido2 || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].apellido2 = e.target.value;
+                                field.onChange(newHabitantes);
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <FormControl fullWidth>
+                              <InputLabel>Sex</InputLabel>
+                              <Select
+                                value={habitante.sex}
+                                onChange={(e) => {
+                                  const newHabitantes = [...field.value];
+                                  const value = e.target.value;
+                                  if (sexOptions.includes(value as any)) {
+                                    newHabitantes[habitanteIndex].sex = value as (typeof sexOptions)[number];
+                                    field.onChange(newHabitantes);
+                                  }
+                                }}
+                                label="Sex"
+                              >
+                                {sexOptions.map((sex) => (
+                                  <MenuItem key={sex} value={sex}>{sex}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <FormControl fullWidth>
+                              <InputLabel>Category</InputLabel>
+                              <Select
+                                value={habitante.categoria}
+                                onChange={(e) => {
+                                  const newHabitantes = [...field.value];
+                                  const value = e.target.value;
+                                  if (habitanteCategories.includes(value as any)) {
+                                    newHabitantes[habitanteIndex].categoria = value as (typeof habitanteCategories)[number];
+                                    field.onChange(newHabitantes);
+                                  }
+                                }}
+                                label="Category"
+                              >
+                                {habitanteCategories.map((cat) => (
+                                  <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <FormControl fullWidth>
+                              <InputLabel>Role</InputLabel>
+                              <Select
+                                value={habitante.rol}
+                                onChange={(e) => {
+                                  const newHabitantes = [...field.value];
+                                  const value = e.target.value;
+                                  if (habitanteRoles.includes(value as any)) {
+                                    newHabitantes[habitanteIndex].rol = value as (typeof habitanteRoles)[number];
+                                    field.onChange(newHabitantes);
+                                  }
+                                }}
+                                label="Role"
+                              >
+                                {habitanteRoles.map((rol) => (
+                                  <MenuItem key={rol} value={rol}>{rol}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <TextField
+                              label="Age"
+                              variant="outlined"
+                              fullWidth
+                              type="number"
+                              InputProps={{ inputProps: { min: 0 } }}
+                              value={habitante.age || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].age = e.target.value;
+                                field.onChange(newHabitantes);
+                              }}
+                              error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age}
+                              helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age?.message}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <TextField
+                              fullWidth
+                              label="Contact"
+                              value={habitante.contacto || ""}
+                              onChange={(e) => {
+                                // Format phone number as (xxx)xxx-xxxx
+                                let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+                                if (value.length > 0) {
+                                  // Format the phone number
+                                  if (value.length <= 3) {
+                                    value = `(${value}`;
+                                  } else if (value.length <= 6) {
+                                    value = `(${value.slice(0, 3)})${value.slice(3)}`;
+                                  } else {
+                                    value = `(${value.slice(0, 3)})${value.slice(3, 6)}-${value.slice(6, 10)}`;
+                                  }
+                                }
+                                
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].contacto = value;
+                                field.onChange(newHabitantes);
+                              }}
+                              placeholder="(123)456-7890"
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <Phone sx={{ color: 'text.secondary', fontSize: 20 }} />
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          </Grid>
+                            
+                          <Grid item xs={12}>
+                            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                              Family Information
+                            </Typography>
+                            <Typography variant="caption" gutterBottom sx={{ display: 'block', mb: 1 }}>
+                              Select an existing family or create a new one. The family shares the same last names.
+                            </Typography>
+                            <FormControl fullWidth error={!habitante.familyId}>
+                              <Autocomplete
+                                freeSolo
+                                options={familySearchResults}
+                                getOptionLabel={(option) =>
+                                  typeof option === 'string' ? option : 
+                                  `${option.apellidos || ''}`
+                                }
+                                loading={isSearchingFamily}
+                                value={habitante.familyId === "new" ? 
+                                  { id: -1, apellidos: `${habitante.newFamilyApellido1 || ""} ${habitante.newFamilyApellido2 || ""}`.trim(), description: "" } :
+                                  familySearchResults.find(f => String(f.id) === habitante.familyId) || null
+                                }
+                                onChange={(_, newValue) => {
+                                  const newHabitantes = [...field.value];
+                                  if (typeof newValue === 'string') {
+                                    // Handle string input (not an option from the list)
+                                    newHabitantes[habitanteIndex].familyId = "new";
+                                    // Try to parse the input string for last names
+                                    const parts = newValue.trim().split(/\s+/);
+                                    if (parts.length > 0) {
+                                      newHabitantes[habitanteIndex].newFamilyApellido1 = parts[0] || "";
+                                      newHabitantes[habitanteIndex].newFamilyApellido2 = parts.slice(1).join(' ') || "";
+                                      // Also set the resident's last names to match if they're empty
+                                      if (!newHabitantes[habitanteIndex].apellido1) {
+                                        newHabitantes[habitanteIndex].apellido1 = parts[0] || "";
+                                      }
+                                      if (!newHabitantes[habitanteIndex].apellido2) {
+                                        newHabitantes[habitanteIndex].apellido2 = parts.slice(1).join(' ') || "";
+                                      }
+                                    }
+                                  } else if (newValue && 'id' in newValue) {
+                                    // Selected an existing family
+                                    newHabitantes[habitanteIndex].familyId = String(newValue.id);
+                                    // Clear new family fields
+                                    newHabitantes[habitanteIndex].newFamilyApellido1 = "";
+                                    newHabitantes[habitanteIndex].newFamilyApellido2 = "";
+                                    newHabitantes[habitanteIndex].newFamilyDescription = "";
+                                    // Optionally update the resident's last names to match the family
+                                    if (newValue.apellidos) {
+                                      const parts = newValue.apellidos.trim().split(/\s+/);
+                                      if (!newHabitantes[habitanteIndex].apellido1 && parts.length > 0) {
+                                        newHabitantes[habitanteIndex].apellido1 = parts[0] || "";
+                                      }
+                                      if (!newHabitantes[habitanteIndex].apellido2 && parts.length > 1) {
+                                        newHabitantes[habitanteIndex].apellido2 = parts.slice(1).join(' ') || "";
+                                      }
+                                    }
+                                  } else {
+                                    // Cleared the selection
+                                    newHabitantes[habitanteIndex].familyId = "";
+                                  }
+                                  field.onChange(newHabitantes);
+                                }}
+                                onInputChange={(_, newValue) => {
+                                  debouncedFamilySearch(newValue);
+                                }}
+                                onFocus={() => {
+                                  // Load all families on focus if we don't have any loaded
+                                  if (familySearchResults.length === 0) {
+                                    searchFamilies('');
+                                  }
+                                }}
+                                renderInput={(params) => (
+                                  <TextField
+                                    {...params}
+                                    label="Family Last Names"
+                                    placeholder="Search or create a new family"
+                                    required
+                                    error={!habitante.familyId}
+                                    helperText={!habitante.familyId ? "Family is required" : (
+                                      habitante.familyId && habitante.familyId !== "new" ? 
+                                      `Selected family ID: ${habitante.familyId}` : ""
+                                    )}
+                                    InputProps={{
+                                      ...params.InputProps,
+                                      endAdornment: (
+                                        <>
+                                          {isSearchingFamily && <CircularProgress size={20} />}
+                                          {params.InputProps.endAdornment}
+                                        </>
+                                      ),
+                                    }}
+                                  />
+                                )}
+                                renderOption={(props, option) => (
+                                  <li {...props}>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                      <Typography variant="body1">
+                                        <Typography component="span" fontWeight="bold">
+                                          {option.apellidos}
+                                        </Typography>
+                                        <Typography component="span" variant="caption" color="primary" sx={{ ml: 1 }}>
+                                          ID: {option.id}
+                                        </Typography>
+                                      </Typography>
+                                      {option.description && (
+                                        <Typography variant="caption" color="text.secondary">
+                                          {option.description}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </li>
+                                )}
+                              />
+                              <Button
+                                size="small"
+                                onClick={() => {
+                                  const newHabitantes = [...field.value];
+                                  // Set the new family with the resident's last names
+                                  newHabitantes[habitanteIndex].familyId = "new";
+                                  if (newHabitantes[habitanteIndex].apellido1) {
+                                    newHabitantes[habitanteIndex].newFamilyApellido1 = newHabitantes[habitanteIndex].apellido1;
+                                    newHabitantes[habitanteIndex].newFamilyApellido2 = newHabitantes[habitanteIndex].apellido2 || "";
+                                  }
+                                  field.onChange(newHabitantes);
+                                }}
+                                sx={{ mt: 1 }}
+                                disabled={Boolean(habitante.familyId && habitante.familyId !== "new" && habitante.familyId !== "")}
+                                startIcon={<AddIcon />}
+                              >
+                                Create New Family Using Last Names
+                              </Button>
+                            </FormControl>
+                          </Grid>
+
+                          {/* New Family fields - shown when "new" is selected */}
+                          {habitante.familyId === "new" && (
+                            <Grid item xs={12}>
+                              <Paper elevation={1} sx={{ p: 2, mb: 2, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                                <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+                                  Create New Family
+                                </Typography>
+                                <Grid container spacing={2}>
+                                  <Grid item xs={12} md={6}>
+                                    <TextField
+                                      fullWidth
+                                      label="Family Last Name 1"
+                                      required
+                                      value={habitante.newFamilyApellido1 || ""}
+                                      onChange={(e) => {
+                                        const newHabitantes = [...field.value];
+                                        newHabitantes[habitanteIndex].newFamilyApellido1 = e.target.value;
+                                        field.onChange(newHabitantes);
+                                      }}
+                                      error={!habitante.newFamilyApellido1}
+                                      helperText={!habitante.newFamilyApellido1 ? "Last name 1 required" : ""}
+                                      InputProps={{
+                                        endAdornment: (
+                                          <Button 
+                                            size="small"
+                                            onClick={() => {
+                                              const newHabitantes = [...field.value];
+                                              if (habitante.apellido1) {
+                                                newHabitantes[habitanteIndex].newFamilyApellido1 = habitante.apellido1;
+                                                field.onChange(newHabitantes);
+                                              }
+                                            }}
+                                            disabled={!habitante.apellido1}
+                                            sx={{ minWidth: 'auto', p: 0.5 }}
+                                          >
+                                            Use Resident's
+                                          </Button>
+                                        )
+                                      }}
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12} md={6}>
+                                    <TextField
+                                      fullWidth
+                                      label="Family Last Name 2"
+                                      value={habitante.newFamilyApellido2 || ""}
+                                      onChange={(e) => {
+                                        const newHabitantes = [...field.value];
+                                        newHabitantes[habitanteIndex].newFamilyApellido2 = e.target.value;
+                                        field.onChange(newHabitantes);
+                                      }}
+                                      InputProps={{
+                                        endAdornment: (
+                                          <Button 
+                                            size="small"
+                                            onClick={() => {
+                                              const newHabitantes = [...field.value];
+                                              if (habitante.apellido2) {
+                                                newHabitantes[habitanteIndex].newFamilyApellido2 = habitante.apellido2;
+                                                field.onChange(newHabitantes);
+                                              }
+                                            }}
+                                            disabled={!habitante.apellido2}
+                                            sx={{ minWidth: 'auto', p: 0.5 }}
+                                          >
+                                            Use Resident's
+                                          </Button>
+                                        )
+                                      }}
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12}>
+                                    <TextField
+                                      fullWidth
+                                      label="Family Description"
+                                      value={habitante.newFamilyDescription || ""}
+                                      onChange={(e) => {
+                                        const newHabitantes = [...field.value];
+                                        newHabitantes[habitanteIndex].newFamilyDescription = e.target.value;
+                                        field.onChange(newHabitantes);
+                                      }}
+                                      placeholder="Example: Family of 4 members"
+                                    />
+                                  </Grid>
+                                </Grid>
+                              </Paper>
+                            </Grid>
+                          )}
+                          
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              label="Limitation"
+                              value={habitante.limitation || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].limitation = e.target.value;
+                                field.onChange(newHabitantes);
+                              }}
+                              placeholder="Physical limitations, if any"
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              label="Condition"
+                              value={habitante.condition || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].condition = e.target.value;
+                                field.onChange(newHabitantes);
+                              }}
+                              placeholder="Health conditions, if any"
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              label="Disposition"
+                              value={habitante.disposition || ""}
+                              onChange={(e) => {
+                                const newHabitantes = [...field.value];
+                                newHabitantes[habitanteIndex].disposition = e.target.value;
+                                field.onChange(newHabitantes);
+                              }}
+                              placeholder="Current disposition/status"
+                            />
+                          </Grid>
+                          {habitanteIndex > 0 && (
+                            <Grid item xs={12} display="flex" justifyContent="flex-end">
+                              <Button 
+                                variant="outlined" 
+                                color="error"
+                                size="small"
+                                onClick={() => {
+                                  const newHabitantes = field.value.filter((_, idx) => idx !== habitanteIndex);
+                                  field.onChange(newHabitantes);
+                                }}
+                              >
+                                Remove Resident
+                              </Button>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Card>
+                    ))}
+                  </Box>
+                )}
+              />
+            </Box>
+          ))}
+        </Paper>
+      )}
 
       {/* Submit Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
@@ -2136,7 +2230,7 @@ export function ReportForm() {
           disabled={isSubmitting}
           startIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : null}
         >
-          {isSubmitting ? 'Submitting...' : 'Submit Report'}
+          {isSubmitting ? 'Submitting...' : `Submit ${formMode}`}
         </Button>
       </Box>
     </Box>
