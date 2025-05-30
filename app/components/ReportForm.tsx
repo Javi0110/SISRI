@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import * as z from "zod"
 import { debounce } from "lodash"
+import React from "react"
 
 // Material UI imports
 import {
@@ -218,6 +219,17 @@ export function ReportForm() {
   const [isSearchingSector, setIsSearchingSector] = useState(false)
   const [familySearchResults, setFamilySearchResults] = useState<Family[]>([])
   const [isSearchingFamily, setIsSearchingFamily] = useState(false)
+  const [selectedExistingProperty, setSelectedExistingProperty] = useState<{
+    id: number;
+    direccion: string;
+    tipo: string;
+    id_municipio: number;
+    id_barrio?: number;
+    id_sector?: number;
+    municipio?: { nombre: string };
+    barrio?: { nombre: string };
+    sector?: { nombre: string };
+  } | null>(null);
   
   // Debounce timer reference
   const usngSearchTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -417,6 +429,10 @@ export function ReportForm() {
     [searchSectores]
   );
 
+  // Add property search function
+
+  // Add debounced property search function
+
   // Enhance the municipio selection handler to load barrios
   const handleMunicipioSelect = useCallback((index: number, value: string) => {
     setValue(`properties.${index}.municipioId`, value);
@@ -549,27 +565,55 @@ export function ReportForm() {
         address: "",
         habitantes: [],
       }]);
+      
+      // Make sure we have a description field for the event
+      if (!getValues("incidents") || getValues("incidents").length === 0) {
+        setValue("incidents", [{ type: incidentTypes[0], description: "", cuencaId: "" }]);
+      }
     } else if (mode === "Property Only") {
       // Reset event info, keep properties
       setValue("eventName", "Property Registration");
       setValue("tipo", incidentTypes[0]);
+      setValue("estado", "pending" as const);
+      setValue("date", new Date().toISOString().split('T')[0]);
+      // Don't reset USNG code if user has already entered one for Property Only mode
+      if (!getValues("usngCode")) {
+        setValue("usngCode", "");
+      }
       setValue("incidents", [{ type: incidentTypes[0], description: "Property Registration", cuencaId: "" }]);
+      
+      // Make sure we have at least one property
+      if (!getValues("properties") || getValues("properties").length === 0) {
+        setValue("properties", [{ 
+          type: propertyTypes[0],
+          municipioId: "", 
+          address: "",
+          habitantes: [],
+        }]);
+      }
     } else if (mode === "Resident Only") {
       // Reset event info, keep residents
       setValue("eventName", "Resident Registration");
       setValue("tipo", incidentTypes[0]);
+      setValue("estado", "pending" as const);
+      setValue("date", new Date().toISOString().split('T')[0]);
       setValue("incidents", [{ type: incidentTypes[0], description: "Resident Registration", cuencaId: "" }]);
     }
-  }, [setValue]);
+  }, [setValue, getValues]);
 
   // Modify the onSubmit function to adapt to different form modes
   const onSubmit = useCallback(async (values: z.infer<typeof formSchema>) => {
+    console.log("onSubmit called with form mode:", formMode);
+    console.log("Form values:", values);
+    
     try {
       setIsSubmitting(true);
       
       // Validate USNG code before submission
       const isValidUsng = await validateUsngCode(values.usngCode);
-      if (!isValidUsng) {
+      console.log("USNG validation in onSubmit:", isValidUsng);
+      
+      if (!isValidUsng && (formMode === "Full Report" || formMode === "Event Only" || formMode === "Property Only")) {
         window.alert('Please enter a valid USNG code');
         return;
       }
@@ -579,6 +623,8 @@ export function ReportForm() {
       try {
         console.log('Getting USNG ID for code:', values.usngCode);
         const usngResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(values.usngCode)}`);
+        console.log("USNG API response status:", usngResponse.status);
+        
         if (usngResponse.ok) {
           const usngData = await usngResponse.json();
           console.log('Retrieved USNG data:', usngData);
@@ -589,13 +635,20 @@ export function ReportForm() {
           const uppercaseCode = values.usngCode.toUpperCase();
           if (uppercaseCode !== values.usngCode) {
             const retryResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(uppercaseCode)}`);
+            console.log("USNG API retry response status:", retryResponse.status);
+            
             if (retryResponse.ok) {
               const usngData = await retryResponse.json();
               console.log('Retrieved USNG data with uppercase:', usngData);
               usngId = usngData.id;
             } else {
               console.error('USNG code not found even with uppercase:', uppercaseCode);
-              const errorData = await retryResponse.json();
+              let errorData;
+              try {
+                errorData = await retryResponse.json();
+              } catch (e) {
+                errorData = "Could not parse error response";
+              }
               console.error('Error details:', errorData);
             }
           }
@@ -604,9 +657,14 @@ export function ReportForm() {
         console.error('Error fetching USNG ID:', error);
       }
       
-      if (!usngId) {
-        console.warn('No USNG ID found, continuing without it');
+      if (!usngId && (formMode === "Full Report" || formMode === "Event Only" || formMode === "Property Only")) {
+        const errorMsg = 'Could not find a valid USNG ID for the provided coordinates. Please enter a valid USNG code.';
+        console.error(errorMsg);
+        window.alert(errorMsg);
+        return;
       }
+      
+      console.log("USNG ID retrieved:", usngId);
       
       // Adjust formattedData based on form mode
       let formattedData: any = {};
@@ -623,30 +681,37 @@ export function ReportForm() {
             estado: values.estado,
             descripcion: values.incidents[0].description,
             fecha: new Date(values.date).toISOString(),
+            usngId: usngId, // Add USNG ID to the event for Event Only mode
           }
         } : undefined;
         
-        // Notification specific data
-        formattedData.notificacion = {
-          numero_notificacion: values.notificationNumber,
-          tipo: values.tipo,
-          mensaje: values.incidents[0].description,
-          estado: values.estado,
-          fecha: new Date(values.date).toISOString(),
-        };
-        
-        // Format incidents with cuenca
-        formattedData.incidentes = values.incidents.map(incident => ({
-          tipo: incident.type,
-          descripcion: incident.description,
-          cuencaId: incident.cuencaId ? parseInt(incident.cuencaId) : parseInt(values.cuencaIds[0])
-        }));
+        // Notification specific data - only include for Full Report mode
+        if (formMode === "Full Report") {
+          formattedData.notificacion = {
+            numero_notificacion: values.notificationNumber,
+            tipo: values.tipo,
+            mensaje: values.incidents[0].description,
+            estado: values.estado,
+            fecha: new Date(values.date).toISOString(),
+          };
+          
+          // Format incidents with cuenca - only for Full Report mode
+          formattedData.incidentes = values.incidents.map(incident => ({
+            tipo: incident.type,
+            descripcion: incident.description,
+            cuencaId: incident.cuencaId ? parseInt(incident.cuencaId) : parseInt(values.cuencaIds[0])
+          }));
+        }
       }
       
       // Add properties data for Full Report, Property Only, and Resident Only modes
       if (formMode === "Full Report" || formMode === "Property Only" || formMode === "Resident Only") {
+        console.log(`Formatting properties for ${formMode} mode`);
+        
         // Format properties with required fields and habitantes
         formattedData.propiedades_afectadas = values.properties.map(property => {
+          console.log("Processing property:", property);
+          
           // Handle new barrio or sector creation
           const propertyData: any = {
             tipo: property.type,
@@ -655,6 +720,8 @@ export function ReportForm() {
             gridId: usngId, // Use the numeric USNG ID retrieved from API
             geometria: property.location || null,
           };
+
+          console.log("Basic property data:", propertyData);
 
           // Handle existing or new barrio
           if (property.barrioId === "new") {
@@ -668,8 +735,10 @@ export function ReportForm() {
               codigo_barrio: property.newBarrioCode || null,
               id_municipio: parseInt(property.municipioId)
             };
+            console.log("Adding new barrio:", propertyData.newBarrio);
           } else if (property.barrioId) {
             propertyData.id_barrio = parseInt(property.barrioId);
+            console.log("Using existing barrio ID:", propertyData.id_barrio);
           }
 
           // Handle existing or new sector
@@ -692,8 +761,10 @@ export function ReportForm() {
               codigo_sector: property.newSectorCode || null,
               id_barrio: parentBarrioId
             };
+            console.log("Adding new sector:", propertyData.newSector);
           } else if (property.sectorId) {
             propertyData.id_sector = parseInt(property.sectorId);
+            console.log("Using existing sector ID:", propertyData.id_sector);
           }
 
           // Add habitantes with family information if in Full Report or Resident Only mode
@@ -740,14 +811,18 @@ export function ReportForm() {
           } else {
             // For Property Only mode, initialize empty habitantes array
             propertyData.habitantes = { create: [] };
+            console.log("Property Only mode - initialized empty habitantes array");
           }
 
-          return {
+          const formattedProperty = {
             daños: property.value || (formMode === "Property Only" || formMode === "Resident Only" ? "No damage" : "No damage reported"),
             propiedad: {
               create: propertyData
             }
           };
+          
+          console.log("Final formatted property data:", formattedProperty);
+          return formattedProperty;
         });
       }
       
@@ -756,16 +831,228 @@ export function ReportForm() {
         formattedData.propiedades_afectadas = [];
       }
       
-      console.log('Submitting formatted data:', formattedData);
+      console.log('Submitting formatted data:', JSON.stringify(formattedData, null, 2));
 
       // Use different endpoint based on form mode
       let endpoint = '/api/eventos';
       if (formMode === "Property Only") {
         endpoint = '/api/properties';
+        console.log("Using Property Only endpoint:", endpoint);
+        
+        // Make sure formattedData has the right structure for Property Only mode
+        if (!formattedData.propiedades_afectadas || formattedData.propiedades_afectadas.length === 0) {
+          console.error("No properties to submit in Property Only mode");
+          window.alert("Please add at least one property to submit");
+          return;
+        }
       } else if (formMode === "Resident Only") {
         endpoint = '/api/residents';
+        console.log("Using Resident Only endpoint:", endpoint);
+        
+        // Structure data differently for Resident Only mode
+        if (selectedExistingProperty) {
+          // If we're adding residents to an existing property
+          console.log("Adding residents to existing property ID:", selectedExistingProperty.id);
+          
+          formattedData = {
+            propertyId: selectedExistingProperty.id,
+            habitantes: values.properties[0].habitantes?.map(() => {
+            }) || []
+          };
+        } else {
+          // Creating both a new property and residents
+          console.log("Creating new property with residents in Resident Only mode");
+          
+          // For a new property in Resident Only mode, we need minimal event information
+          const property = values.properties[0];
+          
+          // Validate that required property fields are filled
+          if (!property.municipioId || !property.address) {
+            window.alert("Please provide municipality and address for the new property");
+            throw new Error("Missing required property fields");
+          }
+          
+          // Create a simplified property structure
+          const propertyData: any = {
+            tipo: property.type,
+            id_municipio: parseInt(property.municipioId),
+            direccion: property.address,
+            habitantes: {
+              create: property.habitantes?.map(habitante => ({
+                name: habitante.name,
+                apellido1: habitante.apellido1,
+                apellido2: habitante.apellido2 || "",
+                sex: habitante.sex,
+                categoria: habitante.categoria,
+                rol: habitante.rol,
+                age: parseInt(habitante.age),
+                limitation: habitante.limitation,
+                condition: habitante.condition,
+                disposition: habitante.disposition,
+                contacto: habitante.contacto,
+                family_id: habitante.familyId === "new" ? null : parseInt(habitante.familyId),
+                newFamily: habitante.familyId === "new"
+                  ? {
+                      apellidos: habitante.newFamilyApellido1
+                        ? `${habitante.newFamilyApellido1} ${habitante.newFamilyApellido2 || ""}`
+                        : `${habitante.apellido1} ${habitante.apellido2 || ""}`,
+                      description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1}`
+                    }
+                  : null
+              }))
+            }
+          };
+
+          // Add barrio data if present
+          if (property.barrioId && property.barrioId !== "new") {
+            propertyData.id_barrio = parseInt(property.barrioId as string);
+          } else if (property.barrioId === "new") {
+            if (!property.newBarrioName) {
+              window.alert('Please provide a name for the new barrio');
+              throw new Error('Missing new barrio name');
+            }
+            propertyData.newBarrio = {
+              nombre: property.newBarrioName,
+              codigo_barrio: property.newBarrioCode || null,
+              id_municipio: parseInt(property.municipioId)
+            };
+          }
+
+          // Add sector data if present
+          if (property.sectorId && property.sectorId !== "new") {
+            propertyData.id_sector = parseInt(property.sectorId);
+          } else if (property.sectorId === "new") {
+            if (!property.newSectorName) {
+              window.alert('Please provide a name for the new sector');
+              throw new Error('Missing new sector name');
+            }
+            
+            const parentBarrioId = property.barrioId === "new" 
+              ? null 
+              : (property.barrioId ? parseInt(property.barrioId as string) : null);
+            
+            propertyData.newSector = {
+              nombre: property.newSectorName,
+              codigo_sector: property.newSectorCode || null,
+              id_barrio: parentBarrioId
+            };
+          }
+
+          // Format the habitantes data with family information
+          propertyData.habitantes = {
+            create: property.habitantes?.map(habitante => {
+              const habitanteData: any = {
+                name: habitante.name,
+                apellido1: habitante.apellido1,
+                apellido2: habitante.apellido2 || "",
+                sex: habitante.sex,
+                categoria: habitante.categoria,
+                rol: habitante.rol,
+                age: parseInt(habitante.age),
+                limitation: habitante.limitation,
+                condition: habitante.condition,
+                disposition: habitante.disposition,
+                contacto: habitante.contacto,
+              };
+
+              // Handle family data
+              if (habitante.familyId === "new") {
+                if (habitante.newFamilyApellido1) {
+                  habitanteData.newFamily = {
+                    apellidos: `${habitante.newFamilyApellido1} ${habitante.newFamilyApellido2 || ""}`.trim(),
+                    description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
+                  };
+                } else {
+                  habitanteData.newFamily = {
+                    apellidos: `${habitante.apellido1} ${habitante.apellido2 || ""}`.trim(),
+                    description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1} ${habitante.apellido2 || ""}`
+                  };
+                }
+              } else if (habitante.familyId !== "new") {
+                habitanteData.family_id = parseInt(habitante.familyId);
+              }
+
+              return habitanteData;
+            }) || []
+          };
+
+          // Format the final data structure for creating a new property with residents
+          formattedData = {
+            newProperty: propertyData,
+            // Add a minimal event reference since the API might expect it
+            eventReference: {
+              titulo: "Resident Registration",
+              descripcion: "Resident Registration",
+              tipo: "Flood", // Default type
+              estado: "pending"
+            }
+          };
+        }
+      } else {
+        console.log("Using default endpoint:", endpoint);
       }
 
+      // For Event Only mode, format data appropriately
+      if (formMode === "Event Only" && !formattedData.eventoId) {
+        // Ensure we're creating a simple event with just the basic data and USNG
+        formattedData = {
+          evento: {
+            create: {
+              titulo: values.eventName,
+              descripcion: values.incidents[0].description,
+              fecha: new Date(values.date).toISOString(),
+              tipo: values.tipo,
+              estado: values.estado,
+              usngId: usngId
+            }
+          }
+        };
+        console.log("Reformatted data for Event Only mode:", formattedData);
+      }
+
+      // For Property Only mode, format data appropriately
+      if (formMode === "Property Only") {
+        // For Property Only mode, use a very simple format - exactly like the Direct Submit button
+        const property = values.properties[0];
+        formattedData = {
+          tipo: property.type,
+          id_municipio: parseInt(property.municipioId),
+          direccion: property.address,
+          usngId: usngId,
+          gridId: usngId,
+          habitantes: { create: [] }
+        };
+        
+        // Add barrio data if present
+        if (property.barrioId && property.barrioId !== "new") {
+          formattedData.id_barrio = parseInt(property.barrioId as string);
+        } else if (property.barrioId === "new" && property.newBarrioName) {
+          formattedData.newBarrio = {
+            nombre: property.newBarrioName,
+            codigo_barrio: property.newBarrioCode || null,
+            id_municipio: parseInt(property.municipioId)
+          };
+        }
+        
+        // Add sector data if present
+        if (property.sectorId && property.sectorId !== "new") {
+          formattedData.id_sector = parseInt(property.sectorId);
+        } else if (property.sectorId === "new" && property.newSectorName) {
+          const parentBarrioId = property.barrioId === "new" 
+            ? null 
+            : (property.barrioId ? parseInt(property.barrioId as string) : null);
+          
+          formattedData.newSector = {
+            nombre: property.newSectorName,
+            codigo_sector: property.newSectorCode || null,
+            id_barrio: parentBarrioId
+          };
+        }
+        
+        console.log("Simplified Property Only data:", formattedData);
+      }
+
+      console.log(`Sending POST request to ${endpoint}`);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -774,8 +1061,17 @@ export function ReportForm() {
         body: JSON.stringify(formattedData),
       });
       
+      console.log("API response status:", response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+          console.error("Error response data:", errorData);
+        } catch (e) {
+          console.error("Failed to parse error response:", e);
+          errorData = { message: `Server responded with ${response.status}` };
+        }
         throw new Error(errorData.message || `Server responded with ${response.status}`);
       }
       
@@ -815,7 +1111,7 @@ export function ReportForm() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [validateUsngCode, reset, selectedEvent, handleEventSelect, setSelectedMunicipios, setSelectedBarrios, setBarrioSearchResults, setSectorSearchResults, setFamilySearchResults, formMode]);
+  }, [validateUsngCode, reset, selectedEvent, handleEventSelect, setSelectedMunicipios, setSelectedBarrios, setBarrioSearchResults, setSectorSearchResults, setFamilySearchResults, formMode, selectedExistingProperty]);
 
   // Handlers
   const handleAddIncident = useCallback(() => {
@@ -892,6 +1188,8 @@ export function ReportForm() {
     )
   }
 
+  // Property existence checking functionality was removed to fix React hooks error
+
   // Render form
   return (
     <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 2 }}>
@@ -923,22 +1221,25 @@ export function ReportForm() {
         <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Event Information</Typography>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="notificationNumber"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    label="Notification #"
-                    variant="outlined"
-                    fullWidth
-                    disabled
-                  />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            {/* Only show notification number in Full Report mode */}
+            {formMode === "Full Report" && (
+              <Grid item xs={12} md={6}>
+                <Controller
+                  name="notificationNumber"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Notification #"
+                      variant="outlined"
+                      fullWidth
+                      disabled
+                    />
+                  )}
+                />
+              </Grid>
+            )}
+            <Grid item xs={12} md={formMode === "Event Only" ? 12 : 6}>
               <Controller
                 name="eventName"
                 control={control}
@@ -1093,14 +1394,217 @@ export function ReportForm() {
                     )}
                   />
                 </Grid>
+
+                {/* USNG field for both Event Only and Full Report mode */}
+                <Grid item xs={12}>
+                  <Controller
+                    name="usngCode"
+                    control={control}
+                    render={({ field }) => (
+                      <Autocomplete
+                        freeSolo
+                        options={usngSuggestions}
+                        getOptionLabel={(option) => 
+                          typeof option === 'string' ? option : option.usng
+                        }
+                        loading={isLoadingUsngSuggestions}
+                        onInputChange={(_, newValue) => {
+                          setValue("usngCode", newValue)
+                          searchUsngCodes(newValue)
+                        }}
+                        onChange={(_, newValue) => {
+                          const value = typeof newValue === 'string' 
+                            ? newValue 
+                            : newValue?.usng || ''
+                          setValue("usngCode", value)
+                          validateUsngCode(value)
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            {...field} 
+                            label="USNG Coordinates"
+                            variant="outlined"
+                            fullWidth
+                            error={!!errors.usngCode}
+                            helperText={
+                              errors.usngCode?.message || 
+                              (usngValidationResult && (
+                                <Typography 
+                                  component="span" 
+                                  color={usngValidationResult.valid ? "success.main" : "error"}
+                                >
+                                  {usngValidationResult.message}
+                                </Typography>
+                              ))
+                            }
+                            InputProps={{
+                              ...params.InputProps,
+                              endAdornment: (
+                                <>
+                                  {isValidatingUsng || isLoadingUsngSuggestions ? (
+                                    <CircularProgress color="inherit" size={20} />
+                                  ) : null}
+                                  {params.InputProps.endAdornment}
+                                </>
+                              ),
+                            }}
+                            onChange={handleUsngInputChange}
+                            onBlur={() => {
+                              if (field.value) {
+                                validateUsngCode(field.value)
+                              }
+                            }}
+                          />
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+                
+                {/* Description field */}
+                <Grid item xs={12}>
+                  <Controller
+                    name="incidents.0.description"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Description"
+                        variant="outlined"
+                        fullWidth
+                        multiline
+                        rows={3}
+                        error={!!errors.incidents?.[0]?.description}
+                        helperText={errors.incidents?.[0]?.description?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+
+                {/* Incidents section only in Full Report mode */}
+                {formMode === "Full Report" && (
+                  <Grid item xs={12}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="subtitle1">Incidents</Typography>
+                      <Button
+                        variant="outlined"
+                        startIcon={<AddIcon />}
+                        onClick={handleAddIncident}
+                        size="small"
+                      >
+                        Add Incident
+                      </Button>
+                    </Box>
+                    
+                    <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
+                      {incidents.map((_, index) => (
+                        <Card key={index} variant="outlined" sx={{ mb: 2 }}>
+                          <CardContent>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12} md={6}>
+                                <Controller
+                                  name={`incidents.${index}.type`}
+                                  control={control}
+                                  render={({ field }) => (
+                                    <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
+                                      <InputLabel>Incident Type</InputLabel>
+                                      <Select
+                                        {...field}
+                                        label="Incident Type"
+                                      >
+                                        {incidentTypes.map((type) => (
+                                          <MenuItem key={type} value={type}>
+                                            {type}
+                                          </MenuItem>
+                                        ))}
+                                      </Select>
+                                      {errors.incidents?.[index]?.type && (
+                                        <FormHelperText>
+                                          {String(errors.incidents[index]?.type || "Invalid type")}
+                                        </FormHelperText>
+                                      )}
+                                    </FormControl>
+                                  )}
+                                />
+                              </Grid>
+                              <Grid item xs={12} md={6}>
+                                <Controller
+                                  name={`incidents.${index}.description`}
+                                  control={control}
+                                  render={({ field }) => (
+                                    <TextField
+                                      {...field}
+                                      label="Description"
+                                      variant="outlined"
+                                      fullWidth
+                                      multiline
+                                      rows={2}
+                                      error={!!errors.incidents?.[index]?.description}
+                                      helperText={errors.incidents?.[index]?.description?.message}
+                                    />
+                                  )}
+                                />
+                              </Grid>
+                            </Grid>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Box>
+                  </Grid>
+                )}
+
+                {/* Affected Cuencas in Full Report mode only */}
+                {formMode === "Full Report" && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle1" gutterBottom>Affected Cuencas (Optional)</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <FormControl fullWidth>
+                          <InputLabel>Select Cuencas</InputLabel>
+                          <Select
+                            label="Select Cuencas"
+                            value=""
+                            onChange={(e) => {
+                              const target = e.target as HTMLInputElement;
+                              handleCuencaSelect(target.value);
+                            }}
+                          >
+                            {cuencas.map((cuenca) => (
+                              <MenuItem key={cuenca.id} value={String(cuenca.id)}>
+                                {cuenca.nombre} ({cuenca.codigo_cuenca})
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 100, overflow: 'auto' }}>
+                          {cuencaIds?.map((cuencaId) => {
+                            const cuenca = cuencas.find((c) => String(c.id) === cuencaId)
+                            return cuenca ? (
+                              <Chip
+                                key={cuenca.id}
+                                label={cuenca.nombre}
+                                onDelete={() => handleRemoveCuenca(cuencaId)}
+                                color="primary"
+                                variant="outlined"
+                              />
+                            ) : null
+                          })}
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </Grid>
+                )}
               </>
             )}
           </Grid>
         </Paper>
       )}
 
-      {/* Show Notification Information Section if form mode is Full Report or Event Only */}
-      {(formMode === "Full Report" || formMode === "Event Only") && (
+      {/* Show Notification Information Section only for Full Report mode */}
+      {formMode === "Full Report" && (
         <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Notification Information</Typography>
           <Grid container spacing={3}>
@@ -1398,6 +1902,35 @@ export function ReportForm() {
               Add Property
             </Button>
           </Box>
+
+          {/* Show property existence notification in Resident Only mode */}
+          {formMode === "Resident Only" && selectedExistingProperty && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'rgba(76, 175, 80, 0.08)' }}>
+              <Typography variant="subtitle2" gutterBottom color="success.main">
+                <b>Existing property detected:</b> {selectedExistingProperty.direccion}
+              </Typography>
+              <Typography variant="body2">
+                {selectedExistingProperty.tipo} in {selectedExistingProperty.municipio?.nombre || ''} 
+                {selectedExistingProperty.barrio?.nombre ? `, ${selectedExistingProperty.barrio.nombre}` : ''} 
+                {selectedExistingProperty.sector?.nombre ? `, ${selectedExistingProperty.sector.nombre}` : ''}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Property ID: {selectedExistingProperty.id}
+              </Typography>
+              <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                <Typography variant="body2">
+                  Residents will be added to this existing property.
+                </Typography>
+                <Button 
+                  size="small" 
+                  color="error" 
+                  onClick={() => setSelectedExistingProperty(null)}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Paper>
+          )}
 
           <Box sx={{ maxHeight: 500, overflow: 'auto', pr: 1 }}>
             {properties.map((_, index) => (
@@ -2220,16 +2753,492 @@ export function ReportForm() {
         </Paper>
       )}
 
+      {/* Add USNG field for Property Only mode */}
+      {formMode === "Property Only" && (
+        <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Location Information</Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Controller
+                name="usngCode"
+                control={control}
+                render={({ field }) => (
+                  <Autocomplete
+                    freeSolo
+                    options={usngSuggestions}
+                    getOptionLabel={(option) => 
+                      typeof option === 'string' ? option : option.usng
+                    }
+                    loading={isLoadingUsngSuggestions}
+                    onInputChange={(_, newValue) => {
+                      setValue("usngCode", newValue)
+                      searchUsngCodes(newValue)
+                    }}
+                    onChange={(_, newValue) => {
+                      const value = typeof newValue === 'string' 
+                        ? newValue 
+                        : newValue?.usng || ''
+                      setValue("usngCode", value)
+                      validateUsngCode(value)
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        {...field} 
+                        label="USNG Coordinates"
+                        variant="outlined"
+                        fullWidth
+                        error={!!errors.usngCode}
+                        helperText={
+                          errors.usngCode?.message || 
+                          (usngValidationResult && (
+                            <Typography 
+                              component="span" 
+                              color={usngValidationResult.valid ? "success.main" : "error"}
+                            >
+                              {usngValidationResult.message}
+                            </Typography>
+                          ))
+                        }
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {isValidatingUsng || isLoadingUsngSuggestions ? (
+                                <CircularProgress color="inherit" size={20} />
+                              ) : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                        onChange={handleUsngInputChange}
+                        onBlur={() => {
+                          if (field.value) {
+                            validateUsngCode(field.value)
+                          }
+                        }}
+                      />
+                    )}
+                  />
+                )}
+              />
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
+
       {/* Submit Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+        {/* Debug buttons - only shown in development */}
+        {/* Removing debug buttons */}
+        
         <Button
-          type="submit"
           variant="contained"
           color="primary"
           size="large"
           disabled={isSubmitting}
           startIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : null}
-        >
+          onClick={async () => {
+            console.log("Submit button clicked, form mode:", formMode);
+            
+            // Add special handling for Resident Only mode
+            if (formMode === "Resident Only") {
+              try {
+                setIsSubmitting(true);
+                
+                // Get form values
+                const values = getValues();
+                const property = values.properties[0];
+                
+                // Validate property data
+                if (!property.municipioId || !property.address) {
+                  window.alert("Please provide municipality and address for the property");
+                  setIsSubmitting(false);
+                  return;
+                }
+                
+                // Validate residents data
+                if (!property.habitantes || property.habitantes.length === 0) {
+                  window.alert("Please add at least one resident");
+                  setIsSubmitting(false);
+                  return;
+                }
+                
+                // Validate all residents have family
+                const invalidResidents = property.habitantes.filter(h => !h.familyId);
+                if (invalidResidents.length > 0) {
+                  window.alert("All residents must have a family assigned");
+                  setIsSubmitting(false);
+                  return;
+                }
+                
+                // Format the habitantes data consistently for both cases
+                const formattedHabitantes = property.habitantes.map(habitante => ({
+                  name: habitante.name,
+                  apellido1: habitante.apellido1,
+                  apellido2: habitante.apellido2 || "",
+                  sex: habitante.sex,
+                  categoria: habitante.categoria,
+                  rol: habitante.rol,
+                  age: parseInt(habitante.age),
+                  limitation: habitante.limitation,
+                  condition: habitante.condition,
+                  disposition: habitante.disposition,
+                  contacto: habitante.contacto,
+                  family_id: habitante.familyId === "new" ? null : parseInt(habitante.familyId),
+                  newFamily: habitante.familyId === "new"
+                    ? {
+                        apellidos: habitante.newFamilyApellido1
+                          ? `${habitante.newFamilyApellido1} ${habitante.newFamilyApellido2 || ""}`
+                          : `${habitante.apellido1} ${habitante.apellido2 || ""}`,
+                        description: habitante.newFamilyDescription || `Family of ${habitante.name} ${habitante.apellido1}`
+                      }
+                    : null
+                }));
+                
+                // Prepare submission data based on whether we're adding to existing property or creating new
+                let submissionData;
+                
+                if (selectedExistingProperty) {
+                  // Adding residents to existing property
+                  console.log("Adding residents to existing property:", selectedExistingProperty.id);
+                  
+                  submissionData = {
+                    propertyId: selectedExistingProperty.id,
+                    habitantes: formattedHabitantes
+                  };
+                } else {
+                  // Creating a new property with residents - two-step process
+                  console.log("Creating new property with residents (two-step process)");
+                  
+                  try {
+                    // STEP 1: Create the property using our direct property endpoint
+                    const propertyData = {
+                      tipo: property.type,
+                      id_municipio: parseInt(property.municipioId),
+                      direccion: property.address
+                    } as any; // Use type assertion to avoid TypeScript errors
+                    
+                    // Add barrio data if needed
+                    if (property.barrioId && property.barrioId !== "new") {
+                      propertyData.id_barrio = parseInt(property.barrioId);
+                    } else if (property.barrioId === "new" && property.newBarrioName) {
+                      propertyData.newBarrio = {
+                        nombre: property.newBarrioName,
+                        codigo_barrio: property.newBarrioCode || null,
+                        id_municipio: parseInt(property.municipioId)
+                      };
+                    }
+                    
+                    // Add sector data if needed
+                    if (property.sectorId && property.sectorId !== "new") {
+                      propertyData.id_sector = parseInt(property.sectorId);
+                    } else if (property.sectorId === "new" && property.newSectorName) {
+                      const parentBarrioId = property.barrioId === "new" 
+                        ? null 
+                        : (property.barrioId ? parseInt(property.barrioId) : null);
+                      
+                      propertyData.newSector = {
+                        nombre: property.newSectorName,
+                        codigo_sector: property.newSectorCode || null,
+                        id_barrio: parentBarrioId
+                      };
+                    }
+                    
+                    console.log("STEP 1: Creating property:", propertyData);
+                    
+                    // Call the property API
+                    const propertyResponse = await fetch('/api/properties', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(propertyData),
+                    });
+                    
+                    if (!propertyResponse.ok) {
+                      let errorData;
+                      try {
+                        errorData = await propertyResponse.json();
+                      } catch (e) {
+                        errorData = { message: `Server responded with ${propertyResponse.status}` };
+                      }
+                      throw new Error(errorData.message || `Failed to create property: ${propertyResponse.status}`);
+                    }
+                    
+                    // Get the created property data
+                    const createdPropertyData = await propertyResponse.json();
+                    console.log("Property created successfully:", createdPropertyData);
+                    
+                    // Extract the property ID from the response
+                    const newPropertyId = createdPropertyData.id;
+                    
+                    if (!newPropertyId) {
+                      throw new Error("Property was created but no property ID was returned");
+                    }
+                    
+                    // STEP 2: Add residents to the newly created property
+                    console.log("STEP 2: Adding residents to property ID:", newPropertyId);
+                    
+                    const residentPayload = {
+                      propertyId: newPropertyId,
+                      habitantes: formattedHabitantes
+                    };
+                    
+                    // Submit residents
+                    const residentsResponse = await fetch('/api/residents', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(residentPayload),
+                    });
+                    
+                    if (!residentsResponse.ok) {
+                      let errorData;
+                      try {
+                        errorData = await residentsResponse.json();
+                      } catch (e) {
+                        errorData = { message: `Server responded with ${residentsResponse.status}` };
+                      }
+                      throw new Error(errorData.message || `Failed to add residents: ${residentsResponse.status}`);
+                    }
+                    
+                    const responseData = await residentsResponse.json();
+                    console.log("Residents added successfully:", responseData);
+                    window.alert("Property and residents created successfully!");
+                    
+                    // Reset the form (this is already handled in the outer try/catch)
+                    return;
+                    
+                  } catch (error) {
+                    console.error("Error in two-step process:", error);
+                    throw error; // Re-throw to be caught by outer try/catch
+                  }
+                }
+                
+                console.log("Submitting Resident Only data:", submissionData);
+                
+                // Submit to the API (this only runs for existing properties)
+                const response = await fetch('/api/residents', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(submissionData),
+                });
+                
+                if (!response.ok) {
+                  let errorData;
+                  try {
+                    errorData = await response.json();
+                    console.error("Error response data:", errorData);
+                  } catch (e) {
+                    console.error("Failed to parse error response:", e);
+                    errorData = { message: `Server responded with ${response.status}` };
+                  }
+                  throw new Error(errorData.message || `Server responded with ${response.status}`);
+                }
+                
+                const responseData = await response.json();
+                console.log("Resident submission successful:", responseData);
+                window.alert("Residents submitted successfully!");
+                
+                // Reset the form
+                reset({
+                  notificationNumber: generateNotificationNumber(),
+                  date: new Date().toISOString().split('T')[0],
+                  usngCode: "",
+                  tipo: incidentTypes[0],
+                  estado: "pending" as const,
+                  incidents: [{ type: incidentTypes[0], description: "", cuencaId: "" }],
+                  properties: [{ 
+                    type: propertyTypes[0],
+                    municipioId: "", 
+                    address: "",
+                    habitantes: [],
+                  }],
+                  cuencaIds: [] as string[],
+                });
+                
+                // Reset state
+                setSelectedExistingProperty(null);
+                setSelectedMunicipios({});
+                setSelectedBarrios({});
+                setBarrioSearchResults([]);
+                setSectorSearchResults([]);
+                setFamilySearchResults([]);
+                
+              } catch (error) {
+                console.error("Error submitting residents:", error);
+                window.alert(`Failed to submit residents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+              } finally {
+                setIsSubmitting(false);
+              }
+              
+              return;
+            }
+            
+            // For Property Only mode, explicitly validate USNG before form submission
+            if (formMode === "Property Only") {
+              const currentUsngCode = getValues("usngCode");
+              
+              if (!currentUsngCode) {
+                window.alert('Please enter a USNG code');
+                return;
+              }
+              
+              const isValid = await validateUsngCode(currentUsngCode);
+              
+              if (!isValid) {
+                window.alert('Please enter a valid USNG code');
+                return;
+              }
+              
+              // Get USNG ID for Property Only mode
+              let usngId = null;
+              try {
+                const usngResponse = await fetch(`/api/usng/getById?code=${encodeURIComponent(currentUsngCode)}`);
+                if (usngResponse.ok) {
+                  const usngData = await usngResponse.json();
+                  usngId = usngData.id;
+                } else {
+                  window.alert('Could not find USNG ID. Please enter a valid USNG code.');
+                  return;
+                }
+              } catch (error) {
+                window.alert('Error retrieving USNG ID. Please try again.');
+                return;
+              }
+              
+              // Format data for Property Only submission
+              try {
+                // Get form values
+                const values = getValues();
+                const property = values.properties[0];
+                
+                // Create payload
+                const formattedData: any = {
+                  tipo: property.type,
+                  id_municipio: parseInt(property.municipioId),
+                  direccion: property.address,
+                  usngId: usngId,
+                  gridId: usngId,
+                  habitantes: { create: [] }
+                };
+                
+                // Add barrio data if present
+                if (property.barrioId && property.barrioId !== "new") {
+                  formattedData.id_barrio = parseInt(property.barrioId as string);
+                } else if (property.barrioId === "new" && property.newBarrioName) {
+                  formattedData.newBarrio = {
+                    nombre: property.newBarrioName,
+                    codigo_barrio: property.newBarrioCode || null,
+                    id_municipio: parseInt(property.municipioId)
+                  };
+                }
+                
+                // Add sector data if present
+                if (property.sectorId && property.sectorId !== "new") {
+                  formattedData.id_sector = parseInt(property.sectorId);
+                } else if (property.sectorId === "new" && property.newSectorName) {
+                  const parentBarrioId = property.barrioId === "new" 
+                    ? null 
+                    : (property.barrioId ? parseInt(property.barrioId as string) : null);
+                  
+                  formattedData.newSector = {
+                    nombre: property.newSectorName,
+                    codigo_sector: property.newSectorCode || null,
+                    id_barrio: parentBarrioId
+                  };
+                }
+                
+                // Set isSubmitting
+                setIsSubmitting(true);
+                
+                // For creating a new property, we need to structure the data correctly
+                // Create a more structured payload matching the expected format
+                const propertyPayload = {
+                  // Use the expected structure for property registration via the eventos endpoint
+                  propiedades_afectadas: [{
+                    daños: "No damage", // Default for Property Only mode
+                    propiedad: {
+                      create: formattedData
+                    }
+                  }],
+                  // Add minimal event data since we're using the eventos endpoint
+                  evento: {
+                    create: {
+                      titulo: "Property Registration",
+                      descripcion: "Property Registration",
+                      tipo: "Flood", // Default type
+                      estado: "pending",
+                      fecha: new Date().toISOString(),
+                      usngId: usngId
+                    }
+                  }
+                };
+                
+                console.log("Submitting property with payload:", propertyPayload);
+                
+                // Submit directly to property endpoint - try the eventos endpoint since properties is not found
+                const response = await fetch('/api/eventos', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(propertyPayload),
+                });
+                
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(errorText || `Server responded with ${response.status}`);
+                }
+                
+                window.alert(`Property submitted successfully!`);
+                
+                // Reset form
+                reset({
+                  notificationNumber: generateNotificationNumber(),
+                  date: new Date().toISOString().split('T')[0],
+                  usngCode: "",
+                  tipo: incidentTypes[0],
+                  estado: "pending" as const,
+                  incidents: [{ type: incidentTypes[0], description: "", cuencaId: "" }],
+                  properties: [{ 
+                    type: propertyTypes[0],
+                    municipioId: "", 
+                    address: "",
+                    habitantes: [],
+                  }],
+                  cuencaIds: [] as string[],
+                });
+                
+                // Reset state
+                setSelectedMunicipios({});
+                setSelectedBarrios({});
+                setBarrioSearchResults([]);
+                setSectorSearchResults([]);
+                
+              } catch (error) {
+                window.alert(`Failed to submit property: ${error instanceof Error ? error.message : 'Unknown error'}`);
+              } finally {
+                setIsSubmitting(false);
+              }
+              
+              return;
+            }
+            
+            // For other modes, use the normal submission
+            try {
+              await handleSubmit(onSubmit)();
+            } catch (error) {
+              console.error("Error in form submission:", error);
+              window.alert(`Submission error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            return undefined;
+          }}
+          >
           {isSubmitting ? 'Submitting...' : `Submit ${formMode}`}
         </Button>
       </Box>

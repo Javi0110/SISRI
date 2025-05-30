@@ -1551,7 +1551,6 @@ export function DataAnalytics() {
                     <tr>
                       <td>${resident.family_id || '0'}-${resident.id}</td>
                       <td>${resident.nombre}</td>
-                      <td>${(resident.apellido1 || '') + ' ' + (resident.apellido2 || '')}</td>
                       <td>${resident.apellido1 || 'N/A'}</td>
                       <td>${resident.apellido2 || 'N/A'}</td>
                       <td>${resident.edad}</td>
