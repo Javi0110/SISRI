@@ -151,7 +151,7 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
               habitantes: {
                 include: {
                   family: true
-                } as any
+                }
               }
             }
           }
@@ -197,6 +197,8 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         apellido1: h.apellido1,
         apellido2: h.apellido2,
         edad: h.edad,
+        sex: h.sex || h.sexo,
+        sexo: h.sexo || h.sex,
         categoria: h.categoria,
         limitacion: h.limitacion,
         condicion: h.condicion,
@@ -208,7 +210,16 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
           id: h.family.id,
           apellidos: h.family.apellidos,
           description: h.family.description
-        } : null
+        } : null,
+        propiedad_info: {
+          id: property.id,
+          tipo: property.tipo,
+          municipio: property.municipio?.nombre || 'N/A',
+          barrio: property.barrio?.nombre || 'N/A',
+          sector: property.sector?.nombre || 'N/A',
+          usng: property.usngsquare?.usng || 'N/A',
+          direccion: property.direccion || 'N/A'
+        }
       }))
     };
   }) || [];
@@ -294,6 +305,8 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         apellido1: h.apellido1,
         apellido2: h.apellido2,
         edad: h.edad,
+        sex: h.sex || h.sexo,
+        sexo: h.sexo || h.sex,
         categoria: h.categoria,
         limitacion: h.limitacion,
         condicion: h.condicion,
@@ -305,7 +318,16 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
           id: h.family.id,
           apellidos: h.family.apellidos,
           description: h.family.description
-        } : null
+        } : null,
+        propiedad_info: {
+          id: property.id,
+          tipo: property.tipo,
+          municipio: property.municipio?.nombre || 'N/A',
+          barrio: property.barrio?.nombre || 'N/A',
+          sector: property.sector?.nombre || 'N/A',
+          usng: property.usngsquare?.usng || 'N/A',
+          direccion: property.direccion || 'N/A'
+        }
       }))
     };
   }));
@@ -383,6 +405,8 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         apellido1: h.apellido1,
         apellido2: h.apellido2,
         edad: h.edad,
+        sex: h.sex || h.sexo,
+        sexo: h.sexo || h.sex,
         categoria: h.categoria,
         limitacion: h.limitacion,
         condicion: h.condicion,
@@ -394,7 +418,16 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
           id: h.family.id,
           apellidos: h.family.apellidos,
           description: h.family.description
-        } : null
+        } : null,
+        propiedad_info: {
+          id: property.id,
+          tipo: property.tipo,
+          municipio: property.municipio?.nombre || 'N/A',
+          barrio: property.barrio?.nombre || 'N/A',
+          sector: property.sector?.nombre || 'N/A',
+          usng: property.usngsquare?.usng || 'N/A',
+          direccion: property.direccion || 'N/A'
+        }
       }))
     };
   }));
@@ -588,19 +621,16 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
       });
     }
 
-    // Extract all property IDs to fetch damage info in bulk
-    
-    // Get damage info for all properties in a single query
-
     // Now process the residents to include property information
     const processedResidents = residents.map((resident: any) => {
-
       return {
         id: resident.id,
         nombre: resident.nombre,
         apellido1: resident.apellido1,
         apellido2: resident.apellido2,
         edad: resident.edad,
+        sex: resident.sex || resident.sexo,
+        sexo: resident.sexo || resident.sex,
         categoria: resident.categoria,
         limitacion: resident.limitacion,
         condicion: resident.condicion,

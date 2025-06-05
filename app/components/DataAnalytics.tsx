@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Bell, ChevronDown, ChevronUp, Clock, FileText, Home, MapPin, Printer, Search, Users } from "lucide-react";
+import { AlertCircle, Bell, ChevronDown, ChevronUp, Clock, FileText, Home, MapPin, Printer, Search, Users, Eye, EyeOff } from "lucide-react";
 import { useCallback, useState, useEffect } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -209,6 +209,40 @@ export function DataAnalytics() {
 
   // Add a state for quick filtering resident names
   const [quickResidentFilter, setQuickResidentFilter] = useState("");
+
+  // Column visibility state
+  const [visibleColumns, setVisibleColumns] = useState<{
+    [key: string]: boolean;
+  }>({
+    // Property table columns
+    property_tipo: true,
+    property_location: true,
+    property_address: true,
+    property_usng: true,
+    property_damage: true,
+    property_date: true,
+    property_residents: true,
+    
+    // Resident table columns
+    id: true,
+    nombre: true,
+    apellido1: true,
+    apellido2: true,
+    edad: true,
+    sex: true,
+    categoria: true,
+    family: true,
+    contacto: true,
+    limitacion: true,
+    condicion: true,
+    disposicion: true,
+    property: true,
+    municipio: true,
+    barrio: true,
+    sector: true,
+    usng: true,
+    direccion: true
+  });
 
   // Modify sortConfig to be an array of sort configurations
   const [sortConfigs, setSortConfigs] = useState<{
@@ -1177,6 +1211,14 @@ export function DataAnalytics() {
     setNotificationDetailOpen(true);
   };
 
+  // Add function to toggle column visibility
+  const toggleColumnVisibility = (columnKey: string) => {
+    setVisibleColumns(prev => ({
+      ...prev,
+      [columnKey]: !prev[columnKey]
+    }));
+  };
+
   // Add a print function
   const handlePrintReport = () => {
     if (!reportData) return;
@@ -1188,30 +1230,103 @@ export function DataAnalytics() {
       return;
     }
     
-    // Prepare data for the report
+    // Prepare filtered and sorted data for the report
     const hasProperties = reportData.propiedades && reportData.propiedades.length > 0;
     const hasResidents = reportData.residentes && reportData.residentes.length > 0;
-    const propertiesCount = hasProperties ? reportData.propiedades.length : 0;
-    const residentsCount = hasResidents && reportData.residentes ? reportData.residentes.length : 0;
+    
+    // Apply current filtering to properties
+    let filteredProperties = hasProperties ? [...reportData.propiedades] : [];
+    
+    // Apply current filtering to residents
+    let filteredResidents: ResidentData[] = [];
+    if (hasResidents && reportData.residentes) {
+      filteredResidents = reportData.residentes.filter(resident => {
+        if (!quickResidentFilter) return true;
+        return resident.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase());
+      });
+    } else if (hasProperties) {
+      // Get residents from property expansions and apply filters
+      filteredResidents = filteredProperties.flatMap(property => 
+        applyResidentFilters(property.habitantes).map(resident => ({
+          ...resident,
+          _property: property
+        }))
+      );
+    }
     
     // Apply current sorting to the data
-    const sortedProperties = hasProperties 
-      ? sortConfigs.length > 0 ? sortData(reportData.propiedades) : reportData.propiedades
-      : [];
-      
-    const sortedResidents = hasResidents && reportData.residentes 
-      ? sortConfigs.length > 0 ? sortData(reportData.residentes) : reportData.residentes
-      : [];
-      
+    const sortedProperties = sortConfigs.length > 0 ? sortData(filteredProperties) : filteredProperties;
+    const sortedResidents = sortConfigs.length > 0 ? sortData(filteredResidents) : filteredResidents;
     const sortedNotifications = reportData.notificaciones && reportData.notificaciones.length > 0
       ? sortConfigs.length > 0 ? sortData(reportData.notificaciones) : reportData.notificaciones
       : [];
+    
+    const propertiesCount = sortedProperties.length;
+    const residentsCount = sortedResidents.length;
     
     // Create sort information text
     const sortInfoText = sortConfigs.length > 0 
       ? `Sorted by: ${sortConfigs.map((config, index) => 
           `${index + 1}. ${config.key} (${config.direction})`).join(', ')}`
       : '';
+    
+    // Create filter information text
+    const activeFilters = [];
+    if (quickResidentFilter) activeFilters.push(`Name filter: "${quickResidentFilter}"`);
+    if (filters.municipio) activeFilters.push(`Municipality: ${filters.municipio}`);
+    if (filters.barrio) activeFilters.push(`Barrio: ${filters.barrio}`);
+    if (filters.sector) activeFilters.push(`Sector: ${filters.sector}`);
+    if (filters.usng) activeFilters.push(`USNG: ${filters.usng}`);
+    if (filters.ageRange?.min || filters.ageRange?.max) {
+      activeFilters.push(`Age: ${filters.ageRange?.min || 0}-${filters.ageRange?.max || 200}`);
+    }
+    if (filters.sex) activeFilters.push(`Sex: ${filters.sex}`);
+    if (filters.residentCategory) activeFilters.push(`Category: ${filters.residentCategory}`);
+    if (filters.propertyType) activeFilters.push(`Property Type: ${filters.propertyType}`);
+    
+    const filterInfoText = activeFilters.length > 0 
+      ? `Active filters: ${activeFilters.join(', ')}`
+      : '';
+    
+    // Helper function to get visible property columns
+    const getVisiblePropertyColumns = () => {
+      const columns = [];
+      if (visibleColumns.property_tipo) columns.push({ key: 'tipo', label: 'Property' });
+      if (visibleColumns.property_location) columns.push({ key: 'location', label: 'Location' });
+      if (visibleColumns.property_address) columns.push({ key: 'direccion', label: 'Address' });
+      if (visibleColumns.property_usng) columns.push({ key: 'usng', label: 'USNG' });
+      if (visibleColumns.property_damage) columns.push({ key: 'daños', label: 'Damage' });
+      if (visibleColumns.property_date) columns.push({ key: 'fecha', label: 'Date' });
+      if (visibleColumns.property_residents) columns.push({ key: 'habitantes', label: 'Residents' });
+      return columns;
+    };
+    
+    // Helper function to get visible resident columns
+    const getVisibleResidentColumns = () => {
+      const columns = [];
+      if (visibleColumns.id) columns.push({ key: 'id', label: 'ID' });
+      if (visibleColumns.nombre) columns.push({ key: 'nombre', label: 'Name' });
+      if (visibleColumns.apellido1) columns.push({ key: 'apellido1', label: 'Last Name 1' });
+      if (visibleColumns.apellido2) columns.push({ key: 'apellido2', label: 'Last Name 2' });
+      if (visibleColumns.edad) columns.push({ key: 'edad', label: 'Age' });
+      if (visibleColumns.sex) columns.push({ key: 'sex', label: 'Sex' });
+      if (visibleColumns.categoria) columns.push({ key: 'categoria', label: 'Category' });
+      if (visibleColumns.family) columns.push({ key: 'family', label: 'Family' });
+      if (visibleColumns.contacto) columns.push({ key: 'contacto', label: 'Contact' });
+      if (visibleColumns.limitacion) columns.push({ key: 'limitacion', label: 'Limitation' });
+      if (visibleColumns.condicion) columns.push({ key: 'condicion', label: 'Condition' });
+      if (visibleColumns.disposicion) columns.push({ key: 'disposicion', label: 'Disposition' });
+      if (visibleColumns.property) columns.push({ key: 'property', label: 'Property' });
+      if (visibleColumns.municipio) columns.push({ key: 'municipio', label: 'Municipality' });
+      if (visibleColumns.barrio) columns.push({ key: 'barrio', label: 'Barrio' });
+      if (visibleColumns.sector) columns.push({ key: 'sector', label: 'Sector' });
+      if (visibleColumns.usng) columns.push({ key: 'usng', label: 'USNG' });
+      if (visibleColumns.direccion) columns.push({ key: 'direccion', label: 'Address' });
+      return columns;
+    };
+    
+    const visiblePropertyColumns = getVisiblePropertyColumns();
+    const visibleResidentColumns = getVisibleResidentColumns();
     
     // Create the HTML content for the report
     printWindow.document.write(`
@@ -1263,6 +1378,7 @@ export function DataAnalytics() {
               border: 1px solid #ddd;
               padding: 8px;
               text-align: left;
+              vertical-align: top;
             }
             th {
               background-color: #f2f2f2;
@@ -1349,10 +1465,16 @@ export function DataAnalytics() {
             .residents-table td {
               padding: 6px;
               border: 1px solid #eee;
+              vertical-align: top;
             }
             .property-divider {
               margin: 15px 0;
               border-top: 1px dashed #ccc;
+            }
+            .info-text {
+              font-style: italic;
+              color: #666;
+              margin: 5px 0;
             }
           </style>
         </head>
@@ -1365,7 +1487,10 @@ export function DataAnalytics() {
           <div class="report-header">
             <h1>SISRI-PR ANALYTICS REPORT</h1>
             <h3>Generated: ${new Date().toLocaleString()}</h3>
-            ${sortInfoText ? `<p style="font-style: italic; color: #666;">${sortInfoText}</p>` : ''}
+            ${sortInfoText ? `<p class="info-text">${sortInfoText}</p>` : ''}
+            ${filterInfoText ? `<p class="info-text">${filterInfoText}</p>` : ''}
+            ${visiblePropertyColumns.length < 7 || visibleResidentColumns.length < 18 ? 
+              `<p class="info-text">Note: Some columns are hidden based on user preferences</p>` : ''}
           </div>
           
           <div class="section">
@@ -1426,157 +1551,127 @@ export function DataAnalytics() {
             ` : ''}
           </div>
           
-          ${hasProperties ? `
+          ${propertiesCount > 0 ? `
           <div class="section">
             <div class="section-title">Properties (${propertiesCount})</div>
-            ${propertiesCount > 0 ? `
-              <table>
-                <thead>
+            <table>
+              <thead>
+                <tr>
+                  ${visiblePropertyColumns.map(col => `<th>${col.label}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortedProperties.map((property) => `
                   <tr>
-                    <th>ID</th>
-                    <th>Property</th>
-                    <th>Location</th>
-                    <th>Address</th>
-                    <th>USNG</th>
-                    <th>Damage</th>
-                    <th>Date</th>
-                    <th>Residents</th>
+                    ${visiblePropertyColumns.map(col => {
+                      switch(col.key) {
+                        case 'tipo': return `<td>${property.tipo}</td>`;
+                        case 'location': return `<td>
+                          <div>
+                            <span>${property.municipio}</span>
+                            <br>
+                            <span style="font-size: 0.9em; color: #666;">
+                              ${property.barrio} • ${property.sector}
+                            </span>
+                          </div>
+                        </td>`;
+                        case 'direccion': return `<td>${property.direccion || 'N/A'}</td>`;
+                        case 'usng': return `<td>${property.usng}</td>`;
+                        case 'daños': return `<td>${property.daños || 'N/A'}</td>`;
+                        case 'fecha': return `<td>${property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}</td>`;
+                        case 'habitantes': return `<td>${property.habitantes.length}</td>`;
+                        default: return '<td>N/A</td>';
+                      }
+                    }).join('')}
                   </tr>
-                </thead>
-                <tbody>
-                  ${sortedProperties.map((property) => `
-                    <tr>
-                      <td>${property.id}</td>
-                      <td>${property.tipo}</td>
-                      <td>
-                        <div>
-                          <span>${property.municipio}</span>
-                          <br>
-                          <span style="font-size: 0.9em; color: #666;">
-                            ${property.barrio} • ${property.sector}
-                          </span>
-                        </div>
-                      </td>
-                      <td>${property.direccion || 'N/A'}</td>
-                      <td>${property.usng}</td>
-                      <td>${property.daños || 'N/A'}</td>
-                      <td>
-                        ${property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td>
-                        ${property.habitantes.length}
-                      </td>
-                    </tr>
-                    ${property.habitantes.length > 0 ? `
-                    <tr>
-                      <td colspan="8" style="padding: 0;">
-                        <table class="residents-table">
-                          <thead>
+                  ${property.habitantes.length > 0 ? `
+                  <tr>
+                    <td colspan="${visiblePropertyColumns.length}" style="padding: 0;">
+                      <table class="residents-table">
+                        <thead>
+                          <tr>
+                            ${visibleResidentColumns.map(col => `<th>${col.label}</th>`).join('')}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${(sortConfigs ? sortData(property.habitantes) : property.habitantes).map((resident: ResidentData) => `
                             <tr>
-                              <th>ID</th>
-                              <th>Name</th>
-                              <th>Last Name 1</th>
-                              <th>Last Name 2</th>
-                              <th>Age</th>
-                              <th>Category</th>
-                              <th>Family</th>
-                              <th>Contact</th>
-                              <th>Limitation</th>
-                              <th>Condition</th>
-                              <th>Disposition</th>
+                              ${visibleResidentColumns.map(col => {
+                                switch(col.key) {
+                                  case 'id': return `<td><span class="badge badge-outline">${resident.family_id || '0'}-${resident.id}</span></td>`;
+                                  case 'nombre': return `<td>${resident.nombre}</td>`;
+                                  case 'apellido1': return `<td>${resident.apellido1 || 'N/A'}</td>`;
+                                  case 'apellido2': return `<td>${resident.apellido2 || 'N/A'}</td>`;
+                                  case 'edad': return `<td>${resident.edad}</td>`;
+                                  case 'sex': return `<td>${resident.sex || resident.sexo || 'N/A'}</td>`;
+                                  case 'categoria': return `<td>${resident.categoria}</td>`;
+                                  case 'family': return `<td>${resident.family ? resident.family.apellidos : 'N/A'}</td>`;
+                                  case 'contacto': return `<td>${resident.contacto || 'N/A'}</td>`;
+                                  case 'limitacion': return `<td>${resident.limitacion || 'N/A'}</td>`;
+                                  case 'condicion': return `<td>${resident.condicion || 'N/A'}</td>`;
+                                  case 'disposicion': return `<td>${resident.disposicion || 'N/A'}</td>`;
+                                  case 'property': return `<td>${resident.propiedad_info?.tipo || property.tipo}</td>`;
+                                  case 'municipio': return `<td>${resident.propiedad_info?.municipio || property.municipio}</td>`;
+                                  case 'barrio': return `<td>${resident.propiedad_info?.barrio || property.barrio}</td>`;
+                                  case 'sector': return `<td>${resident.propiedad_info?.sector || property.sector}</td>`;
+                                  case 'usng': return `<td>${resident.propiedad_info?.usng || property.usng}</td>`;
+                                  case 'direccion': return `<td>${resident.propiedad_info?.direccion || property.direccion || 'N/A'}</td>`;
+                                  default: return '<td>N/A</td>';
+                                }
+                              }).join('')}
                             </tr>
-                          </thead>
-                          <tbody>
-                            ${(sortConfigs ? sortData(property.habitantes) : property.habitantes).map((resident: ResidentData) => `
-                              <tr>
-                                <td>
-                                  <span class="badge badge-outline">${resident.family_id || '0'}-${resident.id}</span>
-                                </td>
-                                <td>${resident.nombre}</td>
-                                <td>${(resident.apellido1 || '') + ' ' + (resident.apellido2 || '')}</td>
-                                <td>${resident.apellido1 || 'N/A'}</td>
-                                <td>${resident.apellido2 || 'N/A'}</td>
-                                <td>${resident.edad}</td>
-                                <td>
-                                  <span class="badge badge-outline">${resident.categoria}</span>
-                                </td>
-                                <td>${resident.family ? resident.family.apellidos : 'N/A'}</td>
-                                <td>${resident.contacto || 'N/A'}</td>
-                                <td>${resident.limitacion || 'N/A'}</td>
-                                <td>${resident.condicion || 'N/A'}</td>
-                                <td>${resident.disposicion || 'N/A'}</td>
-                              </tr>
-                            `).join('')}
-                          </tbody>
-                        </table>
-                      </td>
-                    </tr>
-                    <tr><td colspan="8" class="property-divider"></td></tr>
-                    ` : ''}
-                  `).join('')}
-                </tbody>
-              </table>
-            ` : `
-              <p>No properties found for this search.</p>
-            `}
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr><td colspan="${visiblePropertyColumns.length}" class="property-divider"></td></tr>
+                  ` : ''}
+                `).join('')}
+              </tbody>
+            </table>
           </div>
           ` : ''}
           
-          ${hasResidents && reportData.residentes ? `
+          ${residentsCount > 0 && reportData.searchType === 'residente' ? `
           <div class="section">
             <div class="section-title">Residents (${residentsCount})</div>
-            ${residentsCount > 0 ? `
-              <table>
-                <thead>
+            <table>
+              <thead>
+                <tr>
+                  ${visibleResidentColumns.map(col => `<th>${col.label}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortedResidents.map((resident) => `
                   <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Last Name 1</th>
-                    <th>Last Name 2</th>
-                    <th>Age</th>
-                    <th>Category</th>
-                    <th>Family</th>
-                    <th>Contact</th>
-                    <th>Limitation</th>
-                    <th>Condition</th>
-                    <th>Disposition</th>
-                    <th>Property</th>
-                    <th>Location</th>
-                    <th>Address</th>
-                    <th>USNG</th>
+                    ${visibleResidentColumns.map(col => {
+                      switch(col.key) {
+                        case 'id': return `<td>${resident.family_id || '0'}-${resident.id}</td>`;
+                        case 'nombre': return `<td>${resident.nombre}</td>`;
+                        case 'apellido1': return `<td>${resident.apellido1 || 'N/A'}</td>`;
+                        case 'apellido2': return `<td>${resident.apellido2 || 'N/A'}</td>`;
+                        case 'edad': return `<td>${resident.edad}</td>`;
+                        case 'sex': return `<td>${resident.sex || resident.sexo || 'N/A'}</td>`;
+                        case 'categoria': return `<td>${resident.categoria}</td>`;
+                        case 'family': return `<td>${resident.family ? resident.family.apellidos : 'N/A'}</td>`;
+                        case 'contacto': return `<td>${resident.contacto || 'N/A'}</td>`;
+                        case 'limitacion': return `<td>${resident.limitacion || 'N/A'}</td>`;
+                        case 'condicion': return `<td>${resident.condicion || 'N/A'}</td>`;
+                        case 'disposicion': return `<td>${resident.disposicion || 'N/A'}</td>`;
+                        case 'property': return `<td>${resident.propiedad_info ? resident.propiedad_info.tipo : (resident._property ? resident._property.tipo : 'N/A')}</td>`;
+                        case 'municipio': return `<td>${resident.propiedad_info ? resident.propiedad_info.municipio : (resident._property ? resident._property.municipio : 'N/A')}</td>`;
+                        case 'barrio': return `<td>${resident.propiedad_info ? resident.propiedad_info.barrio : (resident._property ? resident._property.barrio : 'N/A')}</td>`;
+                        case 'sector': return `<td>${resident.propiedad_info ? resident.propiedad_info.sector : (resident._property ? resident._property.sector : 'N/A')}</td>`;
+                        case 'usng': return `<td>${resident.propiedad_info ? resident.propiedad_info.usng : (resident._property ? resident._property.usng : 'N/A')}</td>`;
+                        case 'direccion': return `<td>${resident.propiedad_info ? resident.propiedad_info.direccion || 'N/A' : (resident._property ? resident._property.direccion || 'N/A' : 'N/A')}</td>`;
+                        default: return '<td>N/A</td>';
+                      }
+                    }).join('')}
                   </tr>
-                </thead>
-                <tbody>
-                  ${sortedResidents.map((resident) => `
-                    <tr>
-                      <td>${resident.family_id || '0'}-${resident.id}</td>
-                      <td>${resident.nombre}</td>
-                      <td>${resident.apellido1 || 'N/A'}</td>
-                      <td>${resident.apellido2 || 'N/A'}</td>
-                      <td>${resident.edad}</td>
-                      <td>${resident.categoria}</td>
-                      <td>${resident.family ? resident.family.apellidos : 'N/A'}</td>
-                      <td>${resident.contacto || 'N/A'}</td>
-                      <td>${resident.limitacion || 'N/A'}</td>
-                      <td>${resident.condicion || 'N/A'}</td>
-                      <td>${resident.disposicion || 'N/A'}</td>
-                      <td>${resident.propiedad_info ? resident.propiedad_info.tipo : 'N/A'}</td>
-                      <td>
-                        ${resident.propiedad_info ? `
-                          ${resident.propiedad_info.municipio}, 
-                          ${resident.propiedad_info.barrio}, 
-                          ${resident.propiedad_info.sector}
-                        ` : 'N/A'}
-                      </td>
-                      <td>${resident.propiedad_info ? resident.propiedad_info.direccion || 'N/A' : 'N/A'}</td>
-                      <td>${resident.propiedad_info ? resident.propiedad_info.usng : 'N/A'}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            ` : `
-              <p>No residents found for this search.</p>
-            `}
+                `).join('')}
+              </tbody>
+            </table>
           </div>
           ` : ''}
           
@@ -1793,6 +1888,139 @@ export function DataAnalytics() {
     return filteredResidents;
   };
 
+  // Add function to render column visibility controls for properties
+  const renderPropertyColumnControls = () => (
+    <div className="mb-4 p-4 border rounded-md bg-muted/30">
+      <h4 className="text-sm font-medium mb-3">Property Column Visibility</h4>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2">
+        {[
+          { key: 'property_tipo', label: 'Property' },
+          { key: 'property_location', label: 'Location' },
+          { key: 'property_address', label: 'Address' },
+          { key: 'property_usng', label: 'USNG' },
+          { key: 'property_damage', label: 'Damage' },
+          { key: 'property_date', label: 'Date' },
+          { key: 'property_residents', label: 'Residents' }
+        ].map(({ key, label }) => (
+          <Button
+            key={key}
+            variant={visibleColumns[key] ? "default" : "outline"}
+            size="sm"
+            className="justify-start h-8 text-xs"
+            onClick={() => toggleColumnVisibility(key)}
+          >
+            {visibleColumns[key] ? (
+              <Eye className="h-4 w-4 mr-2" />
+            ) : (
+              <EyeOff className="h-4 w-4 mr-2" />
+            )}
+            {label}
+          </Button>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const propertyKeys = ['property_tipo', 'property_location', 'property_address', 'property_usng', 'property_damage', 'property_date', 'property_residents'];
+            setVisibleColumns(prev => ({
+              ...prev,
+              ...propertyKeys.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+            }));
+          }}
+        >
+          Show All
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const propertyKeys = ['property_tipo', 'property_location', 'property_address', 'property_usng', 'property_damage', 'property_date', 'property_residents'];
+            setVisibleColumns(prev => ({
+              ...prev,
+              ...propertyKeys.reduce((acc, key) => ({ ...acc, [key]: false }), {})
+            }));
+          }}
+        >
+          Hide All
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Add function to render column visibility controls for residents
+  const renderResidentColumnControls = () => (
+    <div className="mb-4 p-4 border rounded-md bg-muted/30">
+      <h4 className="text-sm font-medium mb-3">Resident Column Visibility</h4>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {[
+          { key: 'id', label: 'ID' },
+          { key: 'nombre', label: 'Name' },
+          { key: 'apellido1', label: 'Last Name 1' },
+          { key: 'apellido2', label: 'Last Name 2' },
+          { key: 'edad', label: 'Age' },
+          { key: 'sex', label: 'Sex' },
+          { key: 'categoria', label: 'Category' },
+          { key: 'family', label: 'Family' },
+          { key: 'contacto', label: 'Contact' },
+          { key: 'limitacion', label: 'Limitation' },
+          { key: 'condicion', label: 'Condition' },
+          { key: 'disposicion', label: 'Disposition' },
+          { key: 'property', label: 'Property' },
+          { key: 'municipio', label: 'Municipality' },
+          { key: 'barrio', label: 'Barrio' },
+          { key: 'sector', label: 'Sector' },
+          { key: 'usng', label: 'USNG' },
+          { key: 'direccion', label: 'Address' }
+        ].map(({ key, label }) => (
+          <Button
+            key={key}
+            variant={visibleColumns[key] ? "default" : "outline"}
+            size="sm"
+            className="justify-start h-8 text-xs"
+            onClick={() => toggleColumnVisibility(key)}
+          >
+            {visibleColumns[key] ? (
+              <Eye className="h-4 w-4 mr-2" />
+            ) : (
+              <EyeOff className="h-4 w-4 mr-2" />
+            )}
+            {label}
+          </Button>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const residentKeys = ['id', 'nombre', 'apellido1', 'apellido2', 'edad', 'sex', 'categoria', 'family', 'contacto', 'limitacion', 'condicion', 'disposicion', 'property', 'municipio', 'barrio', 'sector', 'usng', 'direccion'];
+            setVisibleColumns(prev => ({
+              ...prev,
+              ...residentKeys.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+            }));
+          }}
+        >
+          Show All
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const residentKeys = ['id', 'nombre', 'apellido1', 'apellido2', 'edad', 'sex', 'categoria', 'family', 'contacto', 'limitacion', 'condicion', 'disposicion', 'property', 'municipio', 'barrio', 'sector', 'usng', 'direccion'];
+            setVisibleColumns(prev => ({
+              ...prev,
+              ...residentKeys.reduce((acc, key) => ({ ...acc, [key]: false }), {})
+            }));
+          }}
+        >
+          Hide All
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       {/* Search Section */}
@@ -1938,6 +2166,12 @@ export function DataAnalytics() {
               </TabsList>
               
               <TabsContent value="properties" className="pt-4">
+                {/* Column Visibility Controls for Properties */}
+                {renderPropertyColumnControls()}
+                
+                {/* Column Visibility Controls for Residents in expanded view */}
+                {renderResidentColumnControls()}
+                
                 <div className="text-xs text-muted-foreground mb-2">
                   <span className="font-medium">Tip:</span> Click column headers to sort. Hold Shift + Click to add secondary sort criteria.
                 </div>
@@ -1946,27 +2180,41 @@ export function DataAnalytics() {
                     <table className="w-full">
                       <thead>
                         <tr className="bg-muted/50">
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('tipo', e)}>
-                            Property {getSortDirectionIndicator('tipo')}
-                          </th>
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
-                            Location {getSortDirectionIndicator('municipio')}
-                          </th>
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('direccion', e)}>
-                            Address {getSortDirectionIndicator('direccion')}
-                          </th>
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
-                            USNG {getSortDirectionIndicator('usng')}
-                          </th>
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('daños', e)}>
-                            Damage {getSortDirectionIndicator('daños')}
-                          </th>
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('fecha', e)}>
-                            Date {getSortDirectionIndicator('fecha')}
-                          </th>
-                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('habitantes.length', e)}>
-                            Residents {getSortDirectionIndicator('habitantes.length')}
-                          </th>
+                          {visibleColumns.property_tipo && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('tipo', e)}>
+                              Property {getSortDirectionIndicator('tipo')}
+                            </th>
+                          )}
+                          {visibleColumns.property_location && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
+                              Location {getSortDirectionIndicator('municipio')}
+                            </th>
+                          )}
+                          {visibleColumns.property_address && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('direccion', e)}>
+                              Address {getSortDirectionIndicator('direccion')}
+                            </th>
+                          )}
+                          {visibleColumns.property_usng && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
+                              USNG {getSortDirectionIndicator('usng')}
+                            </th>
+                          )}
+                          {visibleColumns.property_damage && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('daños', e)}>
+                              Damage {getSortDirectionIndicator('daños')}
+                            </th>
+                          )}
+                          {visibleColumns.property_date && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('fecha', e)}>
+                              Date {getSortDirectionIndicator('fecha')}
+                            </th>
+                          )}
+                          {visibleColumns.property_residents && (
+                            <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('habitantes.length', e)}>
+                              Residents {getSortDirectionIndicator('habitantes.length')}
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -1975,100 +2223,148 @@ export function DataAnalytics() {
                           : reportData.propiedades).map((property) => (
                           <>
                             <tr key={property.id} className="border-t hover:bg-muted/50 transition-colors">
-                              <td className="py-3 px-4">{property.tipo}</td>
-                              <td className="py-3 px-4">
-                                <div className="flex flex-col">
-                                  <span>{property.municipio}</span>
-                                  <span className="text-sm text-muted-foreground">
-                                    {property.barrio} • {property.sector}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4">{property.direccion || 'N/A'}</td>
-                              <td className="py-3 px-4">{property.usng}</td>
-                              <td className="py-3 px-4">{property.daños || 'N/A'}</td>
-                              <td className="py-3 px-4">
-                                {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-1">
-                                  <Users className="h-4 w-4" />
-                                  <span>{property.habitantes.length}</span>
-                                  {property.habitantes.length > 0 && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 w-6 p-0 ml-1"
-                                      onClick={() => toggleProperty(property.id)}
-                                    >
-                                      {expandedProperties[property.id] ? (
-                                        <ChevronUp className="h-4 w-4" />
-                                      ) : (
-                                        <ChevronDown className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  )}
-                                </div>
-                              </td>
+                              {visibleColumns.property_tipo && (
+                                <td className="py-3 px-4">{property.tipo}</td>
+                              )}
+                              {visibleColumns.property_location && (
+                                <td className="py-3 px-4">
+                                  <div className="flex flex-col">
+                                    <span>{property.municipio}</span>
+                                    <span className="text-sm text-muted-foreground">
+                                      {property.barrio} • {property.sector}
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
+                              {visibleColumns.property_address && (
+                                <td className="py-3 px-4">{property.direccion || 'N/A'}</td>
+                              )}
+                              {visibleColumns.property_usng && (
+                                <td className="py-3 px-4">{property.usng}</td>
+                              )}
+                              {visibleColumns.property_damage && (
+                                <td className="py-3 px-4">{property.daños || 'N/A'}</td>
+                              )}
+                              {visibleColumns.property_date && (
+                                <td className="py-3 px-4">
+                                  {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
+                                </td>
+                              )}
+                              {visibleColumns.property_residents && (
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-1">
+                                    <Users className="h-4 w-4" />
+                                    <span>{property.habitantes.length}</span>
+                                    {property.habitantes.length > 0 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 ml-1"
+                                        onClick={() => toggleProperty(property.id)}
+                                      >
+                                        {expandedProperties[property.id] ? (
+                                          <ChevronUp className="h-4 w-4" />
+                                        ) : (
+                                          <ChevronDown className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                             {expandedProperties[property.id] && property.habitantes.length > 0 && (
                               <tr className="bg-muted/30">
-                                <td colSpan={7} className="py-2 px-4">
+                                <td colSpan={Object.values(visibleColumns).filter(v => v && (typeof v === 'boolean')).filter((_, i) => i < 7).length} className="py-2 px-4">
                                   <div className="ml-8">
                                     <table className="w-full">
                                       <thead>
                                         <tr className="text-sm text-muted-foreground">
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
-                                            ID {getSortDirectionIndicator('id')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
-                                            Name {getSortDirectionIndicator('nombre')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
-                                            Last Name 1 {getSortDirectionIndicator('apellido1')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
-                                            Last Name 2 {getSortDirectionIndicator('apellido2')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
-                                            Age {getSortDirectionIndicator('edad')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
-                                            Sex {getSortDirectionIndicator('sex')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
-                                            Category {getSortDirectionIndicator('categoria')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
-                                            Family {getSortDirectionIndicator('family.apellidos')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
-                                            Contact {getSortDirectionIndicator('contacto')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
-                                            Limitation {getSortDirectionIndicator('limitacion')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
-                                            Condition {getSortDirectionIndicator('condicion')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
-                                            Disposition {getSortDirectionIndicator('disposicion')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
-                                            Property {getSortDirectionIndicator('propiedad_info.tipo')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
-                                            Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
-                                            Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
-                                            Sector {getSortDirectionIndicator('propiedad_info.sector')}
-                                          </th>
-                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
-                                            Address {getSortDirectionIndicator('propiedad_info.direccion')}
-                                          </th>
+                                          {visibleColumns.id && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
+                                              ID {getSortDirectionIndicator('id')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.nombre && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
+                                              Name {getSortDirectionIndicator('nombre')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.apellido1 && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
+                                              Last Name 1 {getSortDirectionIndicator('apellido1')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.apellido2 && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
+                                              Last Name 2 {getSortDirectionIndicator('apellido2')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.edad && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
+                                              Age {getSortDirectionIndicator('edad')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.sex && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
+                                              Sex {getSortDirectionIndicator('sex')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.categoria && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
+                                              Category {getSortDirectionIndicator('categoria')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.family && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
+                                              Family {getSortDirectionIndicator('family.apellidos')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.contacto && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
+                                              Contact {getSortDirectionIndicator('contacto')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.limitacion && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
+                                              Limitation {getSortDirectionIndicator('limitacion')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.condicion && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
+                                              Condition {getSortDirectionIndicator('condicion')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.disposicion && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
+                                              Disposition {getSortDirectionIndicator('disposicion')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.property && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
+                                              Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.municipio && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
+                                              Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.barrio && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
+                                              Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.sector && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
+                                              Sector {getSortDirectionIndicator('propiedad_info.sector')}
+                                            </th>
+                                          )}
+                                          {visibleColumns.direccion && (
+                                            <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
+                                              Address {getSortDirectionIndicator('propiedad_info.direccion')}
+                                            </th>
+                                          )}
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -2076,71 +2372,101 @@ export function DataAnalytics() {
                                           ? sortData(property.habitantes)
                                           : property.habitantes).map((resident: ResidentData) => (
                                           <tr key={resident.id} className="text-sm">
-                                            <td className="py-2 px-3">
-                                              <Badge variant="outline" className="font-mono text-xs">
-                                                {resident.family_id || '0'}-{resident.id}
-                                              </Badge>
-                                            </td>
-                                            <td className="py-2 px-3">{resident.nombre}</td>
-                                            <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
-                                            <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
-                                            <td className="py-2 px-3">{resident.edad}</td>
-                                            <td className="py-2 px-3">{resident.sex || resident.sexo || 'N/A'}</td>
-                                            <td className="py-2 px-3">
-                                              <Badge variant="outline">{resident.categoria}</Badge>
-                                            </td>
-                                            <td className="py-2 px-3">
-                                              {resident.family ? (
-                                                <Badge variant="secondary">{resident.family.apellidos}</Badge>
-                                              ) : (
-                                                <span className="text-muted-foreground text-xs">No family</span>
-                                              )}
-                                            </td>
-                                            <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
-                                            <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
-                                            <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
-                                            <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
-                                            <td className="py-2 px-3">
-                                              <div className="flex flex-col">
-                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
-                                                </span>
-                                                <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
-                                              </div>
-                                            </td>
-                                            <td className="py-2 px-3">
-                                              <div className="flex flex-col">
-                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {resident.propiedad_info?.municipio || 'N/A'}
-                                                </span>
-                                              </div>
-                                            </td>
-                                            <td className="py-2 px-3">
-                                              <div className="flex flex-col">
-                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {resident.propiedad_info?.barrio || 'N/A'}
-                                                </span>
-                                              </div>
-                                            </td>
-                                            <td className="py-2 px-3">
-                                              <div className="flex flex-col">
-                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {resident.propiedad_info?.sector || 'N/A'}
-                                                </span>
-                                              </div>
-                                            </td>
-                                            <td className="py-2 px-3">
-                                              <div className="flex flex-col">
-                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {resident.propiedad_info?.direccion || 'N/A'}
-                                                </span>
-                                              </div>
-                                            </td>
+                                            {visibleColumns.id && (
+                                              <td className="py-2 px-3">
+                                                <Badge variant="outline" className="font-mono text-xs">
+                                                  {resident.family_id || '0'}-{resident.id}
+                                                </Badge>
+                                              </td>
+                                            )}
+                                            {visibleColumns.nombre && (
+                                              <td className="py-2 px-3">{resident.nombre}</td>
+                                            )}
+                                            {visibleColumns.apellido1 && (
+                                              <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.apellido2 && (
+                                              <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.edad && (
+                                              <td className="py-2 px-3">{resident.edad}</td>
+                                            )}
+                                            {visibleColumns.sex && (
+                                              <td className="py-2 px-3">{resident.sex || resident.sexo || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.categoria && (
+                                              <td className="py-2 px-3">
+                                                <Badge variant="outline">{resident.categoria}</Badge>
+                                              </td>
+                                            )}
+                                            {visibleColumns.family && (
+                                              <td className="py-2 px-3">
+                                                {resident.family ? resident.family.apellidos : 'N/A'}
+                                              </td>
+                                            )}
+                                            {visibleColumns.contacto && (
+                                              <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.limitacion && (
+                                              <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.condicion && (
+                                              <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.disposicion && (
+                                              <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
+                                            )}
+                                            {visibleColumns.property && (
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
+                                                  </span>
+                                                  <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                                                </div>
+                                              </td>
+                                            )}
+                                            {visibleColumns.municipio && (
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.propiedad_info?.municipio || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                            )}
+                                            {visibleColumns.barrio && (
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.propiedad_info?.barrio || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                            )}
+                                            {visibleColumns.sector && (
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.propiedad_info?.sector || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                            )}
+                                            {visibleColumns.direccion && (
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.propiedad_info?.direccion || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                            )}
                                           </tr>
                                         ))}
                                       </tbody>
@@ -2207,6 +2533,12 @@ export function DataAnalytics() {
           
           {(reportData.searchType !== 'evento' || !reportData.evento) && reportData.searchType !== 'residente' && (
             <CardContent>
+              {/* Column Visibility Controls for Properties */}
+              {renderPropertyColumnControls()}
+              
+              {/* Column Visibility Controls for Residents in expanded view */}
+              {renderResidentColumnControls()}
+              
               <div className="text-xs text-muted-foreground mb-2">
                 <span className="font-medium">Tip:</span> Click column headers to sort. Hold Shift + Click to add secondary sort criteria.
               </div>
@@ -2215,27 +2547,41 @@ export function DataAnalytics() {
                   <table className="w-full">
                     <thead>
                       <tr className="bg-muted/50">
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('tipo', e)}>
-                          Property {getSortDirectionIndicator('tipo')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
-                          Location {getSortDirectionIndicator('municipio')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('direccion', e)}>
-                          Address {getSortDirectionIndicator('direccion')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
-                          USNG {getSortDirectionIndicator('usng')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('daños', e)}>
-                          Damage {getSortDirectionIndicator('daños')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('fecha', e)}>
-                          Date {getSortDirectionIndicator('fecha')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('habitantes.length', e)}>
-                          Residents {getSortDirectionIndicator('habitantes.length')}
-                        </th>
+                        {visibleColumns.property_tipo && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('tipo', e)}>
+                            Property {getSortDirectionIndicator('tipo')}
+                          </th>
+                        )}
+                        {visibleColumns.property_location && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('municipio', e)}>
+                            Location {getSortDirectionIndicator('municipio')}
+                          </th>
+                        )}
+                        {visibleColumns.property_address && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('direccion', e)}>
+                            Address {getSortDirectionIndicator('direccion')}
+                          </th>
+                        )}
+                        {visibleColumns.property_usng && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('usng', e)}>
+                            USNG {getSortDirectionIndicator('usng')}
+                          </th>
+                        )}
+                        {visibleColumns.property_damage && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('daños', e)}>
+                            Damage {getSortDirectionIndicator('daños')}
+                          </th>
+                        )}
+                        {visibleColumns.property_date && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('fecha', e)}>
+                            Date {getSortDirectionIndicator('fecha')}
+                          </th>
+                        )}
+                        {visibleColumns.property_residents && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('habitantes.length', e)}>
+                            Residents {getSortDirectionIndicator('habitantes.length')}
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -2244,100 +2590,148 @@ export function DataAnalytics() {
                         : reportData.propiedades).map((property) => (
                         <>
                           <tr key={property.id} className="border-t hover:bg-muted/50 transition-colors">
-                            <td className="py-3 px-4">{property.tipo}</td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <span>{property.municipio}</span>
-                                <span className="text-sm text-muted-foreground">
-                                  {property.barrio} • {property.sector}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">{property.direccion || 'N/A'}</td>
-                            <td className="py-3 px-4">{property.usng}</td>
-                            <td className="py-3 px-4">{property.daños || 'N/A'}</td>
-                            <td className="py-3 px-4">
-                              {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-1">
-                                <Users className="h-4 w-4" />
-                                <span>{property.habitantes.length}</span>
-                                {property.habitantes.length > 0 && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 ml-1"
-                                    onClick={() => toggleProperty(property.id)}
-                                  >
-                                    {expandedProperties[property.id] ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
+                            {visibleColumns.property_tipo && (
+                              <td className="py-3 px-4">{property.tipo}</td>
+                            )}
+                            {visibleColumns.property_location && (
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <span>{property.municipio}</span>
+                                  <span className="text-sm text-muted-foreground">
+                                    {property.barrio} • {property.sector}
+                                  </span>
+                                </div>
+                              </td>
+                            )}
+                            {visibleColumns.property_address && (
+                              <td className="py-3 px-4">{property.direccion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.property_usng && (
+                              <td className="py-3 px-4">{property.usng}</td>
+                            )}
+                            {visibleColumns.property_damage && (
+                              <td className="py-3 px-4">{property.daños || 'N/A'}</td>
+                            )}
+                            {visibleColumns.property_date && (
+                              <td className="py-3 px-4">
+                                {property.fecha ? new Date(property.fecha).toLocaleDateString() : 'N/A'}
+                              </td>
+                            )}
+                            {visibleColumns.property_residents && (
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-1">
+                                  <Users className="h-4 w-4" />
+                                  <span>{property.habitantes.length}</span>
+                                  {property.habitantes.length > 0 && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 ml-1"
+                                      onClick={() => toggleProperty(property.id)}
+                                    >
+                                      {expandedProperties[property.id] ? (
+                                        <ChevronUp className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
                           </tr>
                           {expandedProperties[property.id] && property.habitantes.length > 0 && (
                             <tr className="bg-muted/30">
-                              <td colSpan={7} className="py-2 px-4">
+                              <td colSpan={Object.values(visibleColumns).filter(v => v && (typeof v === 'boolean')).filter((_, i) => i < 7).length} className="py-2 px-4">
                                 <div className="ml-8">
                                   <table className="w-full">
                                     <thead>
                                       <tr className="text-sm text-muted-foreground">
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
-                                          ID {getSortDirectionIndicator('id')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
-                                          Name {getSortDirectionIndicator('nombre')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
-                                          Last Name 1 {getSortDirectionIndicator('apellido1')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
-                                          Last Name 2 {getSortDirectionIndicator('apellido2')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
-                                          Age {getSortDirectionIndicator('edad')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
-                                          Sex {getSortDirectionIndicator('sex')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
-                                          Category {getSortDirectionIndicator('categoria')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
-                                          Family {getSortDirectionIndicator('family.apellidos')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
-                                          Contact {getSortDirectionIndicator('contacto')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
-                                          Limitation {getSortDirectionIndicator('limitacion')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
-                                          Condition {getSortDirectionIndicator('condicion')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
-                                          Disposition {getSortDirectionIndicator('disposicion')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
-                                          Property {getSortDirectionIndicator('propiedad_info.tipo')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
-                                          Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
-                                          Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
-                                          Sector {getSortDirectionIndicator('propiedad_info.sector')}
-                                        </th>
-                                        <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
-                                          Address {getSortDirectionIndicator('propiedad_info.direccion')}
-                                        </th>
+                                        {visibleColumns.id && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
+                                            ID {getSortDirectionIndicator('id')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.nombre && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
+                                            Name {getSortDirectionIndicator('nombre')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.apellido1 && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
+                                            Last Name 1 {getSortDirectionIndicator('apellido1')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.apellido2 && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
+                                            Last Name 2 {getSortDirectionIndicator('apellido2')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.edad && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
+                                            Age {getSortDirectionIndicator('edad')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.sex && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
+                                            Sex {getSortDirectionIndicator('sex')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.categoria && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
+                                            Category {getSortDirectionIndicator('categoria')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.family && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
+                                            Family {getSortDirectionIndicator('family.apellidos')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.contacto && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
+                                            Contact {getSortDirectionIndicator('contacto')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.limitacion && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
+                                            Limitation {getSortDirectionIndicator('limitacion')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.condicion && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
+                                            Condition {getSortDirectionIndicator('condicion')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.disposicion && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
+                                            Disposition {getSortDirectionIndicator('disposicion')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.property && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
+                                            Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.municipio && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
+                                            Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.barrio && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
+                                            Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.sector && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
+                                            Sector {getSortDirectionIndicator('propiedad_info.sector')}
+                                          </th>
+                                        )}
+                                        {visibleColumns.direccion && (
+                                          <th className="py-2 px-3 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
+                                            Address {getSortDirectionIndicator('propiedad_info.direccion')}
+                                          </th>
+                                        )}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -2345,71 +2739,101 @@ export function DataAnalytics() {
                                         ? sortData(property.habitantes)
                                         : property.habitantes).map((resident: ResidentData) => (
                                         <tr key={resident.id} className="text-sm">
-                                          <td className="py-2 px-3">
-                                            <Badge variant="outline" className="font-mono text-xs">
-                                              {resident.family_id || '0'}-{resident.id}
-                                            </Badge>
-                                          </td>
-                                          <td className="py-2 px-3">{resident.nombre}</td>
-                                          <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
-                                          <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
-                                          <td className="py-2 px-3">{resident.edad}</td>
-                                          <td className="py-2 px-3">{resident.sex || resident.sexo || 'N/A'}</td>
-                                          <td className="py-2 px-3">
-                                            <Badge variant="outline">{resident.categoria}</Badge>
-                                          </td>
-                                          <td className="py-2 px-3">
-                                            {resident.family ? (
-                                              <Badge variant="secondary">{resident.family.apellidos}</Badge>
-                                            ) : (
-                                              <span className="text-muted-foreground text-xs">No family</span>
-                                            )}
-                                          </td>
-                                          <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
-                                          <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
-                                          <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
-                                          <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
-                                          <td className="py-2 px-3">
-                                            <div className="flex flex-col">
-                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
-                                              <span className="text-xs text-muted-foreground">
-                                                {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
-                                              </span>
-                                              <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
-                                            </div>
-                                          </td>
-                                          <td className="py-2 px-3">
-                                            <div className="flex flex-col">
-                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
-                                              <span className="text-xs text-muted-foreground">
-                                                {resident.propiedad_info?.municipio || 'N/A'}
-                                              </span>
-                                            </div>
-                                          </td>
-                                          <td className="py-2 px-3">
-                                            <div className="flex flex-col">
-                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
-                                              <span className="text-xs text-muted-foreground">
-                                                {resident.propiedad_info?.barrio || 'N/A'}
-                                              </span>
-                                            </div>
-                                          </td>
-                                          <td className="py-2 px-3">
-                                            <div className="flex flex-col">
-                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
-                                              <span className="text-xs text-muted-foreground">
-                                                {resident.propiedad_info?.sector || 'N/A'}
-                                              </span>
-                                            </div>
-                                          </td>
-                                          <td className="py-2 px-3">
-                                            <div className="flex flex-col">
-                                              <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
-                                              <span className="text-xs text-muted-foreground">
-                                                {resident.propiedad_info?.direccion || 'N/A'}
-                                              </span>
-                                            </div>
-                                          </td>
+                                          {visibleColumns.id && (
+                                            <td className="py-2 px-3">
+                                              <Badge variant="outline" className="font-mono text-xs">
+                                                {resident.family_id || '0'}-{resident.id}
+                                              </Badge>
+                                            </td>
+                                          )}
+                                          {visibleColumns.nombre && (
+                                            <td className="py-2 px-3">{resident.nombre}</td>
+                                          )}
+                                          {visibleColumns.apellido1 && (
+                                            <td className="py-2 px-3">{resident.apellido1 || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.apellido2 && (
+                                            <td className="py-2 px-3">{resident.apellido2 || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.edad && (
+                                            <td className="py-2 px-3">{resident.edad}</td>
+                                          )}
+                                          {visibleColumns.sex && (
+                                            <td className="py-2 px-3">{resident.sex || resident.sexo || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.categoria && (
+                                            <td className="py-2 px-3">
+                                              <Badge variant="outline">{resident.categoria}</Badge>
+                                            </td>
+                                          )}
+                                          {visibleColumns.family && (
+                                            <td className="py-2 px-3">
+                                              {resident.family ? resident.family.apellidos : 'N/A'}
+                                            </td>
+                                          )}
+                                          {visibleColumns.contacto && (
+                                            <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.limitacion && (
+                                            <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.condicion && (
+                                            <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.disposicion && (
+                                            <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
+                                          )}
+                                          {visibleColumns.property && (
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
+                                                </span>
+                                                <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
+                                              </div>
+                                            </td>
+                                          )}
+                                          {visibleColumns.municipio && (
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.municipio || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                          )}
+                                          {visibleColumns.barrio && (
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.barrio || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                          )}
+                                          {visibleColumns.sector && (
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.sector || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                          )}
+                                          {visibleColumns.direccion && (
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {resident.propiedad_info?.direccion || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                          )}
                                         </tr>
                                       ))}
                                     </tbody>
@@ -2451,6 +2875,9 @@ export function DataAnalytics() {
                   )}
                 </div>
               </div>
+
+              {/* Column Visibility Controls */}
+              {renderResidentColumnControls()}
               
               <div className="text-xs text-muted-foreground mb-2">
                 <span className="font-medium">Tip:</span> Click column headers to sort. Hold Shift + Click to add secondary sort criteria.
@@ -2460,57 +2887,132 @@ export function DataAnalytics() {
                   <table className="w-full">
                     <thead>
                       <tr className="bg-muted/50">
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
-                          ID {getSortDirectionIndicator('id')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
-                          Name {getSortDirectionIndicator('nombre')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
-                          Last Name 1 {getSortDirectionIndicator('apellido1')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
-                          Last Name 2 {getSortDirectionIndicator('apellido2')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
-                          Age {getSortDirectionIndicator('edad')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
-                          Sex {getSortDirectionIndicator('sex')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
-                          Category {getSortDirectionIndicator('categoria')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
-                          Family {getSortDirectionIndicator('family.apellidos')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
-                          Contact {getSortDirectionIndicator('contacto')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
-                          Limitation {getSortDirectionIndicator('limitacion')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
-                          Condition {getSortDirectionIndicator('condicion')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
-                          Disposition {getSortDirectionIndicator('disposicion')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
-                          Property {getSortDirectionIndicator('propiedad_info.tipo')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
-                          Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
-                          Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
-                          Sector {getSortDirectionIndicator('propiedad_info.sector')}
-                        </th>
-                        <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
-                          Address {getSortDirectionIndicator('propiedad_info.direccion')}
-                        </th>
+                        {visibleColumns.id && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('id', e)}>
+                            <div className="flex items-center gap-1">
+                              ID {getSortDirectionIndicator('id')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.nombre && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('nombre', e)}>
+                            <div className="flex items-center gap-1">
+                              Name {getSortDirectionIndicator('nombre')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.apellido1 && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido1', e)}>
+                            <div className="flex items-center gap-1">
+                              Last Name 1 {getSortDirectionIndicator('apellido1')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.apellido2 && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('apellido2', e)}>
+                            <div className="flex items-center gap-1">
+                              Last Name 2 {getSortDirectionIndicator('apellido2')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.edad && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('edad', e)}>
+                            <div className="flex items-center gap-1">
+                              Age {getSortDirectionIndicator('edad')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.sex && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('sex', e)}>
+                            <div className="flex items-center gap-1">
+                              Sex {getSortDirectionIndicator('sex')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.categoria && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('categoria', e)}>
+                            <div className="flex items-center gap-1">
+                              Category {getSortDirectionIndicator('categoria')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.family && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('family.apellidos', e)}>
+                            <div className="flex items-center gap-1">
+                              Family {getSortDirectionIndicator('family.apellidos')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.contacto && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('contacto', e)}>
+                            <div className="flex items-center gap-1">
+                              Contact {getSortDirectionIndicator('contacto')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.limitacion && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('limitacion', e)}>
+                            <div className="flex items-center gap-1">
+                              Limitation {getSortDirectionIndicator('limitacion')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.condicion && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('condicion', e)}>
+                            <div className="flex items-center gap-1">
+                              Condition {getSortDirectionIndicator('condicion')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.disposicion && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('disposicion', e)}>
+                            <div className="flex items-center gap-1">
+                              Disposition {getSortDirectionIndicator('disposicion')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.property && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.tipo', e)}>
+                            <div className="flex items-center gap-1">
+                              Property {getSortDirectionIndicator('propiedad_info.tipo')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.municipio && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.municipio', e)}>
+                            <div className="flex items-center gap-1">
+                              Municipality {getSortDirectionIndicator('propiedad_info.municipio')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.barrio && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.barrio', e)}>
+                            <div className="flex items-center gap-1">
+                              Barrio {getSortDirectionIndicator('propiedad_info.barrio')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.sector && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.sector', e)}>
+                            <div className="flex items-center gap-1">
+                              Sector {getSortDirectionIndicator('propiedad_info.sector')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.usng && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.usng', e)}>
+                            <div className="flex items-center gap-1">
+                              USNG {getSortDirectionIndicator('propiedad_info.usng')}
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.direccion && (
+                          <th className="py-3 px-4 text-left font-medium cursor-pointer" onClick={(e) => requestSort('propiedad_info.direccion', e)}>
+                            <div className="flex items-center gap-1">
+                              Address {getSortDirectionIndicator('propiedad_info.direccion')}
+                            </div>
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -2529,71 +3031,84 @@ export function DataAnalytics() {
                             })
                         ).map((resident: ResidentData) => (
                           <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
-                            <td className="py-3 px-4">
-                              <Badge variant="outline" className="font-mono text-xs">
-                                {resident.family_id || '0'}-{resident.id}
-                              </Badge>
-                            </td>
-                            <td className="py-3 px-4">{resident.nombre}</td>
-                            <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.edad}</td>
-                            <td className="py-3 px-4">{resident.sex || resident.sexo || 'N/A'}</td>
-                            <td className="py-3 px-4">
-                              <Badge variant="outline">{resident.categoria}</Badge>
-                            </td>
-                            <td className="py-3 px-4">
-                              {resident.family ? (
-                                <Badge variant="secondary">{resident.family.apellidos}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground text-xs">No family</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident.propiedad_info?.municipio || 'N/A'}, {resident.propiedad_info?.barrio || 'N/A'}, {resident.propiedad_info?.sector || 'N/A'}
-                                </span>
-                                <span className="text-xs font-mono mt-1">{resident.propiedad_info?.usng || 'N/A'}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident.propiedad_info?.municipio || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident.propiedad_info?.barrio || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.sector || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident.propiedad_info?.sector || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident.propiedad_info?.direccion || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
+                            {visibleColumns.id && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline" className="font-mono text-xs">
+                                  {resident.family_id || '0'}-{resident.id}
+                                </Badge>
+                              </td>
+                            )}
+                            {visibleColumns.nombre && (
+                              <td className="py-3 px-4">{resident.nombre}</td>
+                            )}
+                            {visibleColumns.apellido1 && (
+                              <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
+                            )}
+                            {visibleColumns.apellido2 && (
+                              <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
+                            )}
+                            {visibleColumns.edad && (
+                              <td className="py-3 px-4">{resident.edad}</td>
+                            )}
+                            {visibleColumns.sex && (
+                              <td className="py-3 px-4">{resident.sex || resident.sexo || 'N/A'}</td>
+                            )}
+                            {visibleColumns.categoria && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.categoria}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.family && (
+                              <td className="py-3 px-4">
+                                {resident.family ? (
+                                  <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">No family</span>
+                                )}
+                              </td>
+                            )}
+                            {visibleColumns.contacto && (
+                              <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
+                            )}
+                            {visibleColumns.limitacion && (
+                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.condicion && (
+                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.disposicion && (
+                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.property && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.propiedad_info?.tipo || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.municipio && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.propiedad_info?.municipio || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.barrio && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.propiedad_info?.barrio || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.sector && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.propiedad_info?.sector || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.usng && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.propiedad_info?.usng || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.direccion && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.propiedad_info?.direccion || 'N/A'}</Badge>
+                              </td>
+                            )}
                           </tr>
                         ))
                       ) : (
@@ -2617,78 +3132,91 @@ export function DataAnalytics() {
                             })
                         ).map((resident: ResidentData & { _property?: PropertyData }) => (
                           <tr key={resident.id} className="border-t hover:bg-muted/50 transition-colors">
-                            <td className="py-3 px-4">
-                              <Badge variant="outline" className="font-mono text-xs">
-                                {resident.family_id || '0'}-{resident.id}
-                              </Badge>
-                            </td>
-                            <td className="py-3 px-4">{resident.nombre}</td>
-                            <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.edad}</td>
-                            <td className="py-3 px-4">{resident.sex || resident.sexo || 'N/A'}</td>
-                            <td className="py-3 px-4">
-                              <Badge variant="outline">{resident.categoria}</Badge>
-                            </td>
-                            <td className="py-3 px-4">
-                              {resident.family ? (
-                                <Badge variant="secondary">{resident.family.apellidos}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground text-xs">No family</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
-                            <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident._property?.tipo || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident._property?.municipio || 'N/A'}, {resident._property?.barrio || 'N/A'}, {resident._property?.sector || 'N/A'}
-                                </span>
-                                <span className="text-xs font-mono mt-1">{resident._property?.usng || 'N/A'}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident._property?.municipio || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident._property?.municipio || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident._property?.barrio || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident._property?.barrio || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident._property?.sector || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident._property?.sector || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex flex-col">
-                                <Badge variant="outline" className="mb-1">{resident._property?.direccion || 'N/A'}</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {resident._property?.direccion || 'N/A'}
-                                </span>
-                              </div>
-                            </td>
+                            {visibleColumns.id && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline" className="font-mono text-xs">
+                                  {resident.family_id || '0'}-{resident.id}
+                                </Badge>
+                              </td>
+                            )}
+                            {visibleColumns.nombre && (
+                              <td className="py-3 px-4">{resident.nombre}</td>
+                            )}
+                            {visibleColumns.apellido1 && (
+                              <td className="py-3 px-4">{resident.apellido1 || 'N/A'}</td>
+                            )}
+                            {visibleColumns.apellido2 && (
+                              <td className="py-3 px-4">{resident.apellido2 || 'N/A'}</td>
+                            )}
+                            {visibleColumns.edad && (
+                              <td className="py-3 px-4">{resident.edad}</td>
+                            )}
+                            {visibleColumns.sex && (
+                              <td className="py-3 px-4">{resident.sex || resident.sexo || 'N/A'}</td>
+                            )}
+                            {visibleColumns.categoria && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident.categoria}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.family && (
+                              <td className="py-3 px-4">
+                                {resident.family ? (
+                                  <Badge variant="secondary">{resident.family.apellidos}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">No family</span>
+                                )}
+                              </td>
+                            )}
+                            {visibleColumns.contacto && (
+                              <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
+                            )}
+                            {visibleColumns.limitacion && (
+                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.condicion && (
+                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.disposicion && (
+                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                            )}
+                            {visibleColumns.property && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident._property?.tipo || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.municipio && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident._property?.municipio || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.barrio && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident._property?.barrio || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.sector && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident._property?.sector || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.usng && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident._property?.usng || 'N/A'}</Badge>
+                              </td>
+                            )}
+                            {visibleColumns.direccion && (
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{resident._property?.direccion || 'N/A'}</Badge>
+                              </td>
+                            )}
                           </tr>
                         ))
                       )}
                       {((reportData.residentes && reportData.residentes.filter(r => !quickResidentFilter || r.nombre.toLowerCase().includes(quickResidentFilter.toLowerCase())).length === 0) || 
                         (!reportData.residentes && reportData.propiedades.flatMap(property => applyResidentFilters(property.habitantes)).length === 0)) && (
                         <tr className="border-t">
-                          <td colSpan={17} className="py-6 px-4 text-center text-muted-foreground">
+                          <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="py-6 px-4 text-center text-muted-foreground">
                             No residents found matching the search criteria.
                           </td>
                         </tr>
