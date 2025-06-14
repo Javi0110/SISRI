@@ -97,9 +97,9 @@ export async function GET(
               nombre: h.nombre,
               edad: h.edad,
               categoria: h.categoria,
-              limitacion: h.limitacion,
-              condicion: h.condicion,
-              disposicion: h.disposicion,
+              limitacion: h.limitacion_id,
+              condicion: h.condicion_id,
+              disposicion: h.disposicion_id,
               propiedad_id: h.propiedad_id
             }))
           })

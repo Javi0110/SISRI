@@ -73,9 +73,6 @@ interface ResidentData {
   nombre: string;
   edad: number;
   categoria: string;
-  limitacion: string;
-  condicion: string;
-  disposicion: string;
   contacto?: string;
   propiedad_id: number;
   family_id?: number | null;
@@ -83,6 +80,12 @@ interface ResidentData {
   apellido2?: string | null;
   sex?: string;
   sexo?: string;
+  condicion_id?: number | null;
+  limitacion_id?: number | null;
+  disposicion_id?: number | null;
+  limitacion?: string;
+  condicion?: string;
+  disposicion?: string;
   family?: {
     id: number;
     apellidos: string;
@@ -137,12 +140,30 @@ interface ReportData {
     apellido2?: string | null;
     edad: number;
     categoria: string;
-    limitacion: string;
-    condicion: string;
-    disposicion: string;
     contacto?: string;
     propiedad_id: number;
     family_id?: number | null;
+    condicion_id?: number | null;
+    limitacion_id?: number | null;
+    disposicion_id?: number | null;
+    condiciones?: {
+      id: number;
+      nombre: string;
+      descripcion?: string | null;
+      codigo?: string | null;
+    } | null;
+    limitaciones?: {
+      id: number;
+      nombre: string;
+      descripcion?: string | null;
+      codigo?: string | null;
+    } | null;
+    disposiciones?: {
+      id: number;
+      nombre: string;
+      descripcion?: string | null;
+      codigo?: string | null;
+    } | null;
     family?: {
       id: number;
       apellidos: string;
@@ -1760,16 +1781,18 @@ export function DataAnalytics() {
     
     // Apply condition filter
     if (filters.residentCondition) {
-      filteredResidents = filteredResidents.filter(resident => 
-        resident.condicion?.toLowerCase().includes(filters.residentCondition!.toLowerCase())
-      );
+      filteredResidents = filteredResidents.filter(resident => {
+        const conditionFilter = filters.residentCondition!.toLowerCase();
+        const residentCondition = (resident.condicion || '').toLowerCase();
+        return residentCondition.includes(conditionFilter);
+      });
     }
     
     // Apply limitation filter
     if (filters.residentLimitation) {
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
         const limitationFilter = filters.residentLimitation!.toLowerCase();
-        const residentLimitation = resident.limitacion?.toLowerCase() || "";
+        const residentLimitation = (resident.limitacion || "").toLowerCase();
         
         // Special cases handling for diabetes
         if (limitationFilter === "diabetes" && 
@@ -1796,9 +1819,11 @@ export function DataAnalytics() {
     
     // Apply disposition filter
     if (filters.residentDisposition) {
-      filteredResidents = filteredResidents.filter(resident => 
-        resident.disposicion?.toLowerCase().includes(filters.residentDisposition!.toLowerCase())
-      );
+      filteredResidents = filteredResidents.filter(resident => {
+        const dispositionFilter = filters.residentDisposition!.toLowerCase();
+        const residentDisposition = (resident.disposicion || '').toLowerCase();
+        return residentDisposition.includes(dispositionFilter);
+      });
     }
     
     // Apply age filter
@@ -3330,8 +3355,9 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
                                     </p>
                                     <p className="text-muted-foreground">
                                       {resident.categoria}
-                                      {resident.limitacion && ` • ${resident.limitacion}`}
-                                      {resident.condicion && ` • ${resident.condicion}`}
+                                      {resident.limitacion && ` • ${resident.limitacion || 'N/A'}`}
+                                      {resident.condicion && ` • ${resident.condicion || 'N/A'}`}
+                                      {resident.disposicion && ` • ${resident.disposicion || 'N/A'}`}
                                     </p>
                                   </div>
                                 ))}

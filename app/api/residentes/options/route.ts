@@ -3,58 +3,29 @@ import prisma from '../../../../lib/prisma';
 
 export async function GET() {
   try {
-    // Get distinct values for condition, limitation, and disposition
+    // Get all values for condition, limitation, and disposition from their respective tables
     const [conditions, limitations, dispositions] = await Promise.all([
-      prisma.habitantes.findMany({
-        select: {
-          condicion: true,
-        },
-        distinct: ['condicion'],
-        where: {
-          condicion: {
-            not: null,
-          },
-        },
+      prisma.condicion.findMany({
+        select: { nombre: true },
+        where: { activo: true },
+        orderBy: { nombre: 'asc' },
       }),
-      prisma.habitantes.findMany({
-        select: {
-          limitacion: true,
-        },
-        distinct: ['limitacion'],
-        where: {
-          limitacion: {
-            not: null,
-          },
-        },
+      prisma.limitacion.findMany({
+        select: { nombre: true },
+        where: { activo: true },
+        orderBy: { nombre: 'asc' },
       }),
-      prisma.habitantes.findMany({
-        select: {
-          disposicion: true,
-        },
-        distinct: ['disposicion'],
-        where: {
-          disposicion: {
-            not: null,
-          },
-        },
+      prisma.disposiciones.findMany({
+        select: { nombre: true },
+        where: { activo: true },
+        orderBy: { nombre: 'asc' },
       }),
     ]);
 
-    // Extract values from objects and filter out nulls
-    const conditionValues = conditions
-      .map((c: { condicion: string | null }) => c.condicion)
-      .filter((c: string | null): c is string => !!c)
-      .sort();
-    
-    const limitationValues = limitations
-      .map((l: { limitacion: string | null }) => l.limitacion)
-      .filter((l: string | null): l is string => !!l)
-      .sort();
-    
-    const dispositionValues = dispositions
-      .map((d: { disposicion: string | null }) => d.disposicion)
-      .filter((d: string | null): d is string => !!d)
-      .sort();
+    // Extract values from objects
+    const conditionValues = conditions.map((c) => c.nombre);
+    const limitationValues = limitations.map((l) => l.nombre);
+    const dispositionValues = dispositions.map((d) => d.nombre);
 
     return NextResponse.json({
       conditions: conditionValues,

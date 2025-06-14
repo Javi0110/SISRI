@@ -51,9 +51,10 @@ export async function POST(request: Request) {
             categoria: habitante.categoria,
             rol: habitante.rol,
             edad: parseInt(habitante.age),
-            limitacion: habitante.limitation || null,
-            condicion: habitante.condition || null,
-            disposicion: habitante.disposition || null,
+            // Set relations for limitation, condition, disposition if provided
+            ...(habitante.limitation ? { limitaciones: { connect: { nombre: habitante.limitation } } } : {}),
+            ...(habitante.condition ? { condiciones: { connect: { nombre: habitante.condition } } } : {}),
+            ...(habitante.disposition ? { disposiciones: { connect: { nombre: habitante.disposition } } } : {}),
             contacto: habitante.contacto || null,
             family_id: familyId,
             propiedad_id: data.propertyId

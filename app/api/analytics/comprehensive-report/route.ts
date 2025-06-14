@@ -1,25 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
     
-// type PropiedadAfectada = {
-//   propiedadId: number;
-//   propiedad: {
-//     tipo: string | null;
-//   };
-//   daños: string | null;
-//   fecha: Date;
-// };
-
-// type Habitante = {
-//   id: number;
-//   nombre: string | null;
-//   edad: number | null;
-//   categoria: string | null;
-//   limitacion: string | null;
-//   condicion: string | null;
-//   disposicion: string | null;
-// };
-
 type SearchType = 'evento' | 'usng' | 'municipio' | 'residente';
 
 interface SearchRequest {
@@ -150,7 +131,10 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
               usngsquare: true,
               habitantes: {
                 include: {
-                  family: true
+                  family: true,
+                  condiciones: true,
+                  limitaciones: true,
+                  disposiciones: true
                 }
               }
             }
@@ -200,9 +184,9 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         sex: h.sex || h.sexo,
         sexo: h.sexo || h.sex,
         categoria: h.categoria,
-        limitacion: h.limitacion,
-        condicion: h.condicion,
-        disposicion: h.disposicion,
+        limitacion: h.limitaciones?.nombre || 'N/A',
+        condicion: h.condiciones?.nombre || 'N/A',
+        disposicion: h.disposiciones?.nombre || 'N/A',
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -223,6 +207,37 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
       }))
     };
   }) || [];
+
+  // Filter residents by condition, limitation, and disposition
+  if (filters?.residentCondition || filters?.residentLimitation || filters?.residentDisposition) {
+    properties = properties.map((property: any) => {
+      let filteredHabitantes = property.habitantes;
+      if (filters?.residentCondition) {
+        const condFilter = filters.residentCondition?.toLowerCase() ?? '';
+        filteredHabitantes = filteredHabitantes.filter(
+          (h: any) =>
+            h.condicion && h.condicion.toLowerCase().includes(condFilter)
+        );
+      }
+      if (filters?.residentLimitation) {
+        const limFilter = filters.residentLimitation?.toLowerCase() ?? '';
+        filteredHabitantes = filteredHabitantes.filter(
+          (h: any) =>
+            h.limitacion && h.limitacion.toLowerCase().includes(limFilter)
+        );
+      }
+      if (filters?.residentDisposition) {
+        const dispFilter = filters.residentDisposition?.toLowerCase() ?? '';
+        filteredHabitantes = filteredHabitantes.filter(
+          (h: any) =>
+            h.disposicion && h.disposicion.toLowerCase().includes(dispFilter)
+        );
+      }
+      return { ...property, habitantes: filteredHabitantes };
+    });
+    // Remove properties with no residents left
+    properties = properties.filter((property: any) => property.habitantes.length > 0);
+  }
 
   // Filter properties based on the filters
   if (filters?.ageRange || filters?.propertyType) {
@@ -269,7 +284,10 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
     usngsquare: true,
     habitantes: {
       include: {
-        family: true
+        family: true,
+        condiciones: true,
+        limitaciones: true,
+        disposiciones: true
       }
     }
   } as any; // Use any type assertion to bypass Prisma typing limitations
@@ -308,9 +326,9 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         sex: h.sex || h.sexo,
         sexo: h.sexo || h.sex,
         categoria: h.categoria,
-        limitacion: h.limitacion,
-        condicion: h.condicion,
-        disposicion: h.disposicion,
+        limitacion: h.limitacion?.nombre || 'N/A',
+        condicion: h.condicion?.nombre || 'N/A',
+        disposicion: h.disposiciones?.nombre || 'N/A',
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -369,7 +387,10 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
     usngsquare: true,
     habitantes: {
       include: {
-        family: true
+        family: true,
+        condiciones: true,
+        limitaciones: true,
+        disposiciones: true
       }
     }
   } as any; // Use any type assertion to bypass Prisma typing limitations
@@ -408,9 +429,9 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         sex: h.sex || h.sexo,
         sexo: h.sexo || h.sex,
         categoria: h.categoria,
-        limitacion: h.limitacion,
-        condicion: h.condicion,
-        disposicion: h.disposicion,
+        limitacion: h.limitaciones?.nombre || 'N/A',
+        condicion: h.condiciones?.nombre || 'N/A',
+        disposicion: h.disposiciones?.nombre || 'N/A',
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -531,9 +552,11 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
     
     // Add condition filter
     if (filters?.residentCondition) {
-      whereClause.condicion = {
-        contains: filters.residentCondition,
-        mode: 'insensitive'
+      whereClause.condiciones = {
+        nombre: {
+          contains: filters.residentCondition,
+          mode: 'insensitive'
+        }
       };
     }
     
@@ -541,41 +564,30 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
     if (filters?.residentLimitation) {
       // Special handling for diabetes
       if (filters.residentLimitation.toLowerCase() === 'diabetes') {
-        whereClause.OR = [
-          { limitacion: { equals: 'Diabetes', mode: 'insensitive' } },
-          { limitacion: { contains: 'diabetes', mode: 'insensitive' } },
-          { limitacion: { contains: 'diabetico', mode: 'insensitive' } },
-          { limitacion: { contains: 'diabética', mode: 'insensitive' } },
-          { limitacion: { contains: 'diabetica', mode: 'insensitive' } },
-          { limitacion: { contains: 'diabetis', mode: 'insensitive' } },
-          { limitacion: { contains: 'tipo 1', mode: 'insensitive' } },
-          { limitacion: { contains: 'tipo 2', mode: 'insensitive' } },
-          { limitacion: { contains: 'azucar', mode: 'insensitive' } }
-        ];
-      } else {
-        // For other limitations, use both exact and contains
-        whereClause.OR = [
-          {
-            limitacion: {
-              equals: filters.residentLimitation,
-              mode: 'insensitive'
-            }
-          },
-          {
-            limitacion: {
-              contains: filters.residentLimitation,
-              mode: 'insensitive'
-            }
+        whereClause.limitaciones = {
+          nombre: {
+            in: ['Diabetes', 'diabetes', 'diabetico', 'diabética', 'diabetica', 'diabetis', 'tipo 1', 'tipo 2', 'azucar'],
+            mode: 'insensitive'
           }
-        ];
+        };
+      } else {
+        // For other limitations, use contains
+        whereClause.limitaciones = {
+          nombre: {
+            contains: filters.residentLimitation,
+            mode: 'insensitive'
+          }
+        };
       }
     }
     
     // Add disposition filter
     if (filters?.residentDisposition) {
-      whereClause.disposicion = {
-        contains: filters.residentDisposition,
-        mode: 'insensitive'
+      whereClause.disposiciones = {
+        nombre: {
+          contains: filters.residentDisposition,
+          mode: 'insensitive'
+        }
       };
     }
     
@@ -609,7 +621,10 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
             usngsquare: true
           }
         },
-        family: true
+        family: true,
+        condiciones: true,
+        limitaciones: true,
+        disposiciones: true
       }
     } as any);
     
@@ -632,9 +647,9 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
         sex: resident.sex || resident.sexo,
         sexo: resident.sexo || resident.sex,
         categoria: resident.categoria,
-        limitacion: resident.limitacion,
-        condicion: resident.condicion,
-        disposicion: resident.disposicion,
+        limitacion: resident.limitaciones?.nombre || 'N/A',
+        condicion: resident.condiciones?.nombre || 'N/A',
+        disposicion: resident.disposiciones?.nombre || 'N/A',
         contacto: resident.contacto,
         propiedad_id: resident.propiedad_id,
         family_id: resident.family_id,

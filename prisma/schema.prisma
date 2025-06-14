@@ -160,42 +160,49 @@ model usngsquare {
 }
 
 model families {
-  id           Int          @id @default(autoincrement())
-  apellidos    String?      @db.VarChar(100)
-  description  String?      @db.VarChar(255)
-  created_at   DateTime     @default(now()) @db.Timestamp(6)
-  updated_at   DateTime     @default(now()) @db.Timestamp(6)
-  habitantes   habitantes[]
+  id          Int          @id @default(autoincrement())
+  apellidos   String?      @db.VarChar(100)
+  description String?      @db.VarChar(255)
+  created_at  DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at  DateTime?    @default(now()) @db.Timestamp(6)
+  habitantes  habitantes[]
 
   @@schema("sisri")
 }
 
 model habitantes {
-  id           Int                     @id @default(autoincrement())
-  nombre       String?                 @db.VarChar(100)
-  apellido1    String?                 @db.VarChar(100)
-  apellido2    String?                 @db.VarChar(100)
-  sex          String?                 @db.VarChar(10)
-  categoria    String?                 @db.VarChar(50)
-  rol          String?                 @db.VarChar(50)
-  edad         Int?
-  limitacion   String?                 @db.VarChar(100)
-  condicion    String?                 @db.VarChar(100)
-  disposicion  String?                 @db.VarChar(100)
-  contacto     String?                 @db.VarChar(50)
-  propiedad_id Int?
-  id_municipio Int?
-  id_barrio    Int?
-  id_sector    Int?
-  usngId       Int?
-  family_id    Int?
-  barrio       barrio?                 @relation(fields: [id_barrio], references: [id_barrio])
-  municipio    municipio?              @relation(fields: [id_municipio], references: [id_municipio])
-  sector       sector?                 @relation(fields: [id_sector], references: [id_sector])
-  propiedad    propiedades_existentes? @relation(fields: [propiedad_id], references: [id])
-  usngsquare   usngsquare?             @relation(fields: [usngId], references: [id])
-  family       families?               @relation(fields: [family_id], references: [id])
+  id             Int                     @id @default(autoincrement())
+  nombre         String?                 @db.VarChar(100)
+  categoria      String?                 @db.VarChar(50)
+  rol            String?                 @db.VarChar(50)
+  edad           Int?
+  propiedad_id   Int?
+  id_municipio   Int?
+  id_barrio      Int?
+  id_sector      Int?
+  usngId         Int?
+  family_id      Int?
+  contacto       String?                 @db.VarChar(50)
+  apellido1      String?                 @db.VarChar(100)
+  apellido2      String?                 @db.VarChar(100)
+  sex            String?                 @db.VarChar(10)
+  condicion_id   Int?
+  limitacion_id  Int?
+  disposicion_id Int?
+  condiciones    condicion?              @relation(fields: [condicion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_condicion")
+  disposiciones  disposiciones?          @relation(fields: [disposicion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_disposicion")
+  family         families?               @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_family")
+  limitaciones   limitacion?             @relation(fields: [limitacion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_limitacion")
+  barrio         barrio?                 @relation(fields: [id_barrio], references: [id_barrio])
+  municipio      municipio?              @relation(fields: [id_municipio], references: [id_municipio])
+  sector         sector?                 @relation(fields: [id_sector], references: [id_sector])
+  propiedad      propiedades_existentes? @relation(fields: [propiedad_id], references: [id])
+  usngsquare     usngsquare?             @relation(fields: [usngId], references: [id])
 
+  @@index([condicion_id], map: "idx_habitantes_condicion_id")
+  @@index([disposicion_id], map: "idx_habitantes_disposicion_id")
+  @@index([family_id], map: "idx_habitantes_family_id")
+  @@index([limitacion_id], map: "idx_habitantes_limitacion_id")
   @@schema("sisri")
 }
 
@@ -205,8 +212,50 @@ model propiedades_afectadas {
   propiedadId Int
   daños      String?
   fecha       DateTime               @default(now())
-  evento      eventos                @relation(fields: [eventoId], references: [id])
-  propiedad   propiedades_existentes @relation(fields: [propiedadId], references: [id])
+  evento      eventos                @relation(fields: [eventoId], references: [id], onDelete: Cascade, map: "fk_propiedad_afectada_evento")
+  propiedad   propiedades_existentes @relation(fields: [propiedadId], references: [id], map: "fk_propiedad_afectada_propiedad")
 
+  @@schema("sisri")
+}
+
+model disposiciones {
+  id          Int          @id @default(autoincrement())
+  nombre      String       @unique @db.VarChar(100)
+  descripcion String?      @db.VarChar(255)
+  codigo      String?      @unique @db.VarChar(20)
+  activo      Boolean?     @default(true)
+  created_at  DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at  DateTime?    @default(now()) @db.Timestamp(6)
+  habitantes  habitantes[]
+
+  @@index([nombre], map: "idx_disposiciones_nombre")
+  @@schema("sisri")
+}
+
+model condicion {
+  id          Int          @id @default(autoincrement())
+  nombre      String       @unique @db.VarChar(100)
+  descripcion String?      @db.VarChar(255)
+  codigo      String?      @unique @db.VarChar(20)
+  activo      Boolean?     @default(true)
+  created_at  DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at  DateTime?    @default(now()) @db.Timestamp(6)
+  habitantes  habitantes[]
+
+  @@index([nombre], map: "idx_limitaciones_nombre")
+  @@schema("sisri")
+}
+
+model limitacion {
+  id          Int          @id @default(autoincrement())
+  nombre      String       @unique @db.VarChar(100)
+  descripcion String?      @db.VarChar(255)
+  codigo      String?      @unique @db.VarChar(20)
+  activo      Boolean?     @default(true)
+  created_at  DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at  DateTime?    @default(now()) @db.Timestamp(6)
+  habitantes  habitantes[]
+
+  @@index([nombre], map: "idx_condiciones_nombre")
   @@schema("sisri")
 }

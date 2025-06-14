@@ -230,6 +230,10 @@ export function ReportForm() {
     barrio?: { nombre: string };
     sector?: { nombre: string };
   } | null>(null);
+  const [limitationOptions, setLimitationOptions] = useState<string[]>([]);
+  const [conditionOptions, setConditionOptions] = useState<string[]>([]);
+  const [dispositionOptions, setDispositionOptions] = useState<string[]>([]);
+  const [isResidentOptionsLoading, setIsResidentOptionsLoading] = useState(true);
   
   // Debounce timer reference
   const usngSearchTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -308,6 +312,24 @@ export function ReportForm() {
       controller.abort()
     }
   }, [])
+
+  // Fetch resident options on mount
+  useEffect(() => {
+    let isMounted = true;
+    setIsResidentOptionsLoading(true);
+    fetch('/api/residentes/options')
+      .then(res => res.json())
+      .then(data => {
+        if (isMounted) {
+          setLimitationOptions(data.limitations || []);
+          setConditionOptions(data.conditions || []);
+          setDispositionOptions(data.dispositions || []);
+          setIsResidentOptionsLoading(false);
+        }
+      })
+      .catch(() => setIsResidentOptionsLoading(false));
+    return () => { isMounted = false; };
+  }, []);
 
   // USNG validation - only when needed
   const validateUsngCode = useCallback(async (code: string) => {
@@ -2431,6 +2453,69 @@ export function ReportForm() {
                               error={!!errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age}
                               helperText={errors.properties?.[propertyIndex]?.habitantes?.[habitanteIndex]?.age?.message}
                             />
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <FormControl fullWidth disabled={isResidentOptionsLoading}>
+                              <InputLabel>Limitation</InputLabel>
+                              <Select
+                                value={habitante.limitation || ''}
+                                label="Limitation"
+                                onChange={e => {
+                                  const newHabitantes = [...field.value];
+                                  newHabitantes[habitanteIndex].limitation = e.target.value;
+                                  field.onChange(newHabitantes);
+                                }}
+                                renderValue={selected => selected || 'None'}
+                              >
+                                <MenuItem value=""><em>None</em></MenuItem>
+                                {limitationOptions.map(option => (
+                                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                                ))}
+                              </Select>
+                              {isResidentOptionsLoading && <FormHelperText>Loading...</FormHelperText>}
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <FormControl fullWidth disabled={isResidentOptionsLoading}>
+                              <InputLabel>Condition</InputLabel>
+                              <Select
+                                value={habitante.condition || ''}
+                                label="Condition"
+                                onChange={e => {
+                                  const newHabitantes = [...field.value];
+                                  newHabitantes[habitanteIndex].condition = e.target.value;
+                                  field.onChange(newHabitantes);
+                                }}
+                                renderValue={selected => selected || 'None'}
+                              >
+                                <MenuItem value=""><em>None</em></MenuItem>
+                                {conditionOptions.map(option => (
+                                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                                ))}
+                              </Select>
+                              {isResidentOptionsLoading && <FormHelperText>Loading...</FormHelperText>}
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            <FormControl fullWidth disabled={isResidentOptionsLoading}>
+                              <InputLabel>Disposition</InputLabel>
+                              <Select
+                                value={habitante.disposition || ''}
+                                label="Disposition"
+                                onChange={e => {
+                                  const newHabitantes = [...field.value];
+                                  newHabitantes[habitanteIndex].disposition = e.target.value;
+                                  field.onChange(newHabitantes);
+                                }}
+                                renderValue={selected => selected || 'None'}
+                              >
+                                <MenuItem value=""><em>None</em></MenuItem>
+                                {dispositionOptions.map(option => (
+                                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                                ))}
+                              </Select>
+                              {isResidentOptionsLoading && <FormHelperText>Loading...</FormHelperText>}
+                            </FormControl>
                           </Grid>
                           <Grid item xs={12} md={3}>
                             <TextField
