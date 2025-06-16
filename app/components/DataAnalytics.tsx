@@ -84,8 +84,11 @@ interface ResidentData {
   limitacion_id?: number | null;
   disposicion_id?: number | null;
   limitacion?: string;
+  limitacion_descripcion?: string | null;
   condicion?: string;
+  condicion_descripcion?: string | null;
   disposicion?: string;
+  disposicion_descripcion?: string | null;
   family?: {
     id: number;
     apellidos: string;
@@ -1628,9 +1631,24 @@ export function DataAnalytics() {
                                   case 'categoria': return `<td>${resident.categoria}</td>`;
                                   case 'family': return `<td>${resident.family ? resident.family.apellidos : 'N/A'}</td>`;
                                   case 'contacto': return `<td>${resident.contacto || 'N/A'}</td>`;
-                                  case 'limitacion': return `<td>${resident.limitacion || 'N/A'}</td>`;
-                                  case 'condicion': return `<td>${resident.condicion || 'N/A'}</td>`;
-                                  case 'disposicion': return `<td>${resident.disposicion || 'N/A'}</td>`;
+                                  case 'limitacion': return `<td>
+                                    <div>
+                                      <span class="badge badge-outline">${resident.limitacion || 'N/A'}</span>
+                                      ${resident.limitacion_descripcion ? `<br><span style="font-size: 0.9em; color: #666;">${resident.limitacion_descripcion}</span>` : ''}
+                                    </div>
+                                  </td>`;
+                                  case 'condicion': return `<td>
+                                    <div>
+                                      <span class="badge badge-outline">${resident.condicion || 'N/A'}</span>
+                                      ${resident.condicion_descripcion ? `<br><span style="font-size: 0.9em; color: #666;">${resident.condicion_descripcion}</span>` : ''}
+                                    </div>
+                                  </td>`;
+                                  case 'disposicion': return `<td>
+                                    <div>
+                                      <span class="badge badge-outline">${resident.disposicion || 'N/A'}</span>
+                                      ${resident.disposicion_descripcion ? `<br><span style="font-size: 0.9em; color: #666;">${resident.disposicion_descripcion}</span>` : ''}
+                                    </div>
+                                  </td>`;
                                   case 'property': return `<td>${resident.propiedad_info?.tipo || property.tipo}</td>`;
                                   case 'municipio': return `<td>${resident.propiedad_info?.municipio || property.municipio}</td>`;
                                   case 'barrio': return `<td>${resident.propiedad_info?.barrio || property.barrio}</td>`;
@@ -1677,9 +1695,24 @@ export function DataAnalytics() {
                         case 'categoria': return `<td>${resident.categoria}</td>`;
                         case 'family': return `<td>${resident.family ? resident.family.apellidos : 'N/A'}</td>`;
                         case 'contacto': return `<td>${resident.contacto || 'N/A'}</td>`;
-                        case 'limitacion': return `<td>${resident.limitacion || 'N/A'}</td>`;
-                        case 'condicion': return `<td>${resident.condicion || 'N/A'}</td>`;
-                        case 'disposicion': return `<td>${resident.disposicion || 'N/A'}</td>`;
+                        case 'limitacion': return `<td>
+                          <div>
+                            <span class="badge badge-outline">${resident.limitacion || 'N/A'}</span>
+                            ${resident.limitacion_descripcion ? `<br><span style="font-size: 0.9em; color: #666;">${resident.limitacion_descripcion}</span>` : ''}
+                          </div>
+                        </td>`;
+                        case 'condicion': return `<td>
+                          <div>
+                            <span class="badge badge-outline">${resident.condicion || 'N/A'}</span>
+                            ${resident.condicion_descripcion ? `<br><span style="font-size: 0.9em; color: #666;">${resident.condicion_descripcion}</span>` : ''}
+                          </div>
+                        </td>`;
+                        case 'disposicion': return `<td>
+                          <div>
+                            <span class="badge badge-outline">${resident.disposicion || 'N/A'}</span>
+                            ${resident.disposicion_descripcion ? `<br><span style="font-size: 0.9em; color: #666;">${resident.disposicion_descripcion}</span>` : ''}
+                          </div>
+                        </td>`;
                         case 'property': return `<td>${resident.propiedad_info ? resident.propiedad_info.tipo : (resident._property ? resident._property.tipo : 'N/A')}</td>`;
                         case 'municipio': return `<td>${resident.propiedad_info ? resident.propiedad_info.municipio : (resident._property ? resident._property.municipio : 'N/A')}</td>`;
                         case 'barrio': return `<td>${resident.propiedad_info ? resident.propiedad_info.barrio : (resident._property ? resident._property.barrio : 'N/A')}</td>`;
@@ -2433,13 +2466,40 @@ export function DataAnalytics() {
                                               <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
                                             )}
                                             {visibleColumns.limitacion && (
-                                              <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.limitacion || 'N/A'}</Badge>
+                                                  {resident.limitacion_descripcion && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                      {resident.limitacion_descripcion}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </td>
                                             )}
                                             {visibleColumns.condicion && (
-                                              <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.condicion || 'N/A'}</Badge>
+                                                  {resident.condicion_descripcion && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                      {resident.condicion_descripcion}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </td>
                                             )}
                                             {visibleColumns.disposicion && (
-                                              <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
+                                              <td className="py-2 px-3">
+                                                <div className="flex flex-col">
+                                                  <Badge variant="outline" className="mb-1">{resident.disposicion || 'N/A'}</Badge>
+                                                  {resident.disposicion_descripcion && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                      {resident.disposicion_descripcion}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </td>
                                             )}
                                             {visibleColumns.property && (
                                               <td className="py-2 px-3">
@@ -2800,13 +2860,40 @@ export function DataAnalytics() {
                                             <td className="py-2 px-3">{resident.contacto || 'N/A'}</td>
                                           )}
                                           {visibleColumns.limitacion && (
-                                            <td className="py-2 px-3">{resident.limitacion || 'N/A'}</td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.limitacion || 'N/A'}</Badge>
+                                                {resident.limitacion_descripcion && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.limitacion_descripcion}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
                                           )}
                                           {visibleColumns.condicion && (
-                                            <td className="py-2 px-3">{resident.condicion || 'N/A'}</td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.condicion || 'N/A'}</Badge>
+                                                {resident.condicion_descripcion && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.condicion_descripcion}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
                                           )}
                                           {visibleColumns.disposicion && (
-                                            <td className="py-2 px-3">{resident.disposicion || 'N/A'}</td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex flex-col">
+                                                <Badge variant="outline" className="mb-1">{resident.disposicion || 'N/A'}</Badge>
+                                                {resident.disposicion_descripcion && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {resident.disposicion_descripcion}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
                                           )}
                                           {visibleColumns.property && (
                                             <td className="py-2 px-3">
@@ -3096,13 +3183,40 @@ export function DataAnalytics() {
                               <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
                             )}
                             {visibleColumns.limitacion && (
-                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.limitacion || 'N/A'}</Badge>
+                                  {resident.limitacion_descripcion && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {resident.limitacion_descripcion}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                             )}
                             {visibleColumns.condicion && (
-                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.condicion || 'N/A'}</Badge>
+                                  {resident.condicion_descripcion && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {resident.condicion_descripcion}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                             )}
                             {visibleColumns.disposicion && (
-                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.disposicion || 'N/A'}</Badge>
+                                  {resident.disposicion_descripcion && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {resident.disposicion_descripcion}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                             )}
                             {visibleColumns.property && (
                               <td className="py-3 px-4">
@@ -3197,13 +3311,40 @@ export function DataAnalytics() {
                               <td className="py-3 px-4">{resident.contacto || 'N/A'}</td>
                             )}
                             {visibleColumns.limitacion && (
-                              <td className="py-3 px-4">{resident.limitacion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.limitacion || 'N/A'}</Badge>
+                                  {resident.limitacion_descripcion && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {resident.limitacion_descripcion}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                             )}
                             {visibleColumns.condicion && (
-                              <td className="py-3 px-4">{resident.condicion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.condicion || 'N/A'}</Badge>
+                                  {resident.condicion_descripcion && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {resident.condicion_descripcion}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                             )}
                             {visibleColumns.disposicion && (
-                              <td className="py-3 px-4">{resident.disposicion || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  <Badge variant="outline" className="mb-1">{resident.disposicion || 'N/A'}</Badge>
+                                  {resident.disposicion_descripcion && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {resident.disposicion_descripcion}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                             )}
                             {visibleColumns.property && (
                               <td className="py-3 px-4">
@@ -3355,9 +3496,30 @@ function NotificationDetail({ notification, properties, open, onOpenChange, getS
                                     </p>
                                     <p className="text-muted-foreground">
                                       {resident.categoria}
-                                      {resident.limitacion && ` • ${resident.limitacion || 'N/A'}`}
-                                      {resident.condicion && ` • ${resident.condicion || 'N/A'}`}
-                                      {resident.disposicion && ` • ${resident.disposicion || 'N/A'}`}
+                                      {resident.limitacion && (
+                                        <span>
+                                          {` • ${resident.limitacion}`}
+                                          {resident.limitacion_descripcion && (
+                                            <span className="text-xs"> - {resident.limitacion_descripcion}</span>
+                                          )}
+                                        </span>
+                                      )}
+                                      {resident.condicion && (
+                                        <span>
+                                          {` • ${resident.condicion}`}
+                                          {resident.condicion_descripcion && (
+                                            <span className="text-xs"> - {resident.condicion_descripcion}</span>
+                                          )}
+                                        </span>
+                                      )}
+                                      {resident.disposicion && (
+                                        <span>
+                                          {` • ${resident.disposicion}`}
+                                          {resident.disposicion_descripcion && (
+                                            <span className="text-xs"> - {resident.disposicion_descripcion}</span>
+                                          )}
+                                        </span>
+                                      )}
                                     </p>
                                   </div>
                                 ))}

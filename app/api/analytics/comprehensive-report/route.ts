@@ -132,9 +132,21 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
               habitantes: {
                 include: {
                   family: true,
-                  condiciones: true,
-                  limitaciones: true,
-                  disposiciones: true
+                  ...(prisma as any).habitantes_condiciones ? {
+                    habitantes_condiciones: {
+                      include: { condicion: true }
+                    }
+                  } : {},
+                  ...(prisma as any).habitantes_limitaciones ? {
+                    habitantes_limitaciones: {
+                      include: { limitacion: true }
+                    }
+                  } : {},
+                  ...(prisma as any).habitantes_disposiciones ? {
+                    habitantes_disposiciones: {
+                      include: { disposiciones: true }
+                    }
+                  } : {}
                 }
               }
             }
@@ -184,9 +196,12 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         sex: h.sex || h.sexo,
         sexo: h.sexo || h.sex,
         categoria: h.categoria,
-        limitacion: h.limitaciones?.nombre || 'N/A',
-        condicion: h.condiciones?.nombre || 'N/A',
-        disposicion: h.disposiciones?.nombre || 'N/A',
+        limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
+        limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
+        condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
+        disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -285,9 +300,21 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
     habitantes: {
       include: {
         family: true,
-        condiciones: true,
-        limitaciones: true,
-        disposiciones: true
+        ...(prisma as any).habitantes_condiciones ? {
+          habitantes_condiciones: {
+            include: { condicion: true }
+          }
+        } : {},
+        ...(prisma as any).habitantes_limitaciones ? {
+          habitantes_limitaciones: {
+            include: { limitacion: true }
+          }
+        } : {},
+        ...(prisma as any).habitantes_disposiciones ? {
+          habitantes_disposiciones: {
+            include: { disposiciones: true }
+          }
+        } : {}
       }
     }
   } as any; // Use any type assertion to bypass Prisma typing limitations
@@ -326,9 +353,12 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         sex: h.sex || h.sexo,
         sexo: h.sexo || h.sex,
         categoria: h.categoria,
-        limitacion: h.limitacion?.nombre || 'N/A',
-        condicion: h.condicion?.nombre || 'N/A',
-        disposicion: h.disposiciones?.nombre || 'N/A',
+        limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
+        limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
+        condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
+        disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -388,9 +418,21 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
     habitantes: {
       include: {
         family: true,
-        condiciones: true,
-        limitaciones: true,
-        disposiciones: true
+        ...(prisma as any).habitantes_condiciones ? {
+          habitantes_condiciones: {
+            include: { condicion: true }
+          }
+        } : {},
+        ...(prisma as any).habitantes_limitaciones ? {
+          habitantes_limitaciones: {
+            include: { limitacion: true }
+          }
+        } : {},
+        ...(prisma as any).habitantes_disposiciones ? {
+          habitantes_disposiciones: {
+            include: { disposiciones: true }
+          }
+        } : {}
       }
     }
   } as any; // Use any type assertion to bypass Prisma typing limitations
@@ -429,9 +471,12 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         sex: h.sex || h.sexo,
         sexo: h.sexo || h.sex,
         categoria: h.categoria,
-        limitacion: h.limitaciones?.nombre || 'N/A',
-        condicion: h.condiciones?.nombre || 'N/A',
-        disposicion: h.disposiciones?.nombre || 'N/A',
+        limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
+        limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
+        condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
+        disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -552,10 +597,14 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
     
     // Add condition filter
     if (filters?.residentCondition) {
-      whereClause.condiciones = {
-        nombre: {
-          contains: filters.residentCondition,
-          mode: 'insensitive'
+      whereClause.habitantes_condiciones = {
+        some: {
+          condicion: {
+            nombre: {
+              contains: filters.residentCondition,
+              mode: 'insensitive'
+            }
+          }
         }
       };
     }
@@ -564,18 +613,26 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
     if (filters?.residentLimitation) {
       // Special handling for diabetes
       if (filters.residentLimitation.toLowerCase() === 'diabetes') {
-        whereClause.limitaciones = {
-          nombre: {
-            in: ['Diabetes', 'diabetes', 'diabetico', 'diabética', 'diabetica', 'diabetis', 'tipo 1', 'tipo 2', 'azucar'],
-            mode: 'insensitive'
+        whereClause.habitantes_limitaciones = {
+          some: {
+            limitacion: {
+              nombre: {
+                in: ['Diabetes', 'diabetes', 'diabetico', 'diabética', 'diabetica', 'diabetis', 'tipo 1', 'tipo 2', 'azucar'],
+                mode: 'insensitive'
+              }
+            }
           }
         };
       } else {
         // For other limitations, use contains
-        whereClause.limitaciones = {
-          nombre: {
-            contains: filters.residentLimitation,
-            mode: 'insensitive'
+        whereClause.habitantes_limitaciones = {
+          some: {
+            limitacion: {
+              nombre: {
+                contains: filters.residentLimitation,
+                mode: 'insensitive'
+              }
+            }
           }
         };
       }
@@ -583,10 +640,14 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
     
     // Add disposition filter
     if (filters?.residentDisposition) {
-      whereClause.disposiciones = {
-        nombre: {
-          contains: filters.residentDisposition,
-          mode: 'insensitive'
+      whereClause.habitantes_disposiciones = {
+        some: {
+          disposiciones: {
+            nombre: {
+              contains: filters.residentDisposition,
+              mode: 'insensitive'
+            }
+          }
         }
       };
     }
@@ -622,9 +683,21 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
           }
         },
         family: true,
-        condiciones: true,
-        limitaciones: true,
-        disposiciones: true
+        ...(prisma as any).habitantes_condiciones ? {
+          habitantes_condiciones: {
+            include: { condicion: true }
+          }
+        } : {},
+        ...(prisma as any).habitantes_limitaciones ? {
+          habitantes_limitaciones: {
+            include: { limitacion: true }
+          }
+        } : {},
+        ...(prisma as any).habitantes_disposiciones ? {
+          habitantes_disposiciones: {
+            include: { disposiciones: true }
+          }
+        } : {}
       }
     } as any);
     
@@ -647,9 +720,12 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
         sex: resident.sex || resident.sexo,
         sexo: resident.sexo || resident.sex,
         categoria: resident.categoria,
-        limitacion: resident.limitaciones?.nombre || 'N/A',
-        condicion: resident.condiciones?.nombre || 'N/A',
-        disposicion: resident.disposiciones?.nombre || 'N/A',
+        limitacion: resident.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
+        limitacion_descripcion: resident.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        condicion: resident.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
+        condicion_descripcion: resident.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        disposicion: resident.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
+        disposicion_descripcion: resident.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
         contacto: resident.contacto,
         propiedad_id: resident.propiedad_id,
         family_id: resident.family_id,

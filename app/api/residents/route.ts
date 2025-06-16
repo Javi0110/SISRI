@@ -51,15 +51,39 @@ export async function POST(request: Request) {
             categoria: habitante.categoria,
             rol: habitante.rol,
             edad: parseInt(habitante.age),
-            // Set relations for limitation, condition, disposition if provided
-            ...(habitante.limitation ? { limitaciones: { connect: { nombre: habitante.limitation } } } : {}),
-            ...(habitante.condition ? { condiciones: { connect: { nombre: habitante.condition } } } : {}),
-            ...(habitante.disposition ? { disposiciones: { connect: { nombre: habitante.disposition } } } : {}),
             contacto: habitante.contacto || null,
             family_id: familyId,
             propiedad_id: data.propertyId
           }
         });
+
+        // Handle limitaciones, condiciones, and disposiciones using junction tables
+        if (habitante.limitation) {
+          await (prisma as any).habitantes_limitaciones.create({
+            data: {
+              habitante_id: newResident.id,
+              limitacion_id: await getLimitacionId(habitante.limitation)
+            }
+          });
+        }
+
+        if (habitante.condition) {
+          await (prisma as any).habitantes_condiciones.create({
+            data: {
+              habitante_id: newResident.id,
+              condicion_id: await getCondicionId(habitante.condition)
+            }
+          });
+        }
+
+        if (habitante.disposition) {
+          await (prisma as any).habitantes_disposiciones.create({
+            data: {
+              habitante_id: newResident.id,
+              disposicion_id: await getDisposicionId(habitante.disposition)
+            }
+          });
+        }
         
         createdResidents.push(newResident);
       }
@@ -89,4 +113,35 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+// Helper functions to get IDs from names
+async function getLimitacionId(nombre: string): Promise<number> {
+  const limitacion = await prisma.limitacion.findUnique({
+    where: { nombre }
+  });
+  if (!limitacion) {
+    throw new Error(`Limitacion '${nombre}' not found`);
+  }
+  return limitacion.id;
+}
+
+async function getCondicionId(nombre: string): Promise<number> {
+  const condicion = await prisma.condicion.findUnique({
+    where: { nombre }
+  });
+  if (!condicion) {
+    throw new Error(`Condicion '${nombre}' not found`);
+  }
+  return condicion.id;
+}
+
+async function getDisposicionId(nombre: string): Promise<number> {
+  const disposicion = await prisma.disposiciones.findUnique({
+    where: { nombre }
+  });
+  if (!disposicion) {
+    throw new Error(`Disposicion '${nombre}' not found`);
+  }
+  return disposicion.id;
 } 
