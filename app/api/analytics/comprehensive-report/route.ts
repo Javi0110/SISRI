@@ -129,6 +129,7 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
               barrio: true,
               sector: true,
               usngsquare: true,
+              property_types: true,
               habitantes: {
                 include: {
                   family: true,
@@ -178,7 +179,8 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
 
     return {
       id: property.id,
-      tipo: property.tipo,
+      property_type_id: property.property_type_id,
+      property_type_name: property.property_types?.type_name || 'N/A',
       daños: prop.daños,
       fecha: prop.fecha,
       municipio: property.municipio?.nombre || 'N/A',
@@ -198,10 +200,13 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         categoria: h.categoria,
         limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
         limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        limitacion_observacion: h.habitantes_limitaciones?.[0]?.observacion || null,
         condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
         condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        condicion_observacion: h.habitantes_condiciones?.[0]?.observacion || null,
         disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
         disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
+        disposicion_observacion: h.habitantes_disposiciones?.[0]?.observacion || null,
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -212,12 +217,16 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         } : null,
         propiedad_info: {
           id: property.id,
-          tipo: property.tipo,
+          property_type_id: property.property_type_id,
+          property_type_name: property.property_types?.type_name || 'N/A',
           municipio: property.municipio?.nombre || 'N/A',
           barrio: property.barrio?.nombre || 'N/A',
           sector: property.sector?.nombre || 'N/A',
           usng: property.usngsquare?.usng || 'N/A',
-          direccion: property.direccion || 'N/A'
+          direccion: property.direccion || 'N/A',
+          municipio_id: property.municipio?.id_municipio,
+          barrio_id: property.barrio?.id_barrio,
+          sector_id: property.sector?.id_sector
         }
       }))
     };
@@ -297,6 +306,7 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
     barrio: true,
     sector: true,
     usngsquare: true,
+    property_types: true,
     habitantes: {
       include: {
         family: true,
@@ -336,7 +346,8 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
     const damageInfo = await getPropertyDamageInfo(property.id);
     return {
       id: property.id,
-      tipo: property.tipo,
+      property_type_id: property.property_type_id,
+      property_type_name: property.property_types?.type_name || 'N/A',
       daños: damageInfo.daños,
       fecha: damageInfo.fecha,
       municipio: property.municipio?.nombre || 'N/A',
@@ -355,10 +366,13 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         categoria: h.categoria,
         limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
         limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        limitacion_observacion: h.habitantes_limitaciones?.[0]?.observacion || null,
         condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
         condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        condicion_observacion: h.habitantes_condiciones?.[0]?.observacion || null,
         disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
         disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
+        disposicion_observacion: h.habitantes_disposiciones?.[0]?.observacion || null,
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -369,12 +383,16 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         } : null,
         propiedad_info: {
           id: property.id,
-          tipo: property.tipo,
+          property_type_id: property.property_type_id,
+          property_type_name: property.property_types?.type_name || 'N/A',
           municipio: property.municipio?.nombre || 'N/A',
           barrio: property.barrio?.nombre || 'N/A',
           sector: property.sector?.nombre || 'N/A',
           usng: property.usngsquare?.usng || 'N/A',
-          direccion: property.direccion || 'N/A'
+          direccion: property.direccion || 'N/A',
+          municipio_id: property.municipio?.id_municipio,
+          barrio_id: property.barrio?.id_barrio,
+          sector_id: property.sector?.id_sector
         }
       }))
     };
@@ -415,6 +433,7 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
     barrio: true, 
     sector: true,
     usngsquare: true,
+    property_types: true,
     habitantes: {
       include: {
         family: true,
@@ -454,7 +473,8 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
     const damageInfo = await getPropertyDamageInfo(property.id);
     return {
       id: property.id,
-      tipo: property.tipo,
+      property_type_id: property.property_type_id,
+      property_type_name: property.property_types?.type_name || 'N/A',
       daños: damageInfo.daños,
       fecha: damageInfo.fecha,
       municipio: property.municipio?.nombre || 'N/A',
@@ -473,10 +493,13 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         categoria: h.categoria,
         limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
         limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        limitacion_observacion: h.habitantes_limitaciones?.[0]?.observacion || null,
         condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
         condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        condicion_observacion: h.habitantes_condiciones?.[0]?.observacion || null,
         disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
         disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
+        disposicion_observacion: h.habitantes_disposiciones?.[0]?.observacion || null,
         contacto: h.contacto,
         propiedad_id: h.propiedad_id,
         family_id: h.family_id,
@@ -487,12 +510,16 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         } : null,
         propiedad_info: {
           id: property.id,
-          tipo: property.tipo,
+          property_type_id: property.property_type_id,
+          property_type_name: property.property_types?.type_name || 'N/A',
           municipio: property.municipio?.nombre || 'N/A',
           barrio: property.barrio?.nombre || 'N/A',
           sector: property.sector?.nombre || 'N/A',
           usng: property.usngsquare?.usng || 'N/A',
-          direccion: property.direccion || 'N/A'
+          direccion: property.direccion || 'N/A',
+          municipio_id: property.municipio?.id_municipio,
+          barrio_id: property.barrio?.id_barrio,
+          sector_id: property.sector?.id_sector
         }
       }))
     };
@@ -511,9 +538,9 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         matches = false;
       }
 
-      if (filters.propertyType && property.tipo !== filters.propertyType) {
+      if (filters.propertyType && property.property_type_name !== filters.propertyType) {
         // Use case-insensitive comparison with additional mapping
-        const propertyType = property.tipo?.toLowerCase() || '';
+        const propertyType = property.property_type_name?.toLowerCase() || '';
         const filterType = filters.propertyType.toLowerCase();
         
         const residentialTerms = ['residencial', 'residential', 'residencia'];
@@ -679,7 +706,8 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
             municipio: true,
             barrio: true,
             sector: true,
-            usngsquare: true
+            usngsquare: true,
+            property_types: true
           }
         },
         family: true,
@@ -722,10 +750,13 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
         categoria: resident.categoria,
         limitacion: resident.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
         limitacion_descripcion: resident.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+        limitacion_observacion: resident.habitantes_limitaciones?.[0]?.observacion || null,
         condicion: resident.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
         condicion_descripcion: resident.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+        condicion_observacion: resident.habitantes_condiciones?.[0]?.observacion || null,
         disposicion: resident.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
         disposicion_descripcion: resident.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
+        disposicion_observacion: resident.habitantes_disposiciones?.[0]?.observacion || null,
         contacto: resident.contacto,
         propiedad_id: resident.propiedad_id,
         family_id: resident.family_id,
@@ -736,12 +767,16 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
         } : null,
         propiedad_info: {
           id: resident.propiedad?.id || null,
-          tipo: resident.propiedad?.tipo || 'N/A',
+          property_type_id: resident.propiedad?.property_type_id,
+          property_type_name: resident.propiedad?.property_types?.type_name || 'N/A',
           municipio: resident.propiedad?.municipio?.nombre || 'N/A',
           barrio: resident.propiedad?.barrio?.nombre || 'N/A',
           sector: resident.propiedad?.sector?.nombre || 'N/A',
           usng: resident.propiedad?.usngsquare?.usng || 'N/A',
-          direccion: resident.propiedad?.direccion || 'N/A'
+          direccion: resident.propiedad?.direccion || 'N/A',
+          municipio_id: resident.propiedad?.municipio?.id_municipio,
+          barrio_id: resident.propiedad?.barrio?.id_barrio,
+          sector_id: resident.propiedad?.sector?.id_sector
         }
       };
     });

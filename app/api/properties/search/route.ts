@@ -15,15 +15,19 @@ export async function GET(request: Request) {
     const properties = await prisma.propiedades_existentes.findMany({
       where: {
         OR: [
-          { tipo: { contains: query } },
+          { property_types: { type_name: { contains: query } } },
+          { direccion: { contains: query } },
         ],
       },
       include: {
+        property_types: true,
         barrio: {
           include: {
             municipio: true,
           },
         },
+        municipio: true,
+        sector: true,
       },
       take: 10,
     })

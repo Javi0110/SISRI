@@ -166,7 +166,7 @@ export async function POST(request: Request) {
           // Try standard Prisma create with updated data
           // Convert propertyData to propiedadData for create call
           const propiedadData = {
-            tipo: propertyData.tipo,
+            property_type_id: propertyData.property_type_id,
             direccion: propertyData.direccion,
             ...(propertyData.geometria ? { geometria: propertyData.geometria } : {}),
             municipio: propertyData.id_municipio ? {
@@ -196,8 +196,8 @@ export async function POST(request: Request) {
           
           // Create a base property with minimal info
           const result = await prisma.$queryRaw`
-            INSERT INTO sisri.propiedades_existentes (tipo, direccion) 
-            VALUES (${propertyData.tipo}, ${propertyData.direccion || ''})
+            INSERT INTO sisri.propiedades_existentes (property_type_id, direccion) 
+            VALUES (${propertyData.property_type_id}, ${propertyData.direccion || ''})
             RETURNING id
           `;
           

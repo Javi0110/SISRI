@@ -27,7 +27,8 @@ export async function GET(
             barrio: true,
             sector: true,
             usngsquare: true,
-            habitantes: true
+            habitantes: true,
+            property_types: true
           }
         }
       }
@@ -43,7 +44,8 @@ export async function GET(
             barrio: true,
             sector: true,
             usngsquare: true,
-            habitantes: true
+            habitantes: true,
+            property_types: true
           }
         }
       }
@@ -61,7 +63,8 @@ export async function GET(
         }
         notificationProperties.get(notification.id).push({
           id: propId,
-          tipo: notification.propiedades_existentes.tipo,
+          tipo: notification.propiedades_existentes.property_types?.type_name,
+          property_type_id: notification.propiedades_existentes.property_type_id,
           municipio: notification.propiedades_existentes.municipio?.nombre || 'N/A',
           barrio: notification.propiedades_existentes.barrio?.nombre || 'N/A',
           sector: notification.propiedades_existentes.sector?.nombre || 'N/A',
@@ -85,7 +88,8 @@ export async function GET(
           const prop = affected.propiedad
           notificationProperties.get(notification.id).push({
             id: prop.id,
-            tipo: prop.tipo,
+            tipo: prop.property_types?.type_name,
+            property_type_id: prop.property_type_id,
             municipio: prop.municipio?.nombre || 'N/A',
             barrio: prop.barrio?.nombre || 'N/A',
             sector: prop.sector?.nombre || 'N/A',
@@ -97,9 +101,6 @@ export async function GET(
               nombre: h.nombre,
               edad: h.edad,
               categoria: h.categoria,
-              limitacion: h.limitacion_id,
-              condicion: h.condicion_id,
-              disposicion: h.disposicion_id,
               propiedad_id: h.propiedad_id
             }))
           })

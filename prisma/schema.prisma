@@ -112,7 +112,6 @@ model notificacion {
 
 model propiedades_existentes {
   id                Int                     @id @default(autoincrement())
-  tipo              String?                 @db.VarChar(50)
   gridId            Int?
   geometria         String?                 @db.VarChar(128)
   id_barrio         Int?
@@ -120,9 +119,11 @@ model propiedades_existentes {
   id_sector         Int?
   usngId            Int?
   direccion         String?                 @db.VarChar(255)
+  property_type_id  Int?
   habitantes        habitantes[]
   notificacion      notificacion[]
   eventos_afectados propiedades_afectadas[]
+  property_types    property_types?         @relation(fields: [property_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property_type")
   barrio            barrio?                 @relation(fields: [id_barrio], references: [id_barrio])
   municipio         municipio?              @relation(fields: [id_municipio], references: [id_municipio])
   sector            sector?                 @relation(fields: [id_sector], references: [id_sector])
@@ -186,13 +187,7 @@ model habitantes {
   apellido1                String?                    @db.VarChar(100)
   apellido2                String?                    @db.VarChar(100)
   sex                      String?                    @db.VarChar(10)
-  condicion_id             Int?
-  limitacion_id            Int?
-  disposicion_id           Int?
-  condiciones              condicion?                 @relation(fields: [condicion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_condicion")
-  disposiciones            disposiciones?             @relation(fields: [disposicion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_disposicion")
   family                   families?                  @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_family")
-  limitaciones             limitacion?                @relation(fields: [limitacion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_habitantes_limitacion")
   barrio                   barrio?                    @relation(fields: [id_barrio], references: [id_barrio])
   municipio                municipio?                 @relation(fields: [id_municipio], references: [id_municipio])
   sector                   sector?                    @relation(fields: [id_sector], references: [id_sector])
@@ -202,10 +197,7 @@ model habitantes {
   habitantes_disposiciones habitantes_disposiciones[]
   habitantes_limitaciones  habitantes_limitaciones[]
 
-  @@index([condicion_id], map: "idx_habitantes_condicion_id")
-  @@index([disposicion_id], map: "idx_habitantes_disposicion_id")
   @@index([family_id], map: "idx_habitantes_family_id")
-  @@index([limitacion_id], map: "idx_habitantes_limitacion_id")
   @@schema("sisri")
 }
 
@@ -229,7 +221,6 @@ model disposiciones {
   activo                   Boolean?                   @default(true)
   created_at               DateTime?                  @default(now()) @db.Timestamp(6)
   updated_at               DateTime?                  @default(now()) @db.Timestamp(6)
-  habitantes               habitantes[]
   habitantes_disposiciones habitantes_disposiciones[]
 
   @@index([nombre], map: "idx_disposiciones_nombre")
@@ -244,7 +235,6 @@ model condicion {
   activo                 Boolean?                 @default(true)
   created_at             DateTime?                @default(now()) @db.Timestamp(6)
   updated_at             DateTime?                @default(now()) @db.Timestamp(6)
-  habitantes             habitantes[]
   habitantes_condiciones habitantes_condiciones[]
 
   @@index([nombre], map: "idx_limitaciones_nombre")
@@ -259,7 +249,6 @@ model limitacion {
   activo                  Boolean?                  @default(true)
   created_at              DateTime?                 @default(now()) @db.Timestamp(6)
   updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
-  habitantes              habitantes[]
   habitantes_limitaciones habitantes_limitaciones[]
 
   @@index([nombre], map: "idx_condiciones_nombre")
@@ -295,6 +284,14 @@ model habitantes_limitaciones {
   observacion   String?
   habitantes    habitantes @relation(fields: [habitante_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   limitacion    limitacion @relation(fields: [limitacion_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("sisri")
+}
+
+model property_types {
+  id                     Int                      @id @default(autoincrement())
+  type_name              String                   @unique @db.VarChar(50)
+  propiedades_existentes propiedades_existentes[]
 
   @@schema("sisri")
 }

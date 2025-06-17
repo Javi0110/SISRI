@@ -9,7 +9,7 @@ interface USNGResponse {
   coordinates: [number, number]
   properties: {
     id: number
-    tipo: string
+    property_type_id: number
     valor: number
   }[]
   cuencas: {
@@ -31,7 +31,7 @@ type USNGSquareWithRelations = {
   longitudes: string
   propiedades: {
     id: number
-    tipo: string
+    property_type_id: number
     gridId: number
   }[]
   cuencas: {
@@ -70,7 +70,7 @@ export async function GET(
         propiedades: {
           select: {
             id: true,
-            tipo: true,
+            property_type_id: true,
             gridId: true
           }
         },
@@ -118,7 +118,7 @@ export async function GET(
       coordinates: [centerLon, centerLat],
       properties: usngSquare.propiedades.map(prop => ({
         id: prop.id,
-        tipo: prop.tipo || '',
+        property_type_id: prop.property_type_id || 0,
         valor: prop.gridId || 0
       })),
       cuencas: usngSquare.cuencas.map(cuenca => ({

@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         propiedad: {
           select: {
             direccion: true,
-            tipo: true,
+            property_type_id: true,
             municipio: { select: { nombre: true } },
             barrio: { select: { nombre: true } },
             sector: { select: { nombre: true } }
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       property: resident.propiedad ? {
         id: resident.propiedad_id,
         direccion: resident.propiedad.direccion,
-        tipo: resident.propiedad.tipo,
+        tipo: resident.propiedad.property_type_id,
         municipio: resident.propiedad.municipio?.nombre || '',
         barrio: resident.propiedad.barrio?.nombre || '',
         sector: resident.propiedad.sector?.nombre || ''
