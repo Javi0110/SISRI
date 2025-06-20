@@ -5,8 +5,6 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
-  Clock,
-  FileText,
   Home,
   MapPin,
   Printer,
@@ -143,6 +141,46 @@ interface ResidentData {
     usng: string;
     direccion?: string | null;
   };
+  // New fields from API response
+  id_municipio?: number;
+  id_barrio?: number;
+  id_sector?: number | null;
+  habitantes_condiciones?: Array<{
+  id: number;
+    habitante_id: number;
+    condicion_id: number;
+    observacion: string | null;
+    condicion: {
+    id: number;
+    nombre: string;
+      descripcion?: string;
+      codigo?: string;
+    };
+  }>;
+  habitantes_limitaciones?: Array<{
+      id: number;
+    habitante_id: number;
+    limitacion_id: number;
+    observacion: string | null;
+    limitacion: {
+      id: number;
+      nombre: string;
+      descripcion?: string;
+      codigo?: string;
+    };
+  }>;
+  habitantes_disposiciones?: Array<{
+  id: number;
+    habitante_id: number;
+    disposicion_id: number;
+    observacion: string | null;
+    disposiciones: {
+  id: number;
+  nombre: string;
+      descripcion?: string;
+      codigo?: string;
+    };
+  }>;
 }
 
 interface NotificationData {
@@ -238,7 +276,13 @@ export function DataAnalytics() {
   const [selectedNotification, setSelectedNotification] =
     useState<NotificationData | null>(null);
   const [notificationDetailOpen, setNotificationDetailOpen] = useState(false);
-  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<Array<{
+    id: number;
+    label: string;
+    type: string;
+    edad?: number;
+    categoria?: string;
+  }>>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -260,6 +304,8 @@ export function DataAnalytics() {
     familyName?: string;
     dateRange?: { start: string; end: string };
     sex?: string;
+    countBreak?: string;
+    evento?: string;
   }>({});
 
   // Add a state for quick filtering resident names
@@ -307,53 +353,94 @@ export function DataAnalytics() {
     }[]
   >([]);
 
-  // Update the sorting function to handle multiple sort criteria
-  const sortData = (data: any[]) => {
-    if (!sortConfigs.length) return data;
-
+    // Update the sorting function to handle multiple sort criteria
+  const sortData = <T extends PropertyData | ResidentData | NotificationData>(data: T[]): T[] => {
     return [...data].sort((a, b) => {
-      // Try each sort config in order until we find a difference
-      for (const sortConfig of sortConfigs) {
-        const { key, direction } = sortConfig;
+      for (const config of sortConfigs) {
+        let aValue: string | number | null | undefined;
+        let bValue: string | number | null | undefined;
 
-        // Handle nested properties with dot notation
-        const aValue = key.includes(".")
-          ? key.split(".").reduce((obj, prop) => obj && obj[prop], a)
-          : a[key];
-        const bValue = key.includes(".")
-          ? key.split(".").reduce((obj, prop) => obj && obj[prop], b)
-          : b[key];
-
-        // Handle null or undefined values
-        if (aValue == null && bValue != null)
-          return direction === "ascending" ? -1 : 1;
-        if (bValue == null && aValue != null)
-          return direction === "ascending" ? 1 : -1;
-        if (aValue == null && bValue == null) continue; // Try next sort config
-
-        // Handle different data types
-        if (typeof aValue === "string" && typeof bValue === "string") {
-          const compareResult =
-            direction === "ascending"
-              ? aValue.localeCompare(bValue)
-              : bValue.localeCompare(aValue);
-
-          if (compareResult !== 0) return compareResult;
-          continue; // If values are equal, try next sort config
+        if (config.key === "tipo") {
+          // Sort by property_type_id instead of name
+          aValue = 'property_type_id' in a ? a.property_type_id : 999999;
+          bValue = 'property_type_id' in b ? b.property_type_id : 999999;
+        } else if (config.key === "limitacion") {
+          // Sort by limitation ID
+          if ('habitantes_limitaciones' in a && a.habitantes_limitaciones && a.habitantes_limitaciones.length > 0) {
+            aValue = a.habitantes_limitaciones[0].limitacion.id;
+          } else {
+            aValue = ('limitacion_id' in a ? a.limitacion_id : null) || 999999; // Put null values at the end
+          }
+          if ('habitantes_limitaciones' in b && b.habitantes_limitaciones && b.habitantes_limitaciones.length > 0) {
+            bValue = b.habitantes_limitaciones[0].limitacion.id;
+          } else {
+            bValue = ('limitacion_id' in b ? b.limitacion_id : null) || 999999;
+          }
+        } else if (config.key === "condicion") {
+          // Sort by condition ID
+          if ('habitantes_condiciones' in a && a.habitantes_condiciones && a.habitantes_condiciones.length > 0) {
+            aValue = a.habitantes_condiciones[0].condicion.id;
+          } else {
+            aValue = ('condicion_id' in a ? a.condicion_id : null) || 999999;
+          }
+          if ('habitantes_condiciones' in b && b.habitantes_condiciones && b.habitantes_condiciones.length > 0) {
+            bValue = b.habitantes_condiciones[0].condicion.id;
+          } else {
+            bValue = ('condicion_id' in b ? b.condicion_id : null) || 999999;
+          }
+        } else if (config.key === "disposicion") {
+          // Sort by disposition ID
+          if ('habitantes_disposiciones' in a && a.habitantes_disposiciones && a.habitantes_disposiciones.length > 0) {
+            aValue = a.habitantes_disposiciones[0].disposiciones.id;
+          } else {
+            aValue = ('disposicion_id' in a ? a.disposicion_id : null) || 999999;
+          }
+          if ('habitantes_disposiciones' in b && b.habitantes_disposiciones && b.habitantes_disposiciones.length > 0) {
+            bValue = b.habitantes_disposiciones[0].disposiciones.id;
+          } else {
+            bValue = ('disposicion_id' in b ? b.disposicion_id : null) || 999999;
+          }
+        } else if (config.key === "municipio" || config.key === "propiedad_info.municipio") {
+          // Sort by municipio ID
+          const aIdMunicipio = ('id_municipio' in a ? a.id_municipio : null) || ('municipio_id' in a ? a.municipio_id : null) || ('propiedad_info' in a ? a.propiedad_info?.municipio_id : null) || ('_property' in a ? a._property?.municipio_id : null) || 999999;
+          const bIdMunicipio = ('id_municipio' in b ? b.id_municipio : null) || ('municipio_id' in b ? b.municipio_id : null) || ('propiedad_info' in b ? b.propiedad_info?.municipio_id : null) || ('_property' in b ? b._property?.municipio_id : null) || 999999;
+          aValue = aIdMunicipio;
+          bValue = bIdMunicipio;
+        } else if (config.key === "barrio" || config.key === "propiedad_info.barrio") {
+          // Sort by barrio ID
+          const aIdBarrio = ('id_barrio' in a ? a.id_barrio : null) || ('barrio_id' in a ? a.barrio_id : null) || ('propiedad_info' in a ? a.propiedad_info?.barrio_id : null) || ('_property' in a ? a._property?.barrio_id : null) || 999999;
+          const bIdBarrio = ('id_barrio' in b ? b.id_barrio : null) || ('barrio_id' in b ? b.barrio_id : null) || ('propiedad_info' in b ? b.propiedad_info?.barrio_id : null) || ('_property' in b ? b._property?.barrio_id : null) || 999999;
+          aValue = aIdBarrio;
+          bValue = bIdBarrio;
+        } else if (config.key === "sector" || config.key === "propiedad_info.sector") {
+          // Sort by sector ID
+          const aIdSector = ('id_sector' in a ? a.id_sector : null) || ('sector_id' in a ? a.sector_id : null) || ('propiedad_info' in a ? a.propiedad_info?.sector_id : null) || ('_property' in a ? a._property?.sector_id : null) || 999999;
+          const bIdSector = ('id_sector' in b ? b.id_sector : null) || ('sector_id' in b ? b.sector_id : null) || ('propiedad_info' in b ? b.propiedad_info?.sector_id : null) || ('_property' in b ? b._property?.sector_id : null) || 999999;
+          aValue = aIdSector;
+          bValue = bIdSector;
+        } else {
+          aValue = (a as unknown as Record<string, unknown>)[config.key] as string | number | null | undefined;
+          bValue = (b as unknown as Record<string, unknown>)[config.key] as string | number | null | undefined;
         }
 
-        if (aValue === bValue) continue; // Try next sort config
+        if (aValue === bValue) continue;
 
-        return direction === "ascending"
-          ? aValue > bValue
-            ? 1
-            : -1
-          : aValue < bValue
-          ? 1
-          : -1;
+        if (aValue === null || aValue === undefined) return 1;
+        if (bValue === null || bValue === undefined) return -1;
+
+        if (typeof aValue === "string" && typeof bValue === "string") {
+          return config.direction === "ascending"
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        }
+
+        if (typeof aValue === "number" && typeof bValue === "number") {
+          return config.direction === "ascending"
+            ? aValue - bValue
+            : bValue - aValue;
+        }
       }
-
-      return 0; // All sort configs resulted in equality
+      return 0;
     });
   };
 
@@ -404,9 +491,9 @@ export function DataAnalytics() {
   };
 
   // Add debounce function
-  const debounce = (func: Function, wait: number) => {
+  const debounce = <T extends unknown[]>(func: (...args: T) => void, wait: number) => {
     let timeout: NodeJS.Timeout;
-    return (...args: any[]) => {
+    return (...args: T) => {
       clearTimeout(timeout);
       timeout = setTimeout(() => func(...args), wait);
     };
@@ -450,7 +537,7 @@ export function DataAnalytics() {
           const data = await response.json();
           if (data.propiedades) {
             setSearchSuggestions(
-              data.propiedades.map((prop: any) => ({
+              data.propiedades.map((prop: { id: number; usng: string }) => ({
                 id: prop.id,
                 label: prop.usng,
                 type: "usng",
@@ -461,7 +548,7 @@ export function DataAnalytics() {
           const response = await fetch(endpoint);
           const data = await response.json();
           setSearchSuggestions(
-            data.map((resident: any) => ({
+            data.map((resident: { id: number; nombre: string; edad: number; categoria: string }) => ({
               id: resident.id,
               label: resident.nombre,
               type: "residente",
@@ -474,7 +561,7 @@ export function DataAnalytics() {
           const data = await response.json();
           if (searchType === "evento") {
             setSearchSuggestions(
-              data.map((event: any) => ({
+              data.map((event: { id: number; titulo: string }) => ({
                 id: event.id,
                 label: event.titulo,
                 type: "evento",
@@ -482,7 +569,7 @@ export function DataAnalytics() {
             );
           } else if (searchType === "municipio") {
             setSearchSuggestions(
-              data.map((municipio: any) => ({
+              data.map((municipio: { id_municipio: number; nombre: string }) => ({
                 id: municipio.id_municipio,
                 label: municipio.nombre,
                 type: "municipio",
@@ -539,7 +626,7 @@ export function DataAnalytics() {
 
     try {
       // Build filter object only with valid values
-      const filterObj: any = {};
+      const filterObj: Record<string, unknown> = {};
 
       if (filters.usng) filterObj.usng = filters.usng;
       if (filters.municipio) filterObj.municipio = filters.municipio;
@@ -570,13 +657,13 @@ export function DataAnalytics() {
       if (filters.residentName) filterObj.residentName = filters.residentName;
       if (filters.familyName) filterObj.familyName = filters.familyName;
       if (filters.sex) filterObj.sex = filters.sex;
+      if (filters.evento) filterObj.evento = filters.evento;
 
       if (filters.dateRange?.start || filters.dateRange?.end) {
-        filterObj.dateRange = {};
-        if (filters.dateRange?.start)
-          filterObj.dateRange.start = filters.dateRange.start;
-        if (filters.dateRange?.end)
-          filterObj.dateRange.end = filters.dateRange.end;
+        filterObj.dateRange = {
+          ...(filters.dateRange?.start && { start: filters.dateRange.start }),
+          ...(filters.dateRange?.end && { end: filters.dateRange.end })
+        };
       }
 
       // Combine main search with filters
@@ -690,11 +777,9 @@ export function DataAnalytics() {
           // Apply category filter if needed
           if (filters.residentCategory) {
             const categoryFilter = filters.residentCategory.toLowerCase();
-            data.residentes = data.residentes.filter(
-              (resident: ResidentData) => {
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
                 return resident.categoria.toLowerCase() === categoryFilter;
-              }
-            );
+            });
             console.log(
               `Filtered residents by category "${filters.residentCategory}": ${data.residentes.length} results`
             );
@@ -703,13 +788,11 @@ export function DataAnalytics() {
           // Apply sex filter if needed
           if (filters.sex) {
             const sexFilter = filters.sex.toLowerCase();
-            data.residentes = data.residentes.filter(
-              (resident: ResidentData) => {
+            data.residentes = data.residentes.filter((resident: ResidentData) => {
                 const sex = resident.sex?.toLowerCase() || "";
                 const sexo = resident.sexo?.toLowerCase() || "";
                 return sex === sexFilter || sexo === sexFilter;
-              }
-            );
+            });
             console.log(
               `Filtered residents by sex "${filters.sex}": ${data.residentes.length} results`
             );
@@ -758,7 +841,7 @@ export function DataAnalytics() {
     }
   };
 
-  const handleFilterChange = (filterType: string, value: any) => {
+  const handleFilterChange = (filterType: string, value: string | number | { min: number; max: number } | { start: string; end: string } | undefined) => {
     setFilters((prev) => ({
       ...prev,
       [filterType]: value,
@@ -775,12 +858,7 @@ export function DataAnalytics() {
   const [sectorOptions, setSectorOptions] = useState<
     { id_sector: number; nombre: string }[]
   >([]);
-  const [propertyTypeOptions] = useState([
-    "residencial",
-    "comercial",
-    "industrial",
-    "hospital",
-  ]);
+  const [propertyTypeOptions, setPropertyTypeOptions] = useState<Array<{id: number, type_name: string}>>([]);
   const [incidentTypeOptions] = useState([
     "inundacion",
     "deslizamiento",
@@ -791,10 +869,26 @@ export function DataAnalytics() {
     "Niño",
     "Adulto Mayor",
   ]);
-  const [sexOptions] = useState(["Masculino", "Femenino"]);
-  const [conditionOptions, setConditionOptions] = useState<string[]>([]);
-  const [limitationOptions, setLimitationOptions] = useState<string[]>([]);
-  const [dispositionOptions, setDispositionOptions] = useState<string[]>([]);
+  const [sexOptions] = useState(["M", "F"]);
+  const [conditionOptions, setConditionOptions] = useState<Array<{id: number, nombre: string}>>([]);
+  const [limitationOptions, setLimitationOptions] = useState<Array<{id: number, nombre: string}>>([]);
+  const [dispositionOptions, setDispositionOptions] = useState<Array<{id: number, nombre: string}>>([]);
+  const [eventOptions, setEventOptions] = useState<Array<{id: number, titulo: string}>>([]);
+  
+  // Count Break options for analytics
+  const [countBreakOptions] = useState([
+    { value: "limitacion", label: "Limitation" },
+    { value: "condicion", label: "Condition" },
+    { value: "disposicion", label: "Disposition" },
+    { value: "municipio", label: "Municipality" },
+    { value: "barrio", label: "Barrio" },
+    { value: "sector", label: "Sector" },
+    { value: "categoria", label: "Category" },
+    { value: "sex", label: "Sex" },
+    { value: "property", label: "Property Type" },
+    { value: "edad", label: "Age" },
+    { value: "family", label: "Family" },
+  ]);
 
   // Fetch filter options on component mount
   useEffect(() => {
@@ -825,8 +919,32 @@ export function DataAnalytics() {
       }
     };
 
+    // Fetch property types
+    const fetchPropertyTypes = async () => {
+      try {
+        const response = await fetch('/api/property-types');
+        const data = await response.json();
+        setPropertyTypeOptions(data);
+      } catch (error) {
+        console.error('Error fetching property types:', error);
+      }
+    };
+
+    // Fetch events
+    const fetchEvents = async () => {
+      try {
+        const response = await fetch('/api/eventos');
+        const data = await response.json();
+        setEventOptions(data);
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      }
+    };
+
     fetchMunicipalities();
     fetchResidentOptions();
+    fetchPropertyTypes();
+    fetchEvents();
   }, []);
 
   // Fetch barrios when municipality changes
@@ -1004,8 +1122,8 @@ export function DataAnalytics() {
                 value={filters.ageRange?.min || ""}
                 onChange={(e) =>
                   handleFilterChange("ageRange", {
-                    ...filters.ageRange,
-                    min: e.target.value,
+                    min: Number(e.target.value),
+                    max: filters.ageRange?.max || 200,
                   })
                 }
               />
@@ -1015,8 +1133,8 @@ export function DataAnalytics() {
                 value={filters.ageRange?.max || ""}
                 onChange={(e) =>
                   handleFilterChange("ageRange", {
-                    ...filters.ageRange,
-                    max: e.target.value,
+                    min: filters.ageRange?.min || 0,
+                    max: Number(e.target.value),
                   })
                 }
               />
@@ -1038,16 +1156,8 @@ export function DataAnalytics() {
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
                 {propertyTypeOptions.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type === "residencial"
-                      ? "Residential"
-                      : type === "comercial"
-                      ? "Commercial"
-                      : type === "industrial"
-                      ? "Industrial"
-                      : type === "hospital"
-                      ? "Hospital"
-                      : type}
+                  <SelectItem key={type.id} value={type.id.toString()}>
+                    {`${type.id} - ${type.type_name}`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1131,9 +1241,9 @@ export function DataAnalytics() {
                 <SelectItem value="all">All</SelectItem>
                 {sexOptions.map((sex) => (
                   <SelectItem key={sex} value={sex}>
-                    {sex === "Masculino"
+                    {sex === "M"
                       ? "Male"
-                      : sex === "Femenino"
+                      : sex === "F"
                       ? "Female"
                       : sex}
                   </SelectItem>
@@ -1160,8 +1270,8 @@ export function DataAnalytics() {
               <SelectContent>
                 <SelectItem value="all">All conditions</SelectItem>
                 {conditionOptions.map((condition) => (
-                  <SelectItem key={condition} value={condition}>
-                    {condition || "None"}
+                  <SelectItem key={condition.id} value={condition.id.toString()}>
+                    {`${condition.id} - ${condition.nombre}`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1186,8 +1296,8 @@ export function DataAnalytics() {
               <SelectContent>
                 <SelectItem value="all">All limitations</SelectItem>
                 {limitationOptions.map((limitation) => (
-                  <SelectItem key={limitation} value={limitation}>
-                    {limitation || "None"}
+                  <SelectItem key={limitation.id} value={limitation.id.toString()}>
+                    {`${limitation.id} - ${limitation.nombre}`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1212,8 +1322,8 @@ export function DataAnalytics() {
               <SelectContent>
                 <SelectItem value="all">All dispositions</SelectItem>
                 {dispositionOptions.map((disposition) => (
-                  <SelectItem key={disposition} value={disposition}>
-                    {disposition || "None"}
+                  <SelectItem key={disposition.id} value={disposition.id.toString()}>
+                    {`${disposition.id} - ${disposition.nombre}`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1229,8 +1339,8 @@ export function DataAnalytics() {
                 value={filters.dateRange?.start || ""}
                 onChange={(e) =>
                   handleFilterChange("dateRange", {
-                    ...filters.dateRange,
                     start: e.target.value,
+                    end: filters.dateRange?.end || "",
                   })
                 }
               />
@@ -1239,7 +1349,7 @@ export function DataAnalytics() {
                 value={filters.dateRange?.end || ""}
                 onChange={(e) =>
                   handleFilterChange("dateRange", {
-                    ...filters.dateRange,
+                    start: filters.dateRange?.start || "",
                     end: e.target.value,
                   })
                 }
@@ -1255,6 +1365,52 @@ export function DataAnalytics() {
               value={filters.familyName || ""}
               onChange={(e) => handleFilterChange("familyName", e.target.value)}
             />
+          </div>
+
+          {/* Event Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Event</label>
+            <Select
+              value={filters.evento || "all"}
+              onValueChange={(value) =>
+                handleFilterChange("evento", value === "all" ? "" : value)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select event" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All events</SelectItem>
+                {eventOptions.map((event) => (
+                  <SelectItem key={event.id} value={event.id.toString()}>
+                    {event.titulo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Count Break Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Count Break</label>
+            <Select
+              value={filters.countBreak || "none"}
+              onValueChange={(value) =>
+                handleFilterChange("countBreak", value === "none" ? "" : value)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select column to count" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No Count Break</SelectItem>
+                {countBreakOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -1470,7 +1626,7 @@ export function DataAnalytics() {
       reportData.residentes && reportData.residentes.length > 0;
 
     // Apply current filtering to properties
-    let filteredProperties = hasProperties ? [...reportData.propiedades] : [];
+    const filteredProperties = hasProperties ? [...reportData.propiedades] : [];
 
     // Apply current filtering to residents
     let filteredResidents: ResidentData[] = [];
@@ -1538,6 +1694,14 @@ export function DataAnalytics() {
       activeFilters.push(`Category: ${filters.residentCategory}`);
     if (filters.propertyType)
       activeFilters.push(`Property Type: ${filters.propertyType}`);
+    if (filters.countBreak) {
+      const countBreakLabel = countBreakOptions.find(opt => opt.value === filters.countBreak)?.label;
+      activeFilters.push(`Count Break: ${countBreakLabel}`);
+    }
+    if (filters.evento) {
+      const selectedEvent = eventOptions.find(event => event.id.toString() === filters.evento);
+      activeFilters.push(`Event: ${selectedEvent?.titulo || filters.evento}`);
+    }
 
     const filterInfoText =
       activeFilters.length > 0
@@ -1561,43 +1725,6 @@ export function DataAnalytics() {
         columns.push({ key: "fecha", label: "Date" });
       if (visibleColumns.property_residents)
         columns.push({ key: "habitantes", label: "Residents" });
-      return columns;
-    };
-
-    // Helper function to get visible resident columns
-    const getVisibleResidentColumns = () => {
-      const columns = [];
-      if (visibleColumns.id) columns.push({ key: "id", label: "ID" });
-      if (visibleColumns.nombre) columns.push({ key: "nombre", label: "Name" });
-      if (visibleColumns.apellido1)
-        columns.push({ key: "apellido1", label: "Last Name 1" });
-      if (visibleColumns.apellido2)
-        columns.push({ key: "apellido2", label: "Last Name 2" });
-      if (visibleColumns.edad) columns.push({ key: "edad", label: "Age" });
-      if (visibleColumns.sex) columns.push({ key: "sex", label: "Sex" });
-      if (visibleColumns.categoria)
-        columns.push({ key: "categoria", label: "Category" });
-      if (visibleColumns.family)
-        columns.push({ key: "family", label: "Family" });
-      if (visibleColumns.contacto)
-        columns.push({ key: "contacto", label: "Contact" });
-      if (visibleColumns.limitacion)
-        columns.push({ key: "limitacion", label: "Limitation" });
-      if (visibleColumns.condicion)
-        columns.push({ key: "condicion", label: "Condition" });
-      if (visibleColumns.disposicion)
-        columns.push({ key: "disposicion", label: "Disposition" });
-      if (visibleColumns.property)
-        columns.push({ key: "property", label: "Property Type" });
-      if (visibleColumns.municipio)
-        columns.push({ key: "municipio", label: "Municipality" });
-      if (visibleColumns.barrio)
-        columns.push({ key: "barrio", label: "Barrio" });
-      if (visibleColumns.sector)
-        columns.push({ key: "sector", label: "Sector" });
-      if (visibleColumns.usng) columns.push({ key: "usng", label: "USNG" });
-      if (visibleColumns.direccion)
-        columns.push({ key: "direccion", label: "Address" });
       return columns;
     };
 
@@ -1932,7 +2059,7 @@ export function DataAnalytics() {
                             : property.habitantes
                           )
                             .map(
-                              (resident: ResidentData) => `
+                              (resident) => `
                             <tr>
                               ${visibleResidentColumns
                                 .map((col) => {
@@ -1970,11 +2097,26 @@ export function DataAnalytics() {
                                         resident.contacto || "N/A"
                                       }</td>`;
                                     case "limitacion":
-                                      return `<td>\n<div>\n<span class="badge badge-outline">${resident.limitacion || "N/A"}</span>\n${resident.limitacion_observacion ? `<br><span style='font-size: 0.9em; color: #666;'>${resident.limitacion_observacion}</span>` : ''}\n</div>\n</td>`;
+                                      const limitations = getLimitationDisplay(resident);
+                                      if (limitations.length > 0) {
+                                        return `<td>${limitations.map(lim => `<div><span class="badge badge-outline">${lim.name}${lim.id ? ` (ID: ${lim.id})` : ''}</span>${lim.observation ? `<br><span style='font-size: 0.9em; color: #666;'>${lim.observation}</span>` : ''}</div>`).join('<br>')}</td>`;
+                                      } else {
+                                        return `<td><span class="badge badge-outline">N/A</span></td>`;
+                                      }
                                     case "condicion":
-                                      return `<td>\n<div>\n<span class="badge badge-outline">${resident.condicion || "N/A"}</span>\n${resident.condicion_observacion ? `<br><span style='font-size: 0.9em; color: #666;'>${resident.condicion_observacion}</span>` : ''}\n</div>\n</td>`;
+                                      const conditions = getConditionDisplay(resident);
+                                      if (conditions.length > 0) {
+                                        return `<td>${conditions.map(cond => `<div><span class="badge badge-outline">${cond.name}${cond.id ? ` (ID: ${cond.id})` : ''}</span>${cond.observation ? `<br><span style='font-size: 0.9em; color: #666;'>${cond.observation}</span>` : ''}</div>`).join('<br>')}</td>`;
+                                      } else {
+                                        return `<td><span class="badge badge-outline">N/A</span></td>`;
+                                      }
                                     case "disposicion":
-                                      return `<td>\n<div>\n<span class="badge badge-outline">${resident.disposicion || "N/A"}</span>\n${resident.disposicion_observacion ? `<br><span style='font-size: 0.9em; color: #666;'>${resident.disposicion_observacion}</span>` : ''}\n</div>\n</td>`;
+                                      const dispositions = getDispositionDisplay(resident);
+                                      if (dispositions.length > 0) {
+                                        return `<td>${dispositions.map(disp => `<div><span class="badge badge-outline">${disp.name}${disp.id ? ` (ID: ${disp.id})` : ''}</span>${disp.observation ? `<br><span style='font-size: 0.9em; color: #666;'>${disp.observation}</span>` : ''}</div>`).join('<br>')}</td>`;
+                                      } else {
+                                        return `<td><span class="badge badge-outline">N/A</span></td>`;
+                                      }
                                     case "property":
                                       return `<td>${
                                         resident.propiedad_info
@@ -2031,6 +2173,38 @@ export function DataAnalytics() {
           }
           
           ${
+            filters.countBreak && residentsCount > 0
+              ? (() => {
+                  const countBreakData = getCountBreakData(sortedResidents, filters.countBreak);
+                  const countBreakLabel = countBreakOptions.find(opt => opt.value === filters.countBreak)?.label;
+                  return countBreakData ? `
+                  <div class="section">
+                    <div class="section-title">Count Break Analysis by ${countBreakLabel}</div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>${countBreakLabel}</th>
+                          <th>Count</th>
+                          <th>Percentage</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${countBreakData.map(item => `
+                          <tr>
+                            <td>${item.group}</td>
+                            <td>${item.count}</td>
+                            <td>${((item.count / residentsCount) * 100).toFixed(1)}%</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : '';
+                })()
+              : ""
+          }
+          
+          ${
             residentsCount > 0 && reportData.searchType === "residente"
               ? `
           <div class="section">
@@ -2078,11 +2252,26 @@ export function DataAnalytics() {
                           case "contacto":
                             return `<td>${resident.contacto || "N/A"}</td>`;
                           case "limitacion":
-                            return `<td>\n<div>\n<span class="badge badge-outline">${resident.limitacion || "N/A"}</span>\n${resident.limitacion_observacion ? `<br><span style='font-size: 0.9em; color: #666;'>${resident.limitacion_observacion}</span>` : ''}\n</div>\n</td>`;
+                            const limitations = getLimitationDisplay(resident);
+                            if (limitations.length > 0) {
+                              return `<td>${limitations.map(lim => `<div><span class="badge badge-outline">${lim.name}${lim.id ? ` (ID: ${lim.id})` : ''}</span>${lim.observation ? `<br><span style='font-size: 0.9em; color: #666;'>${lim.observation}</span>` : ''}</div>`).join('<br>')}</td>`;
+                            } else {
+                              return `<td><span class="badge badge-outline">N/A</span></td>`;
+                            }
                           case "condicion":
-                            return `<td>\n<div>\n<span class="badge badge-outline">${resident.condicion || "N/A"}</span>\n${resident.condicion_observacion ? `<br><span style='font-size: 0.9em; color: #666;'>${resident.condicion_observacion}</span>` : ''}\n</div>\n</td>`;
+                            const conditions = getConditionDisplay(resident);
+                            if (conditions.length > 0) {
+                              return `<td>${conditions.map(cond => `<div><span class="badge badge-outline">${cond.name}${cond.id ? ` (ID: ${cond.id})` : ''}</span>${cond.observation ? `<br><span style='font-size: 0.9em; color: #666;'>${cond.observation}</span>` : ''}</div>`).join('<br>')}</td>`;
+                            } else {
+                              return `<td><span class="badge badge-outline">N/A</span></td>`;
+                            }
                           case "disposicion":
-                            return `<td>\n<div>\n<span class="badge badge-outline">${resident.disposicion || "N/A"}</span>\n${resident.disposicion_observacion ? `<br><span style='font-size: 0.9em; color: #666;'>${resident.disposicion_observacion}</span>` : ''}\n</div>\n</td>`;
+                            const dispositions = getDispositionDisplay(resident);
+                            if (dispositions.length > 0) {
+                              return `<td>${dispositions.map(disp => `<div><span class="badge badge-outline">${disp.name}${disp.id ? ` (ID: ${disp.id})` : ''}</span>${disp.observation ? `<br><span style='font-size: 0.9em; color: #666;'>${disp.observation}</span>` : ''}</div>`).join('<br>')}</td>`;
+                            } else {
+                              return `<td><span class="badge badge-outline">N/A</span></td>`;
+                            }
                           case "property":
                             return `<td>${
                               resident.propiedad_info
@@ -2202,7 +2391,7 @@ export function DataAnalytics() {
 
   // Add this helper function to apply all filters to habitants
   const applyResidentFilters = (residents: ResidentData[]): ResidentData[] => {
-    let filteredResidents = residents;
+    let filteredResidents = [...residents];
 
     // Apply name filter from both quick filter and advanced filters
     const nameFilter = quickResidentFilter || filters.residentName;
@@ -2231,50 +2420,40 @@ export function DataAnalytics() {
 
     // Apply condition filter
     if (filters.residentCondition) {
+      const conditionId = parseInt(filters.residentCondition);
       filteredResidents = filteredResidents.filter((resident) => {
-        const conditionFilter = filters.residentCondition!.toLowerCase();
-        const residentCondition = (resident.condicion || "").toLowerCase();
-        return residentCondition.includes(conditionFilter);
+        // Check new array structure first
+        if (resident.habitantes_condiciones && resident.habitantes_condiciones.length > 0) {
+          return resident.habitantes_condiciones.some(cond => cond.condicion.id === conditionId);
+        }
+        // Fallback to old structure - try to match by ID if available
+        return resident.condicion_id === conditionId;
       });
     }
 
     // Apply limitation filter
     if (filters.residentLimitation) {
+      const limitationId = parseInt(filters.residentLimitation);
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
-        const limitationFilter = filters.residentLimitation!.toLowerCase();
-        const residentLimitation = (resident.limitacion || "").toLowerCase();
-
-        // Special cases handling for diabetes
-        if (
-          limitationFilter === "diabetes" &&
-          (residentLimitation.includes("diabetes") ||
-            residentLimitation.includes("diabetico") ||
-            residentLimitation.includes("diabética") ||
-            residentLimitation.includes("diabetica") ||
-            residentLimitation.includes("diabetis") ||
-            residentLimitation.includes("tipo 1") ||
-            residentLimitation.includes("tipo 2") ||
-            residentLimitation.includes("azucar"))
-        ) {
-          return true;
+        // Check new array structure first
+        if (resident.habitantes_limitaciones && resident.habitantes_limitaciones.length > 0) {
+          return resident.habitantes_limitaciones.some(lim => lim.limitacion.id === limitationId);
         }
-
-        // Handle exact matches
-        if (residentLimitation === limitationFilter) {
-          return true;
-        }
-
-        // Fall back to contains for partial matches
-        return residentLimitation.includes(limitationFilter);
+        // Fallback to old structure - try to match by ID if available
+        return resident.limitacion_id === limitationId;
       });
     }
 
     // Apply disposition filter
     if (filters.residentDisposition) {
+      const dispositionId = parseInt(filters.residentDisposition);
       filteredResidents = filteredResidents.filter((resident) => {
-        const dispositionFilter = filters.residentDisposition!.toLowerCase();
-        const residentDisposition = (resident.disposicion || "").toLowerCase();
-        return residentDisposition.includes(dispositionFilter);
+        // Check new array structure first
+        if (resident.habitantes_disposiciones && resident.habitantes_disposiciones.length > 0) {
+          return resident.habitantes_disposiciones.some(disp => disp.disposiciones.id === dispositionId);
+        }
+        // Fallback to old structure - try to match by ID if available
+        return resident.disposicion_id === dispositionId;
       });
     }
 
@@ -2345,15 +2524,11 @@ export function DataAnalytics() {
 
     // Apply property type filter
     if (filters.propertyType) {
-      const propertyTypeFilter = filters.propertyType.toLowerCase();
+      const propertyTypeId = parseInt(filters.propertyType);
       filteredResidents = filteredResidents.filter((resident) => {
-        const propInfoTipo =
-          resident.propiedad_info?.property_type_name?.toLowerCase() || "";
-        const propTipo =
-          resident._property?.property_type_name?.toLowerCase() || "";
-        return (
-          propInfoTipo === propertyTypeFilter || propTipo === propertyTypeFilter
-        );
+        const propInfoTypeId = resident.propiedad_info?.property_type_id;
+        const propTypeId = resident._property?.property_type_id;
+        return propInfoTypeId === propertyTypeId || propTypeId === propertyTypeId;
       });
     }
 
@@ -2365,7 +2540,7 @@ export function DataAnalytics() {
       });
     }
 
-    // Apply sex filter if needed
+    // Apply sex filter
     if (filters.sex) {
       const sexFilter = filters.sex.toLowerCase();
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
@@ -2374,6 +2549,10 @@ export function DataAnalytics() {
         return sex === sexFilter || sexo === sexFilter;
       });
     }
+
+    // Apply event filter - this would require knowing which event the resident is associated with
+    // Note: Event filtering is primarily handled server-side in the comprehensive report API
+    // but we can add client-side filtering if needed based on property relationships
 
     return filteredResidents;
   };
@@ -2576,6 +2755,174 @@ export function DataAnalytics() {
       </div>
     </div>
   );
+
+  // Update the property display for residents
+  const getPropertyInfo = (resident: ResidentData) => {
+    // Find the matching property from properties array using propiedad_id
+    const property = reportData?.propiedades?.find(p => p.id === resident.propiedad_id);
+    
+    if (property) {
+      return {
+        type_name: property.property_type_name || 'N/A',
+        type_id: property.property_type_id || 'N/A',
+        municipio: property.municipio || 'N/A',
+        barrio: property.barrio || 'N/A',
+        sector: property.sector || 'N/A',
+        usng: property.usng || 'N/A',
+        direccion: property.direccion || 'N/A'
+      };
+    }
+
+    // Fallback to resident's property info if no match found
+    return {
+      type_name: resident.propiedad_info?.property_type_name || 'N/A',
+      type_id: resident.propiedad_info?.property_type_id || 'N/A',
+      municipio: resident.propiedad_info?.municipio || 'N/A',
+      barrio: resident.propiedad_info?.barrio || 'N/A',
+      sector: resident.propiedad_info?.sector || 'N/A',
+      usng: resident.propiedad_info?.usng || 'N/A',
+      direccion: resident.propiedad_info?.direccion || 'N/A'
+    };
+  };
+
+  // Helper function to get limitation display text
+  const getLimitationDisplay = (resident: ResidentData) => {
+    if (resident.habitantes_limitaciones && resident.habitantes_limitaciones.length > 0) {
+      return resident.habitantes_limitaciones.map(lim => ({
+        name: lim.limitacion.nombre,
+        id: lim.limitacion.id,
+        observation: lim.observacion
+      }));
+    }
+    return resident.limitacion ? [{ name: resident.limitacion, id: null, observation: resident.limitacion_observacion }] : [];
+  };
+
+  // Helper function to get condition display text
+  const getConditionDisplay = (resident: ResidentData) => {
+    if (resident.habitantes_condiciones && resident.habitantes_condiciones.length > 0) {
+      return resident.habitantes_condiciones.map(cond => ({
+        name: cond.condicion.nombre,
+        id: cond.condicion.id,
+        observation: cond.observacion
+      }));
+    }
+    return resident.condicion ? [{ name: resident.condicion, id: null, observation: resident.condicion_observacion }] : [];
+  };
+
+  // Helper function to get disposition display text
+  const getDispositionDisplay = (resident: ResidentData) => {
+    if (resident.habitantes_disposiciones && resident.habitantes_disposiciones.length > 0) {
+      return resident.habitantes_disposiciones.map(disp => ({
+        name: disp.disposiciones.nombre,
+        id: disp.disposiciones.id,
+        observation: disp.observacion
+      }));
+    }
+    return resident.disposicion ? [{ name: resident.disposicion, id: null, observation: resident.disposicion_observacion }] : [];
+  };
+
+  // Function to get count break data
+  const getCountBreakData = (data: ResidentData[], countBreakColumn: string) => {
+    if (!countBreakColumn || data.length === 0) return null;
+
+    const groupedData: { [key: string]: { count: number; residents: ResidentData[] } } = {};
+
+    data.forEach((resident) => {
+      let groupKey = "N/A";
+      
+      switch (countBreakColumn) {
+        case "limitacion":
+          const limitations = getLimitationDisplay(resident);
+          groupKey = limitations.length > 0 
+            ? limitations.map(lim => `${lim.name}${lim.id ? ` (ID: ${lim.id})` : ''}`).join(", ")
+            : "N/A";
+          break;
+        case "condicion":
+          const conditions = getConditionDisplay(resident);
+          groupKey = conditions.length > 0 
+            ? conditions.map(cond => `${cond.name}${cond.id ? ` (ID: ${cond.id})` : ''}`).join(", ")
+            : "N/A";
+          break;
+        case "disposicion":
+          const dispositions = getDispositionDisplay(resident);
+          groupKey = dispositions.length > 0 
+            ? dispositions.map(disp => `${disp.name}${disp.id ? ` (ID: ${disp.id})` : ''}`).join(", ")
+            : "N/A";
+          break;
+        case "municipio":
+          const propertyInfo = getPropertyInfo(resident);
+          groupKey = `${propertyInfo.municipio} (ID: ${resident.id_municipio || resident.propiedad_info?.municipio_id || 'N/A'})`;
+          break;
+        case "barrio":
+          const propInfo = getPropertyInfo(resident);
+          groupKey = `${propInfo.barrio} (ID: ${resident.id_barrio || resident.propiedad_info?.barrio_id || 'N/A'})`;
+          break;
+        case "sector":
+          const propInfoSector = getPropertyInfo(resident);
+          groupKey = `${propInfoSector.sector} (ID: ${resident.id_sector || resident.propiedad_info?.sector_id || 'N/A'})`;
+          break;
+        case "categoria":
+          groupKey = resident.categoria;
+          break;
+        case "sex":
+          groupKey = resident.sex || resident.sexo || "N/A";
+          break;
+        case "property":
+          const propTypeInfo = getPropertyInfo(resident);
+          groupKey = `${propTypeInfo.type_name} (ID: ${propTypeInfo.type_id})`;
+          break;
+        case "edad":
+          // Group ages by ranges
+          const age = resident.edad;
+          if (age < 18) groupKey = "0-17 (Minor)";
+          else if (age < 65) groupKey = "18-64 (Adult)";
+          else groupKey = "65+ (Elderly)";
+          break;
+        case "family":
+          groupKey = resident.family?.apellidos || "N/A";
+          break;
+        default:
+          groupKey = "N/A";
+      }
+
+      if (!groupedData[groupKey]) {
+        groupedData[groupKey] = { count: 0, residents: [] };
+      }
+      groupedData[groupKey].count++;
+      groupedData[groupKey].residents.push(resident);
+    });
+
+    // Convert to array and sort by count (descending)
+    return Object.entries(groupedData)
+      .map(([key, value]) => ({ group: key, count: value.count, residents: value.residents }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  // Helper function to get visible resident columns
+  const getVisibleResidentColumns = () => {
+    const columns: Array<{key: string; label: string; sortKey: string; className?: string}> = [];
+    
+    if (visibleColumns.id) columns.push({ key: "id", label: "ID", sortKey: "id" });
+    if (visibleColumns.nombre) columns.push({ key: "nombre", label: "Name", sortKey: "nombre" });
+    if (visibleColumns.apellido1) columns.push({ key: "apellido1", label: "Last Name 1", sortKey: "apellido1" });
+    if (visibleColumns.apellido2) columns.push({ key: "apellido2", label: "Last Name 2", sortKey: "apellido2" });
+    if (visibleColumns.edad) columns.push({ key: "edad", label: "Age", sortKey: "edad" });
+    if (visibleColumns.sex) columns.push({ key: "sex", label: "Sex", sortKey: "sex" });
+    if (visibleColumns.categoria) columns.push({ key: "categoria", label: "Category", sortKey: "categoria" });
+    if (visibleColumns.family) columns.push({ key: "family", label: "Family", sortKey: "family.apellidos" });
+    if (visibleColumns.contacto) columns.push({ key: "contacto", label: "Contact", sortKey: "contacto" });
+    if (visibleColumns.limitacion) columns.push({ key: "limitacion", label: "Limitation", sortKey: "limitacion" });
+    if (visibleColumns.condicion) columns.push({ key: "condicion", label: "Condition", sortKey: "condicion" });
+    if (visibleColumns.disposicion) columns.push({ key: "disposicion", label: "Disposition", sortKey: "disposicion" });
+    if (visibleColumns.property) columns.push({ key: "property", label: "Property Type", sortKey: "propiedad_info.property_type_name" });
+    if (visibleColumns.municipio) columns.push({ key: "municipio", label: "Municipality", sortKey: "propiedad_info.municipio" });
+    if (visibleColumns.barrio) columns.push({ key: "barrio", label: "Barrio", sortKey: "propiedad_info.barrio" });
+    if (visibleColumns.sector) columns.push({ key: "sector", label: "Sector", sortKey: "propiedad_info.sector" });
+    if (visibleColumns.usng) columns.push({ key: "usng", label: "USNG", sortKey: "propiedad_info.usng" });
+    if (visibleColumns.direccion) columns.push({ key: "direccion", label: "Address", sortKey: "propiedad_info.direccion" });
+    
+    return columns;
+  };
 
   return (
     <div className="space-y-6">
@@ -3221,19 +3568,23 @@ export function DataAnalytics() {
                                               {visibleColumns.limitacion && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className="mb-1"
-                                                    >
-                                                      {resident.limitacion ||
-                                                        "N/A"}
+                                                    {resident.habitantes_limitaciones && resident.habitantes_limitaciones.length > 0 ? (
+                                                      resident.habitantes_limitaciones.map((lim, idx) => (
+                                                        <div key={lim.id} className={idx > 0 ? "mt-2" : ""}>
+                                                          <Badge variant="outline" className="mb-1">
+                                                            {lim.limitacion.nombre} (ID: {lim.limitacion.id})
                                                     </Badge>
-                                                    {resident.limitacion_observacion && (
-                                                      <span className="text-xs text-muted-foreground">
-                                                        {
-                                                          resident.limitacion_observacion
-                                                        }
+                                                          {lim.observacion && (
+                                                            <span className="text-xs text-muted-foreground block">
+                                                              {lim.observacion}
                                                       </span>
+                                                          )}
+                                                        </div>
+                                                      ))
+                                                    ) : (
+                                                      <Badge variant="outline" className="mb-1">
+                                                        {resident.limitacion || "N/A"}
+                                                      </Badge>
                                                     )}
                                                   </div>
                                                 </td>
@@ -3241,19 +3592,23 @@ export function DataAnalytics() {
                                               {visibleColumns.condicion && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className="mb-1"
-                                                    >
-                                                      {resident.condicion ||
-                                                        "N/A"}
+                                                    {resident.habitantes_condiciones && resident.habitantes_condiciones.length > 0 ? (
+                                                      resident.habitantes_condiciones.map((cond, idx) => (
+                                                        <div key={cond.id} className={idx > 0 ? "mt-2" : ""}>
+                                                          <Badge variant="outline" className="mb-1">
+                                                            {cond.condicion.nombre} (ID: {cond.condicion.id})
                                                     </Badge>
-                                                    {resident.condicion_observacion && (
-                                                      <span className="text-xs text-muted-foreground">
-                                                        {
-                                                          resident.condicion_observacion
-                                                        }
+                                                          {cond.observacion && (
+                                                            <span className="text-xs text-muted-foreground block">
+                                                              {cond.observacion}
                                                       </span>
+                                                          )}
+                                                        </div>
+                                                      ))
+                                                    ) : (
+                                                      <Badge variant="outline" className="mb-1">
+                                                        {resident.condicion || "N/A"}
+                                                      </Badge>
                                                     )}
                                                   </div>
                                                 </td>
@@ -3261,19 +3616,23 @@ export function DataAnalytics() {
                                               {visibleColumns.disposicion && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className="mb-1"
-                                                    >
-                                                      {resident.disposicion ||
-                                                        "N/A"}
+                                                    {resident.habitantes_disposiciones && resident.habitantes_disposiciones.length > 0 ? (
+                                                      resident.habitantes_disposiciones.map((disp, idx) => (
+                                                        <div key={disp.id} className={idx > 0 ? "mt-2" : ""}>
+                                                          <Badge variant="outline" className="mb-1">
+                                                            {disp.disposiciones.nombre} (ID: {disp.disposiciones.id})
                                                     </Badge>
-                                                    {resident.disposicion_observacion && (
-                                                      <span className="text-xs text-muted-foreground">
-                                                        {
-                                                          resident.disposicion_observacion
-                                                        }
+                                                          {disp.observacion && (
+                                                            <span className="text-xs text-muted-foreground block">
+                                                              {disp.observacion}
                                                       </span>
+                                                          )}
+                                                        </div>
+                                                      ))
+                                                    ) : (
+                                                      <Badge variant="outline" className="mb-1">
+                                                        {resident.disposicion || "N/A"}
+                                                      </Badge>
                                                     )}
                                                   </div>
                                                 </td>
@@ -3285,26 +3644,15 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.property_type_name &&
-                                                      resident.propiedad_info
-                                                        ?.property_type_id
-                                                        ? `${resident.propiedad_info.property_type_name} (${resident.propiedad_info.property_type_id})`
-                                                        : "N/A"}
+                                                      {`${getPropertyInfo(resident).type_name} (${getPropertyInfo(resident).type_id})`}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.municipio || "N/A"}
-                                                      ,{" "}
-                                                      {resident.propiedad_info
-                                                        ?.barrio || "N/A"}
-                                                      ,{" "}
-                                                      {resident.propiedad_info
-                                                        ?.sector || "N/A"}
+                                                      {getPropertyInfo(resident).municipio},{" "}
+                                                      {getPropertyInfo(resident).barrio},{" "}
+                                                      {getPropertyInfo(resident).sector}
                                                     </span>
                                                     <span className="text-xs font-mono mt-1">
-                                                      {resident.propiedad_info
-                                                        ?.usng || "N/A"}
+                                                      {getPropertyInfo(resident).usng}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3316,12 +3664,10 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.municipio || "N/A"}
+                                                      {property.municipio || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.municipio || "N/A"}
+                                                      ID: {property.municipio_id || resident.id_municipio || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3333,12 +3679,10 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.barrio || "N/A"}
+                                                      {property.barrio || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.barrio || "N/A"}
+                                                      ID: {property.barrio_id || resident.id_barrio || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3350,12 +3694,10 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.sector || "N/A"}
+                                                      {property.sector || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.sector || "N/A"}
+                                                      ID: {property.sector_id || resident.id_sector || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3367,12 +3709,10 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.direccion || "N/A"}
+                                                      {property.direccion || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.direccion || "N/A"}
+                                                      {property.direccion || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3394,484 +3734,141 @@ export function DataAnalytics() {
               </TabsContent>
 
               <TabsContent value="notifications" className="pt-4">
-                {reportData.notificaciones &&
-                reportData.notificaciones.length > 0 ? (
-                  <ScrollArea className="h-[400px] rounded-md border p-4">
                     <div className="space-y-4">
-                      {reportData.notificaciones.map((notification) => (
-                        <Card key={notification.id} className="overflow-hidden">
-                          <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between space-y-0">
+                  {reportData.notificaciones?.map((notification) => (
+                    <Card key={notification.id}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
                             <div className="space-y-1">
-                              <CardTitle className="text-base font-medium flex items-center gap-2">
-                                <FileText className="h-4 w-4" />
-                                {notification.numero_notificacion ||
-                                  `NOT-${notification.id}`}
+                            <CardTitle className="text-base">
+                              {notification.tipo}
                               </CardTitle>
-                              <CardDescription className="flex items-center gap-2">
-                                <Clock className="h-3 w-3" />
+                            <CardDescription className="text-sm">
+                              #{notification.numero_notificacion} •{" "}
                                 {formatDate(notification.fecha_creacion)}
                               </CardDescription>
                             </div>
                             <Badge
-                              className={cn(
-                                getNotificationStatusColor(notification.estado)
-                              )}
+                            variant={
+                              getNotificationStatusColor(notification.estado) as any
+                            }
                             >
                               {notification.estado}
                             </Badge>
+                        </div>
                           </CardHeader>
-                          <CardContent className="p-4 pt-2">
+                      <CardContent>
                             <p className="text-sm">{notification.mensaje}</p>
                           </CardContent>
-                          <CardFooter className="px-4 py-2 bg-muted/30 flex justify-between">
-                            <span className="text-xs text-muted-foreground">
-                              Type: {notification.tipo}
-                            </span>
+                      <CardFooter className="pt-3">
                             <Button
-                              variant="ghost"
+                          variant="outline"
                               size="sm"
-                              className="h-7 text-xs"
-                              onClick={() =>
-                                handleNotificationDetails(notification)
-                              }
+                          onClick={() => handleNotificationDetails(notification)}
                             >
-                              View details
+                          <Home className="h-4 w-4 mr-2" />
+                          View Properties ({notification.propiedades?.length || 0})
                             </Button>
                           </CardFooter>
                         </Card>
                       ))}
                     </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 rounded-md">
-                    <p className="text-muted-foreground">
-                      No notifications registered for this event.
-                    </p>
-                  </div>
-                )}
               </TabsContent>
             </Tabs>
           )}
 
-          {(reportData.searchType !== "evento" || !reportData.evento) &&
-            reportData.searchType !== "residente" && (
+          {/* Residents Display */}
+          {reportData.searchType !== "evento" && reportData.residentes && (
               <CardContent>
-                {/* Column Visibility Controls for Properties */}
-                {renderPropertyColumnControls()}
+              {/* Quick Filter */}
+              {reportData.residentes.length > 0 && (
+                <>
+                  <div className="mb-4 flex items-center gap-4">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Quick filter residents..."
+                        value={quickResidentFilter}
+                        onChange={(e) => setQuickResidentFilter(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      Showing {
+                        applyResidentFilters(reportData.residentes).length
+                      } of {reportData.residentes.length} residents
+                    </span>
+                  </div>
 
-                {/* Column Visibility Controls for Residents in expanded view */}
+                  {/* Column Visibility Controls */}
                 {renderResidentColumnControls()}
 
                 <div className="text-xs text-muted-foreground mb-2">
                   <span className="font-medium">Tip:</span> Click column headers
                   to sort. Hold Shift + Click to add secondary sort criteria.
                 </div>
+
+                  {/* Count Break Results */}
+                  {filters.countBreak && reportData.residentes && (() => {
+                    const filteredResidents = applyResidentFilters(reportData.residentes || []);
+                    const countBreakData = getCountBreakData(
+                      filteredResidents,
+                      filters.countBreak
+                    );
+                    return countBreakData ? (
+                      <div className="mb-6 p-4 bg-muted/30 rounded-md">
+                        <h4 className="text-lg font-semibold mb-4">
+                          Count Break by {countBreakOptions.find(opt => opt.value === filters.countBreak)?.label}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {countBreakData.map((item, index) => (
+                            <Card key={index} className="p-4">
+                              <div className="flex justify-between items-start">
+                                <div className="flex-1 mr-2">
+                                  <h5 className="font-medium text-sm break-words">{item.group}</h5>
+                                </div>
+                                <Badge variant="secondary" className="ml-2 flex-shrink-0">
+                                  {item.count}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {((item.count / filteredResidents.length) * 100).toFixed(1)}% of total
+                              </div>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Residents Table */}
                 <div className="rounded-md border">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="bg-muted/50">
-                          {visibleColumns.property_tipo && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) => requestSort("tipo", e)}
-                            >
-                              Property {getSortDirectionIndicator("tipo")}
+                            {getVisibleResidentColumns().map((col) => (
+                              <th
+                                key={col.key}
+                                className={cn(
+                                  "py-3 px-4 text-left font-medium cursor-pointer",
+                                  col.className
+                                )}
+                                onClick={(e) => requestSort(col.sortKey, e)}
+                              >
+                                {col.label} {getSortDirectionIndicator(col.sortKey)}
                             </th>
-                          )}
-                          {visibleColumns.property_location && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) => requestSort("municipio", e)}
-                            >
-                              Location {getSortDirectionIndicator("municipio")}
-                            </th>
-                          )}
-                          {visibleColumns.property_address && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) => requestSort("direccion", e)}
-                            >
-                              Address {getSortDirectionIndicator("direccion")}
-                            </th>
-                          )}
-                          {visibleColumns.property_usng && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) => requestSort("usng", e)}
-                            >
-                              USNG {getSortDirectionIndicator("usng")}
-                            </th>
-                          )}
-                          {visibleColumns.property_damage && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) => requestSort("daños", e)}
-                            >
-                              Damage {getSortDirectionIndicator("daños")}
-                            </th>
-                          )}
-                          {visibleColumns.property_date && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) => requestSort("fecha", e)}
-                            >
-                              Date {getSortDirectionIndicator("fecha")}
-                            </th>
-                          )}
-                          {visibleColumns.property_residents && (
-                            <th
-                              className="py-3 px-4 text-left font-medium cursor-pointer"
-                              onClick={(e) =>
-                                requestSort("habitantes.length", e)
-                              }
-                            >
-                              Residents{" "}
-                              {getSortDirectionIndicator("habitantes.length")}
-                            </th>
-                          )}
+                            ))}
                         </tr>
                       </thead>
                       <tbody>
                         {(sortConfigs
-                          ? sortData(reportData.propiedades)
-                          : reportData.propiedades
-                        ).map((property) => (
-                          <>
-                            <tr
-                              key={property.id}
-                              className="border-t hover:bg-muted/50 transition-colors"
-                            >
-                              {visibleColumns.property_tipo && (
-                                <td className="py-3 px-4">
-                                  {property.property_type_name} (
-                                  {property.property_type_id})
-                                </td>
-                              )}
-                              {visibleColumns.property_location && (
-                                <td className="py-3 px-4">
-                                  <div className="flex flex-col">
-                                    <span>{property.municipio}</span>
-                                    <span className="text-sm text-muted-foreground">
-                                      {property.barrio} • {property.sector}
-                                    </span>
-                                  </div>
-                                </td>
-                              )}
-                              {visibleColumns.property_address && (
-                                <td className="py-3 px-4">
-                                  {property.direccion || "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.property_usng && (
-                                <td className="py-3 px-4">{property.usng}</td>
-                              )}
-                              {visibleColumns.property_damage && (
-                                <td className="py-3 px-4">
-                                  {property.daños || "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.property_date && (
-                                <td className="py-3 px-4">
-                                  {property.fecha
-                                    ? new Date(
-                                        property.fecha
-                                      ).toLocaleDateString()
-                                    : "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.property_residents && (
-                                <td className="py-3 px-4">
-                                  <div className="flex items-center gap-1">
-                                    <Users className="h-4 w-4" />
-                                    <span>{property.habitantes.length}</span>
-                                    {property.habitantes.length > 0 && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 w-6 p-0 ml-1"
-                                        onClick={() =>
-                                          toggleProperty(property.id)
-                                        }
-                                      >
-                                        {expandedProperties[property.id] ? (
-                                          <ChevronUp className="h-4 w-4" />
-                                        ) : (
-                                          <ChevronDown className="h-4 w-4" />
-                                        )}
-                                      </Button>
-                                    )}
-                                  </div>
-                                </td>
-                              )}
-                            </tr>
-                            {expandedProperties[property.id] &&
-                              property.habitantes.length > 0 && (
-                                <tr className="bg-muted/30">
-                                  <td
-                                    colSpan={
-                                      Object.values(visibleColumns)
-                                        .filter(
-                                          (v) => v && typeof v === "boolean"
-                                        )
-                                        .filter((_, i) => i < 7).length
-                                    }
-                                    className="py-2 px-4"
-                                  >
-                                    <div className="ml-8">
-                                      <table className="w-full">
-                                        <thead>
-                                          <tr className="text-sm text-muted-foreground">
-                                            {visibleColumns.id && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("id", e)
-                                                }
-                                              >
-                                                ID{" "}
-                                                {getSortDirectionIndicator(
-                                                  "id"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.nombre && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("nombre", e)
-                                                }
-                                              >
-                                                Name{" "}
-                                                {getSortDirectionIndicator(
-                                                  "nombre"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.apellido1 && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("apellido1", e)
-                                                }
-                                              >
-                                                Last Name 1{" "}
-                                                {getSortDirectionIndicator(
-                                                  "apellido1"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.apellido2 && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("apellido2", e)
-                                                }
-                                              >
-                                                Last Name 2{" "}
-                                                {getSortDirectionIndicator(
-                                                  "apellido2"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.edad && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("edad", e)
-                                                }
-                                              >
-                                                Age{" "}
-                                                {getSortDirectionIndicator(
-                                                  "edad"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.sex && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("sex", e)
-                                                }
-                                              >
-                                                Sex{" "}
-                                                {getSortDirectionIndicator(
-                                                  "sex"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.categoria && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("categoria", e)
-                                                }
-                                              >
-                                                Category{" "}
-                                                {getSortDirectionIndicator(
-                                                  "categoria"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.family && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort(
-                                                    "family.apellidos",
-                                                    e
-                                                  )
-                                                }
-                                              >
-                                                Family{" "}
-                                                {getSortDirectionIndicator(
-                                                  "family.apellidos"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.contacto && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("contacto", e)
-                                                }
-                                              >
-                                                Contact{" "}
-                                                {getSortDirectionIndicator(
-                                                  "contacto"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.limitacion && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("limitacion", e)
-                                                }
-                                              >
-                                                Limitation{" "}
-                                                {getSortDirectionIndicator(
-                                                  "limitacion"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.condicion && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("condicion", e)
-                                                }
-                                              >
-                                                Condition{" "}
-                                                {getSortDirectionIndicator(
-                                                  "condicion"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.disposicion && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort("disposicion", e)
-                                                }
-                                              >
-                                                Disposition{" "}
-                                                {getSortDirectionIndicator(
-                                                  "disposicion"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.property && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort(
-                                                    "propiedad_info.property_type_name",
-                                                    e
-                                                  )
-                                                }
-                                              >
-                                                Property{" "}
-                                                {getSortDirectionIndicator(
-                                                  "propiedad_info.property_type_name"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.municipio && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort(
-                                                    "propiedad_info.municipio",
-                                                    e
-                                                  )
-                                                }
-                                              >
-                                                Municipality{" "}
-                                                {getSortDirectionIndicator(
-                                                  "propiedad_info.municipio"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.barrio && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort(
-                                                    "propiedad_info.barrio",
-                                                    e
-                                                  )
-                                                }
-                                              >
-                                                Barrio{" "}
-                                                {getSortDirectionIndicator(
-                                                  "propiedad_info.barrio"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.sector && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort(
-                                                    "propiedad_info.sector",
-                                                    e
-                                                  )
-                                                }
-                                              >
-                                                Sector{" "}
-                                                {getSortDirectionIndicator(
-                                                  "propiedad_info.sector"
-                                                )}
-                                              </th>
-                                            )}
-                                            {visibleColumns.direccion && (
-                                              <th
-                                                className="py-2 px-3 text-left font-medium cursor-pointer"
-                                                onClick={(e) =>
-                                                  requestSort(
-                                                    "propiedad_info.direccion",
-                                                    e
-                                                  )
-                                                }
-                                              >
-                                                Address{" "}
-                                                {getSortDirectionIndicator(
-                                                  "propiedad_info.direccion"
-                                                )}
-                                              </th>
-                                            )}
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {(sortConfigs &&
-                                          expandedProperties[property.id]
-                                            ? sortData(property.habitantes)
-                                            : property.habitantes
+                            ? sortData(applyResidentFilters(reportData.residentes))
+                            : applyResidentFilters(reportData.residentes)
                                           ).map((resident: ResidentData) => (
                                             <tr
                                               key={resident.id}
-                                              className="text-sm"
+                              className="border-t hover:bg-muted/50 transition-colors"
                                             >
                                               {visibleColumns.id && (
                                                 <td className="py-2 px-3">
@@ -3879,15 +3876,12 @@ export function DataAnalytics() {
                                                     variant="outline"
                                                     className="font-mono text-xs"
                                                   >
-                                                    {resident.family_id || "0"}-
-                                                    {resident.id}
+                                    {resident.family_id || "0"}-{resident.id}
                                                   </Badge>
                                                 </td>
                                               )}
                                               {visibleColumns.nombre && (
-                                                <td className="py-2 px-3">
-                                                  {resident.nombre}
-                                                </td>
+                                <td className="py-2 px-3">{resident.nombre}</td>
                                               )}
                                               {visibleColumns.apellido1 && (
                                                 <td className="py-2 px-3">
@@ -3900,15 +3894,11 @@ export function DataAnalytics() {
                                                 </td>
                                               )}
                                               {visibleColumns.edad && (
-                                                <td className="py-2 px-3">
-                                                  {resident.edad}
-                                                </td>
+                                <td className="py-2 px-3">{resident.edad}</td>
                                               )}
                                               {visibleColumns.sex && (
                                                 <td className="py-2 px-3">
-                                                  {resident.sex ||
-                                                    resident.sexo ||
-                                                    "N/A"}
+                                  {resident.sex || resident.sexo || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.categoria && (
@@ -3933,60 +3923,69 @@ export function DataAnalytics() {
                                               {visibleColumns.limitacion && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className="mb-1"
-                                                    >
-                                                      {resident.limitacion ||
-                                                        "N/A"}
-                                                    </Badge>
-                                                    {resident.limitacion_observacion && (
-                                                      <span className="text-xs text-muted-foreground">
-                                                        {
-                                                          resident.limitacion_observacion
-                                                        }
-                                                      </span>
-                                                    )}
+                                    {getLimitationDisplay(resident).map((limitation, idx) => (
+                                      <div key={idx} className={idx > 0 ? "mt-2" : ""}>
+                                        <Badge variant="outline" className="mb-1">
+                                          {limitation.name}{limitation.id ? ` (ID: ${limitation.id})` : ''}
+                                        </Badge>
+                                        {limitation.observation && (
+                                          <span className="text-xs text-muted-foreground block">
+                                            {limitation.observation}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {getLimitationDisplay(resident).length === 0 && (
+                                      <Badge variant="outline" className="mb-1">
+                                        N/A
+                                      </Badge>
+                                    )}
                                                   </div>
                                                 </td>
                                               )}
                                               {visibleColumns.condicion && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className="mb-1"
-                                                    >
-                                                      {resident.condicion ||
-                                                        "N/A"}
-                                                    </Badge>
-                                                    {resident.condicion_observacion && (
-                                                      <span className="text-xs text-muted-foreground">
-                                                        {
-                                                          resident.condicion_observacion
-                                                        }
-                                                      </span>
-                                                    )}
+                                    {getConditionDisplay(resident).map((condition, idx) => (
+                                      <div key={idx} className={idx > 0 ? "mt-2" : ""}>
+                                        <Badge variant="outline" className="mb-1">
+                                          {condition.name}{condition.id ? ` (ID: ${condition.id})` : ''}
+                                        </Badge>
+                                        {condition.observation && (
+                                          <span className="text-xs text-muted-foreground block">
+                                            {condition.observation}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {getConditionDisplay(resident).length === 0 && (
+                                      <Badge variant="outline" className="mb-1">
+                                        N/A
+                                      </Badge>
+                                    )}
                                                   </div>
                                                 </td>
                                               )}
                                               {visibleColumns.disposicion && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className="mb-1"
-                                                    >
-                                                      {resident.disposicion ||
-                                                        "N/A"}
-                                                    </Badge>
-                                                    {resident.disposicion_observacion && (
-                                                      <span className="text-xs text-muted-foreground">
-                                                        {
-                                                          resident.disposicion_observacion
-                                                        }
-                                                      </span>
-                                                    )}
+                                    {getDispositionDisplay(resident).map((disposition, idx) => (
+                                      <div key={idx} className={idx > 0 ? "mt-2" : ""}>
+                                        <Badge variant="outline" className="mb-1">
+                                          {disposition.name}{disposition.id ? ` (ID: ${disposition.id})` : ''}
+                                        </Badge>
+                                        {disposition.observation && (
+                                          <span className="text-xs text-muted-foreground block">
+                                            {disposition.observation}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {getDispositionDisplay(resident).length === 0 && (
+                                      <Badge variant="outline" className="mb-1">
+                                        N/A
+                                      </Badge>
+                                    )}
                                                   </div>
                                                 </td>
                                               )}
@@ -3997,26 +3996,15 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.property_type_name &&
-                                                      resident.propiedad_info
-                                                        ?.property_type_id
-                                                        ? `${resident.propiedad_info.property_type_name} (${resident.propiedad_info.property_type_id})`
-                                                        : "N/A"}
+                                                      {`${getPropertyInfo(resident).type_name} (${getPropertyInfo(resident).type_id})`}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.municipio || "N/A"}
-                                                      ,{" "}
-                                                      {resident.propiedad_info
-                                                        ?.barrio || "N/A"}
-                                                      ,{" "}
-                                                      {resident.propiedad_info
-                                                        ?.sector || "N/A"}
+                                                      {getPropertyInfo(resident).municipio},{" "}
+                                                      {getPropertyInfo(resident).barrio},{" "}
+                                                      {getPropertyInfo(resident).sector}
                                                     </span>
                                                     <span className="text-xs font-mono mt-1">
-                                                      {resident.propiedad_info
-                                                        ?.usng || "N/A"}
+                                                      {getPropertyInfo(resident).usng}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -4028,12 +4016,10 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.municipio || "N/A"}
+                                      {getPropertyInfo(resident).municipio || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.municipio || "N/A"}
+                                      ID: {resident.id_municipio || resident.propiedad_info?.municipio_id || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -4045,12 +4031,10 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.barrio || "N/A"}
+                                      {getPropertyInfo(resident).barrio || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.barrio || "N/A"}
+                                      ID: {resident.id_barrio || resident.propiedad_info?.barrio_id || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -4062,698 +4046,56 @@ export function DataAnalytics() {
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.sector || "N/A"}
+                                      {getPropertyInfo(resident).sector || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.sector || "N/A"}
+                                      ID: {resident.id_sector || resident.propiedad_info?.sector_id || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
                                               )}
-                                              {visibleColumns.direccion && (
+                              {visibleColumns.usng && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
                                                     <Badge
                                                       variant="outline"
-                                                      className="mb-1"
+                                      className="mb-1 font-mono text-xs"
                                                     >
-                                                      {resident.propiedad_info
-                                                        ?.direccion || "N/A"}
+                                      {getPropertyInfo(resident).usng || "N/A"}
                                                     </Badge>
-                                                    <span className="text-xs text-muted-foreground">
-                                                      {resident.propiedad_info
-                                                        ?.direccion || "N/A"}
-                                                    </span>
                                                   </div>
                                                 </td>
-                                              )}
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                          </>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </CardContent>
-            )}
-
-          {reportData && reportData.searchType === "residente" && (
-            <CardContent>
-              {/* Add a quick filter input above the results */}
-              <div className="mb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search resident by name..."
-                    value={quickResidentFilter}
-                    onChange={(e) => setQuickResidentFilter(e.target.value)}
-                    className="pl-10"
-                  />
-                  {quickResidentFilter && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-1 top-1 h-8 px-2"
-                      onClick={() => setQuickResidentFilter("")}
-                    >
-                      ✕
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Column Visibility Controls */}
-              {renderResidentColumnControls()}
-
-              <div className="text-xs text-muted-foreground mb-2">
-                <span className="font-medium">Tip:</span> Click column headers
-                to sort. Hold Shift + Click to add secondary sort criteria.
-              </div>
-              <div className="rounded-md border">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-muted/50">
-                        {visibleColumns.id && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("id", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              ID {getSortDirectionIndicator("id")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.nombre && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("nombre", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Name {getSortDirectionIndicator("nombre")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.apellido1 && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("apellido1", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Last Name 1{" "}
-                              {getSortDirectionIndicator("apellido1")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.apellido2 && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("apellido2", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Last Name 2{" "}
-                              {getSortDirectionIndicator("apellido2")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.edad && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("edad", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Age {getSortDirectionIndicator("edad")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.sex && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("sex", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Sex {getSortDirectionIndicator("sex")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.categoria && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("categoria", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Category {getSortDirectionIndicator("categoria")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.family && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("family.apellidos", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Family{" "}
-                              {getSortDirectionIndicator("family.apellidos")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.contacto && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("contacto", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Contact {getSortDirectionIndicator("contacto")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.limitacion && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("limitacion", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Limitation{" "}
-                              {getSortDirectionIndicator("limitacion")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.condicion && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("condicion", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Condition {getSortDirectionIndicator("condicion")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.disposicion && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) => requestSort("disposicion", e)}
-                          >
-                            <div className="flex items-center gap-1">
-                              Disposition{" "}
-                              {getSortDirectionIndicator("disposicion")}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.property && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) =>
-                              requestSort(
-                                "propiedad_info.property_type_name",
-                                e
-                              )
-                            }
-                          >
-                            <div className="flex items-center gap-1">
-                              Property{" "}
-                              {getSortDirectionIndicator(
-                                "propiedad_info.property_type_name"
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.municipio && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) =>
-                              requestSort("propiedad_info.municipio", e)
-                            }
-                          >
-                            <div className="flex items-center gap-1">
-                              Municipality{" "}
-                              {getSortDirectionIndicator(
-                                "propiedad_info.municipio"
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.barrio && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) =>
-                              requestSort("propiedad_info.barrio", e)
-                            }
-                          >
-                            <div className="flex items-center gap-1">
-                              Barrio{" "}
-                              {getSortDirectionIndicator(
-                                "propiedad_info.barrio"
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.sector && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) =>
-                              requestSort("propiedad_info.sector", e)
-                            }
-                          >
-                            <div className="flex items-center gap-1">
-                              Sector{" "}
-                              {getSortDirectionIndicator(
-                                "propiedad_info.sector"
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {visibleColumns.usng && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) =>
-                              requestSort("propiedad_info.usng", e)
-                            }
-                          >
-                            <div className="flex items-center gap-1">
-                              USNG{" "}
-                              {getSortDirectionIndicator("propiedad_info.usng")}
-                            </div>
-                          </th>
                         )}
                         {visibleColumns.direccion && (
-                          <th
-                            className="py-3 px-4 text-left font-medium cursor-pointer"
-                            onClick={(e) =>
-                              requestSort("propiedad_info.direccion", e)
-                            }
-                          >
-                            <div className="flex items-center gap-1">
-                              Address{" "}
-                              {getSortDirectionIndicator(
-                                "propiedad_info.direccion"
-                              )}
-                            </div>
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.residentes
-                        ? // Filter and sort the residents
-                          (sortConfigs
-                            ? sortData(
-                                reportData.residentes.filter((resident) => {
-                                  if (!quickResidentFilter) return true;
-                                  return resident.nombre
-                                    .toLowerCase()
-                                    .includes(
-                                      quickResidentFilter.toLowerCase()
-                                    );
-                                })
-                              )
-                            : reportData.residentes.filter((resident) => {
-                                if (!quickResidentFilter) return true;
-                                return resident.nombre
-                                  .toLowerCase()
-                                  .includes(quickResidentFilter.toLowerCase());
-                              })
-                          ).map((resident: ResidentData) => (
-                            <tr
-                              key={resident.id}
-                              className="border-t hover:bg-muted/50 transition-colors"
-                            >
-                              {visibleColumns.id && (
-                                <td className="py-3 px-4">
-                                  <Badge
-                                    variant="outline"
-                                    className="font-mono text-xs"
-                                  >
-                                    {resident.family_id || "0"}-{resident.id}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.nombre && (
-                                <td className="py-3 px-4">{resident.nombre}</td>
-                              )}
-                              {visibleColumns.apellido1 && (
-                                <td className="py-3 px-4">
-                                  {resident.apellido1 || "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.apellido2 && (
-                                <td className="py-3 px-4">
-                                  {resident.apellido2 || "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.edad && (
-                                <td className="py-3 px-4">{resident.edad}</td>
-                              )}
-                              {visibleColumns.sex && (
-                                <td className="py-3 px-4">
-                                  {resident.sex || resident.sexo || "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.categoria && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.categoria}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.family && (
-                                <td className="py-3 px-4">
-                                  {resident.family ? (
-                                    <Badge variant="secondary">
-                                      {resident.family.apellidos}
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">
-                                      No family
-                                    </span>
-                                  )}
-                                </td>
-                              )}
-                              {visibleColumns.contacto && (
-                                <td className="py-3 px-4">
-                                  {resident.contacto || "N/A"}
-                                </td>
-                              )}
-                              {visibleColumns.limitacion && (
-                                <td className="py-3 px-4">
+                                <td className="py-2 px-3">
                                   <div className="flex flex-col">
-                                    <Badge variant="outline" className="mb-1">
-                                      {resident.limitacion || "N/A"}
-                                    </Badge>
-                                    {resident.limitacion_observacion && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {resident.limitacion_observacion}
+                                    <span className="text-sm">
+                                      {getPropertyInfo(resident).direccion || "N/A"}
                                       </span>
-                                    )}
                                   </div>
-                                </td>
-                              )}
-                              {visibleColumns.condicion && (
-                                <td className="py-3 px-4">
-                                  <div className="flex flex-col">
-                                    <Badge variant="outline" className="mb-1">
-                                      {resident.condicion || "N/A"}
-                                    </Badge>
-                                    {resident.condicion_observacion && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {resident.condicion_observacion}
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                              )}
-                              {visibleColumns.disposicion && (
-                                <td className="py-3 px-4">
-                                  <div className="flex flex-col">
-                                    <Badge variant="outline" className="mb-1">
-                                      {resident.disposicion || "N/A"}
-                                    </Badge>
-                                    {resident.disposicion_observacion && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {resident.disposicion_observacion}
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                              )}
-                              {visibleColumns.property && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.propiedad_info
-                                      ?.property_type_name &&
-                                    resident.propiedad_info?.property_type_id
-                                      ? `${resident.propiedad_info.property_type_name} (${resident.propiedad_info.property_type_id})`
-                                      : "N/A"}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.municipio && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.propiedad_info?.municipio ||
-                                      "N/A"}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.barrio && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.propiedad_info?.barrio || "N/A"}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.sector && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.propiedad_info?.sector || "N/A"}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.usng && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.propiedad_info?.usng || "N/A"}
-                                  </Badge>
-                                </td>
-                              )}
-                              {visibleColumns.direccion && (
-                                <td className="py-3 px-4">
-                                  <Badge variant="outline">
-                                    {resident.propiedad_info?.direccion ||
-                                      "N/A"}
-                                  </Badge>
                                 </td>
                               )}
                             </tr>
-                          ))
-                        : // Fix the property reference error
-                          (sortConfigs
-                            ? sortData(
-                                reportData.propiedades.flatMap((property) => {
-                                  // Create residents with property reference
-                                  return applyResidentFilters(
-                                    property.habitantes
-                                  ).map((resident) => ({
-                                    ...resident,
-                                    _property: property, // Add property reference
-                                  }));
-                                })
-                              )
-                            : reportData.propiedades.flatMap((property) => {
-                                // Create residents with property reference
-                                return applyResidentFilters(
-                                  property.habitantes
-                                ).map((resident) => ({
-                                  ...resident,
-                                  _property: property, // Add property reference
-                                }));
-                              })
-                          ).map(
-                            (
-                              resident: ResidentData & {
-                                _property?: PropertyData;
-                              }
-                            ) => (
-                              <tr
-                                key={resident.id}
-                                className="border-t hover:bg-muted/50 transition-colors"
-                              >
-                                {visibleColumns.id && (
-                                  <td className="py-3 px-4">
-                                    <Badge
-                                      variant="outline"
-                                      className="font-mono text-xs"
-                                    >
-                                      {resident.family_id || "0"}-{resident.id}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.nombre && (
-                                  <td className="py-3 px-4">
-                                    {resident.nombre}
-                                  </td>
-                                )}
-                                {visibleColumns.apellido1 && (
-                                  <td className="py-3 px-4">
-                                    {resident.apellido1 || "N/A"}
-                                  </td>
-                                )}
-                                {visibleColumns.apellido2 && (
-                                  <td className="py-3 px-4">
-                                    {resident.apellido2 || "N/A"}
-                                  </td>
-                                )}
-                                {visibleColumns.edad && (
-                                  <td className="py-3 px-4">{resident.edad}</td>
-                                )}
-                                {visibleColumns.sex && (
-                                  <td className="py-3 px-4">
-                                    {resident.sex || resident.sexo || "N/A"}
-                                  </td>
-                                )}
-                                {visibleColumns.categoria && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident.categoria}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.family && (
-                                  <td className="py-3 px-4">
-                                    {resident.family ? (
-                                      <Badge variant="secondary">
-                                        {resident.family.apellidos}
-                                      </Badge>
-                                    ) : (
-                                      <span className="text-muted-foreground text-xs">
-                                        No family
-                                      </span>
-                                    )}
-                                  </td>
-                                )}
-                                {visibleColumns.contacto && (
-                                  <td className="py-3 px-4">
-                                    {resident.contacto || "N/A"}
-                                  </td>
-                                )}
-                                {visibleColumns.limitacion && (
-                                  <td className="py-3 px-4">
-                                    <div className="flex flex-col">
-                                      <Badge variant="outline" className="mb-1">
-                                        {resident.limitacion || "N/A"}
-                                      </Badge>
-                                      {resident.limitacion_observacion && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {resident.limitacion_observacion}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                )}
-                                {visibleColumns.condicion && (
-                                  <td className="py-3 px-4">
-                                    <div className="flex flex-col">
-                                      <Badge variant="outline" className="mb-1">
-                                        {resident.condicion || "N/A"}
-                                      </Badge>
-                                      {resident.condicion_observacion && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {resident.condicion_observacion}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                )}
-                                {visibleColumns.disposicion && (
-                                  <td className="py-3 px-4">
-                                    <div className="flex flex-col">
-                                      <Badge variant="outline" className="mb-1">
-                                        {resident.disposicion || "N/A"}
-                                      </Badge>
-                                      {resident.disposicion_observacion && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {resident.disposicion_observacion}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                )}
-                                {visibleColumns.property && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident._property?.property_type_name &&
-                                      resident._property?.property_type_id
-                                        ? `${resident._property.property_type_name} (${resident._property.property_type_id})`
-                                        : "N/A"}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.municipio && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident._property?.municipio || "N/A"}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.barrio && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident._property?.barrio || "N/A"}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.sector && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident._property?.sector || "N/A"}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.usng && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident._property?.usng || "N/A"}
-                                    </Badge>
-                                  </td>
-                                )}
-                                {visibleColumns.direccion && (
-                                  <td className="py-3 px-4">
-                                    <Badge variant="outline">
-                                      {resident._property?.direccion || "N/A"}
-                                    </Badge>
-                                  </td>
-                                )}
-                              </tr>
-                            )
-                          )}
-                      {((reportData.residentes &&
-                        reportData.residentes.filter(
-                          (r) =>
-                            !quickResidentFilter ||
-                            r.nombre
-                              .toLowerCase()
-                              .includes(quickResidentFilter.toLowerCase())
-                        ).length === 0) ||
-                        (!reportData.residentes &&
-                          reportData.propiedades.flatMap((property) =>
-                            applyResidentFilters(property.habitantes)
-                          ).length === 0)) && (
-                        <tr className="border-t">
-                          <td
-                            colSpan={
-                              Object.values(visibleColumns).filter(Boolean)
-                                .length
-                            }
-                            className="py-6 px-4 text-center text-muted-foreground"
-                          >
-                            No residents found matching the search criteria.
-                          </td>
-                        </tr>
-                      )}
+                          ))}
                     </tbody>
                   </table>
                 </div>
               </div>
+                </>
+              )}
             </CardContent>
           )}
         </Card>
       )}
 
+      {/* Notification Detail Dialog */}
       {selectedNotification && (
         <NotificationDetail
           notification={selectedNotification}
           properties={reportData?.propiedades || []}
           open={notificationDetailOpen}
           onOpenChange={setNotificationDetailOpen}
-          getStatusColor={getNotificationStatusColor}
+          getStatusColor={getStatusColor}
           formatDateFn={formatDate}
         />
       )}
@@ -4761,181 +4103,76 @@ export function DataAnalytics() {
   );
 }
 
+// Notification Detail Component
 function NotificationDetail({
   notification,
   properties,
   open,
   onOpenChange,
-  getStatusColor,
-  formatDateFn,
 }: NotificationDetailProps) {
-  const relatedProperties =
-    notification.propiedades ||
-    properties.filter((property) =>
-      property.notificaciones?.some((n) => n.id === notification.id)
-    );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              <span>
-                {notification.numero_notificacion || `NOT-${notification.id}`}
-              </span>
-              <Badge
-                className={cn(getStatusColor(notification.estado || "pending"))}
-              >
-                {notification.estado || "pending"}
-              </Badge>
-            </DialogTitle>
-            <div className="text-sm text-muted-foreground flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              {formatDateFn(notification.fecha_creacion)}
-            </div>
-          </div>
-          <DialogDescription className="pt-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Badge variant="outline">{notification.tipo}</Badge>
-            </div>
+          <DialogTitle>Notification Details</DialogTitle>
+          <DialogDescription>
+            {notification.tipo} • #{notification.numero_notificacion}
           </DialogDescription>
         </DialogHeader>
-
-        <div className="flex flex-col space-y-6 overflow-auto py-4">
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">
-              Message
-            </h3>
-            <div className="rounded-md bg-muted p-4">
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Message</h3>
               <p className="text-sm">{notification.mensaje}</p>
             </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Home className="h-4 w-4" />
-              Affected Properties ({relatedProperties.length})
+          <div>
+            <h3 className="text-lg font-semibold mb-2">
+              Affected Properties ({notification.propiedades?.length || 0})
             </h3>
-            {relatedProperties.length > 0 ? (
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="py-2 px-3 text-left font-medium">Type</th>
-                      <th className="py-2 px-3 text-left font-medium">
-                        Location
-                      </th>
-                      <th className="py-2 px-3 text-left font-medium">USNG</th>
-                      <th className="py-2 px-3 text-left font-medium">
-                        Damage
-                      </th>
-                      <th className="py-2 px-3 text-left font-medium">
-                        Habitantes
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {relatedProperties.map((property) => (
-                      <tr key={property.id} className="border-t">
-                        <td className="py-2 px-3">
-                          {property.property_type_name} (
-                          {property.property_type_id})
-                        </td>
-                        <td className="py-2 px-3">
-                          <div className="flex flex-col">
-                            <span>{property.municipio}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {property.barrio} • {property.sector}
-                            </span>
+            <div className="space-y-4">
+              {notification.propiedades?.map((prop) => {
+                const fullProperty = properties.find((p) => p.id === prop.id);
+                return (
+                  <Card key={prop.id}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">
+                        {prop.property_type_name} ({prop.property_type_id})
+                      </CardTitle>
+                      <CardDescription>
+                        {prop.municipio} • {prop.barrio} • {prop.sector}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium">USNG:</span>{" "}
+                          {prop.usng}
                           </div>
-                        </td>
-                        <td className="py-2 px-3">
-                          <Badge variant="outline" className="font-mono">
-                            {property.usng}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-3">{property.daños || "N/A"}</td>
-                        <td className="py-2 px-3">
-                          {property.habitantes.length > 0 ? (
-                            <details className="text-xs">
-                              <summary className="cursor-pointer font-medium hover:text-primary">
-                                View {property.habitantes.length} residents
-                              </summary>
-                              <div className="mt-2 space-y-1">
-                                {property.habitantes.map((resident) => (
-                                  <div
-                                    key={resident.id}
-                                    className="pl-2 border-l-2 border-muted-foreground/20"
-                                  >
-                                    <p>
-                                      <strong>{resident.nombre}</strong> (
-                                      {resident.edad} years)
-                                      {resident.family && (
-                                        <span className="ml-1">
-                                          • Family: {resident.family.apellidos}
-                                        </span>
-                                      )}
-                                      {resident.contacto && (
-                                        <span className="ml-1">
-                                          • Contact: {resident.contacto}
-                                        </span>
-                                      )}
-                                    </p>
-                                    <p className="text-muted-foreground">
-                                      {resident.categoria}
-                                      {resident.limitacion && (
-                                        <span>
-                                          {` • ${resident.limitacion}`}
-                                          {resident.limitacion_observacion
-                                            ? <span className="text-xs text-muted-foreground">
-                                                {resident.limitacion_observacion}
-                                              </span>
-                                            : ""}
-                                        </span>
-                                      )}
-                                      {resident.condicion && (
-                                        <span>
-                                          {` • ${resident.condicion}`}
-                                          {resident.condicion_observacion
-                                            ? <span className="text-xs text-muted-foreground">
-                                                {resident.condicion_observacion}
-                                              </span>
-                                            : ""}
-                                        </span>
-                                      )}
-                                      {resident.disposicion && (
-                                        <span>
-                                          {` • ${resident.disposicion}`}
-                                          {resident.disposicion_observacion
-                                            ? <span className="text-xs text-muted-foreground">
-                                                {resident.disposicion_observacion}
-                                              </span>
-                                            : ""}
-                                        </span>
-                                      )}
-                                    </p>
+                        <div>
+                          <span className="font-medium">Address:</span>{" "}
+                          {prop.direccion || "N/A"}
                                   </div>
-                                ))}
+                        <div>
+                          <span className="font-medium">Damage:</span>{" "}
+                          {prop.daños || "N/A"}
                               </div>
-                            </details>
-                          ) : (
-                            <span>No residents</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        <div>
+                          <span className="font-medium">Date:</span>{" "}
+                          {prop.fecha
+                            ? new Date(prop.fecha).toLocaleDateString()
+                            : "N/A"}
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-6 text-center bg-muted/20 rounded-md">
-                <p className="text-muted-foreground">
-                  No properties associated with this notification
-                </p>
+                        {fullProperty && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Residents:</span>{" "}
+                            {fullProperty.habitantes.length}
               </div>
             )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </div>
         </div>
       </DialogContent>

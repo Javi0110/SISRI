@@ -1,11 +1,10 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { debounce } from "lodash"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import * as z from "zod"
-import { debounce } from "lodash"
-import React from "react"
 
 // Material UI imports
 import {
@@ -69,8 +68,8 @@ const habitanteRoles = [
 
 // Add sex options
 const sexOptions = [
-  "Male",
-  "Female"
+  "M",
+  "F"
 ] as const
 
 // Add form mode options after the constants
@@ -141,6 +140,27 @@ interface Family {
   description: string;
 }
 
+// Add interfaces for resident options
+interface LimitationOption {
+  id: number;
+  nombre: string;
+}
+
+interface ConditionOption {
+  id: number;
+  nombre: string;
+}
+
+interface DispositionOption {
+  id: number;
+  nombre: string;
+}
+
+interface PropertyTypeOption {
+  id: number;
+  type_name: string;
+}
+
 // Update form schema
 const formSchema = z.object({
   notificationNumber: z.string(),
@@ -179,9 +199,18 @@ const formSchema = z.object({
       categoria: z.enum(habitanteCategories),
       rol: z.enum(habitanteRoles),
       age: z.string(),
-      limitation: z.string().optional(),
-      condition: z.string().optional(),
-      disposition: z.string().optional(),
+      limitations: z.array(z.object({
+        id: z.string(),
+        observacion: z.string().optional(),
+      })).optional().default([]),
+      conditions: z.array(z.object({
+        id: z.string(),
+        observacion: z.string().optional(),
+      })).optional().default([]),
+      dispositions: z.array(z.object({
+        id: z.string(),
+        observacion: z.string().optional(),
+      })).optional().default([]),
       contacto: z.string().optional(),
       familyId: z.string().min(1, "Family is required"),
       newFamilyApellido1: z.string().optional(),
@@ -230,9 +259,10 @@ export function ReportForm() {
     barrio?: { nombre: string };
     sector?: { nombre: string };
   } | null>(null);
-  const [limitationOptions, setLimitationOptions] = useState<string[]>([]);
-  const [conditionOptions, setConditionOptions] = useState<string[]>([]);
-  const [dispositionOptions, setDispositionOptions] = useState<string[]>([]);
+  const [limitationOptions, setLimitationOptions] = useState<LimitationOption[]>([]);
+  const [conditionOptions, setConditionOptions] = useState<ConditionOption[]>([]);
+  const [dispositionOptions, setDispositionOptions] = useState<DispositionOption[]>([]);
+  const [propertyTypeOptions, setPropertyTypeOptions] = useState<PropertyTypeOption[]>([]);
   const [isResidentOptionsLoading, setIsResidentOptionsLoading] = useState(true);
   
   // Debounce timer reference
@@ -247,13 +277,13 @@ export function ReportForm() {
     estado: "pending" as const,
     incidents: [{ type: incidentTypes[0], description: "", cuencaId: "" }],
     properties: [{ 
-      type: propertyTypes[0],
+      type: propertyTypeOptions.length > 0 ? propertyTypeOptions[0].id.toString() : "1",
       municipioId: "", 
       address: "",
       habitantes: [],
     }],
     cuencaIds: [] as string[],
-  }), [])
+  }), [propertyTypeOptions])
 
   const { 
     control, 
@@ -313,21 +343,37 @@ export function ReportForm() {
     }
   }, [])
 
-  // Fetch resident options on mount
+  // Fetch resident options and property types on mount
   useEffect(() => {
     let isMounted = true;
     setIsResidentOptionsLoading(true);
-    fetch('/api/residentes/options')
-      .then(res => res.json())
-      .then(data => {
+    
+    const fetchResidentOptions = async () => {
+      try {
+        const [residentOptionsResponse, propertyTypesResponse] = await Promise.all([
+          fetch('/api/residentes/options'),
+          fetch('/api/property-types')
+        ]);
+        
+        const residentOptionsData = await residentOptionsResponse.json();
+        const propertyTypesData = await propertyTypesResponse.json();
+        
         if (isMounted) {
-          setLimitationOptions(data.limitations || []);
-          setConditionOptions(data.conditions || []);
-          setDispositionOptions(data.dispositions || []);
+          setLimitationOptions(residentOptionsData.limitations || []);
+          setConditionOptions(residentOptionsData.conditions || []);
+          setDispositionOptions(residentOptionsData.dispositions || []);
+          setPropertyTypeOptions(propertyTypesData || []);
           setIsResidentOptionsLoading(false);
         }
-      })
-      .catch(() => setIsResidentOptionsLoading(false));
+      } catch (error) {
+        console.error('Error fetching resident/property options:', error);
+        if (isMounted) {
+          setIsResidentOptionsLoading(false);
+        }
+      }
+    };
+    
+    fetchResidentOptions();
     return () => { isMounted = false; };
   }, []);
 
@@ -801,9 +847,9 @@ export function ReportForm() {
                   categoria: habitante.categoria,
                   rol: habitante.rol,
                   age: parseInt(habitante.age),
-                  limitation: habitante.limitation,
-                  condition: habitante.condition,
-                  disposition: habitante.disposition,
+                  limitations: habitante.limitations,
+                  conditions: habitante.conditions,
+                  dispositions: habitante.dispositions,
                   contacto: habitante.contacto,
                 };
 
@@ -908,9 +954,9 @@ export function ReportForm() {
                 categoria: habitante.categoria,
                 rol: habitante.rol,
                 age: parseInt(habitante.age),
-                limitation: habitante.limitation,
-                condition: habitante.condition,
-                disposition: habitante.disposition,
+                limitations: habitante.limitations,
+                conditions: habitante.conditions,
+                dispositions: habitante.dispositions,
                 contacto: habitante.contacto,
                 family_id: habitante.familyId === "new" ? null : parseInt(habitante.familyId),
                 newFamily: habitante.familyId === "new"
@@ -971,9 +1017,9 @@ export function ReportForm() {
                 categoria: habitante.categoria,
                 rol: habitante.rol,
                 age: parseInt(habitante.age),
-                limitation: habitante.limitation,
-                condition: habitante.condition,
-                disposition: habitante.disposition,
+                limitations: habitante.limitations,
+                conditions: habitante.conditions,
+                dispositions: habitante.dispositions,
                 contacto: habitante.contacto,
               };
 
@@ -1970,9 +2016,9 @@ export function ReportForm() {
                               {...field}
                               label="Property Type"
                             >
-                              {propertyTypes.map((type) => (
-                                <MenuItem key={type} value={type}>
-                                  {type}
+                              {propertyTypeOptions.map((type) => (
+                                <MenuItem key={type.id} value={type.id.toString()}>
+                                  {type.id} - {type.type_name}
                                 </MenuItem>
                               ))}
                             </Select>
@@ -2299,13 +2345,13 @@ export function ReportForm() {
                     name: "",
                     apellido1: "",
                     apellido2: "",
-                    sex: "Male",
+                    sex: "M",
                     categoria: "Adult",
                     rol: "Resident",
                     age: "",
-                    limitation: "",
-                    condition: "",
-                    disposition: "",
+                    limitations: [],
+                    conditions: [],
+                    dispositions: [],
                     contacto: "",
                     familyId: "",
                     newFamilyApellido1: "",
@@ -2390,7 +2436,9 @@ export function ReportForm() {
                                 label="Sex"
                               >
                                 {sexOptions.map((sex) => (
-                                  <MenuItem key={sex} value={sex}>{sex}</MenuItem>
+                                  <MenuItem key={sex} value={sex}>
+                                    {sex === "M" ? "Male" : sex === "F" ? "Female" : sex}
+                                  </MenuItem>
                                 ))}
                               </Select>
                             </FormControl>
@@ -2458,18 +2506,27 @@ export function ReportForm() {
                             <FormControl fullWidth disabled={isResidentOptionsLoading}>
                               <InputLabel>Limitation</InputLabel>
                               <Select
-                                value={habitante.limitation || ''}
+                                multiple
+                                value={habitante.limitations?.map(limitation => limitation.id) || []}
                                 label="Limitation"
                                 onChange={e => {
+                                  const selectedIds = Array.isArray(e.target.value) ? e.target.value : [e.target.value];
                                   const newHabitantes = [...field.value];
-                                  newHabitantes[habitanteIndex].limitation = e.target.value;
+                                  newHabitantes[habitanteIndex].limitations = selectedIds.map(id => ({ id, observacion: "" }));
                                   field.onChange(newHabitantes);
                                 }}
-                                renderValue={selected => selected || 'None'}
+                                renderValue={selected => {
+                                  if (selected.length === 0) return 'None';
+                                  return selected.map(id => {
+                                    const option = limitationOptions.find(opt => opt.id.toString() === id);
+                                    return option ? `${option.id} - ${option.nombre}` : id;
+                                  }).join(', ');
+                                }}
                               >
-                                <MenuItem value=""><em>None</em></MenuItem>
                                 {limitationOptions.map(option => (
-                                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                                  <MenuItem key={option.id} value={option.id.toString()}>
+                                    {option.id} - {option.nombre}
+                                  </MenuItem>
                                 ))}
                               </Select>
                               {isResidentOptionsLoading && <FormHelperText>Loading...</FormHelperText>}
@@ -2479,18 +2536,27 @@ export function ReportForm() {
                             <FormControl fullWidth disabled={isResidentOptionsLoading}>
                               <InputLabel>Condition</InputLabel>
                               <Select
-                                value={habitante.condition || ''}
+                                multiple
+                                value={habitante.conditions?.map(condition => condition.id) || []}
                                 label="Condition"
                                 onChange={e => {
+                                  const selectedIds = Array.isArray(e.target.value) ? e.target.value : [e.target.value];
                                   const newHabitantes = [...field.value];
-                                  newHabitantes[habitanteIndex].condition = e.target.value;
+                                  newHabitantes[habitanteIndex].conditions = selectedIds.map(id => ({ id, observacion: "" }));
                                   field.onChange(newHabitantes);
                                 }}
-                                renderValue={selected => selected || 'None'}
+                                renderValue={selected => {
+                                  if (selected.length === 0) return 'None';
+                                  return selected.map(id => {
+                                    const option = conditionOptions.find(opt => opt.id.toString() === id);
+                                    return option ? `${option.id} - ${option.nombre}` : id;
+                                  }).join(', ');
+                                }}
                               >
-                                <MenuItem value=""><em>None</em></MenuItem>
                                 {conditionOptions.map(option => (
-                                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                                  <MenuItem key={option.id} value={option.id.toString()}>
+                                    {option.id} - {option.nombre}
+                                  </MenuItem>
                                 ))}
                               </Select>
                               {isResidentOptionsLoading && <FormHelperText>Loading...</FormHelperText>}
@@ -2500,18 +2566,27 @@ export function ReportForm() {
                             <FormControl fullWidth disabled={isResidentOptionsLoading}>
                               <InputLabel>Disposition</InputLabel>
                               <Select
-                                value={habitante.disposition || ''}
+                                multiple
+                                value={habitante.dispositions?.map(disposition => disposition.id) || []}
                                 label="Disposition"
                                 onChange={e => {
+                                  const selectedIds = Array.isArray(e.target.value) ? e.target.value : [e.target.value];
                                   const newHabitantes = [...field.value];
-                                  newHabitantes[habitanteIndex].disposition = e.target.value;
+                                  newHabitantes[habitanteIndex].dispositions = selectedIds.map(id => ({ id, observacion: "" }));
                                   field.onChange(newHabitantes);
                                 }}
-                                renderValue={selected => selected || 'None'}
+                                renderValue={selected => {
+                                  if (selected.length === 0) return 'None';
+                                  return selected.map(id => {
+                                    const option = dispositionOptions.find(opt => opt.id.toString() === id);
+                                    return option ? `${option.id} - ${option.nombre}` : id;
+                                  }).join(', ');
+                                }}
                               >
-                                <MenuItem value=""><em>None</em></MenuItem>
                                 {dispositionOptions.map(option => (
-                                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                                  <MenuItem key={option.id} value={option.id.toString()}>
+                                    {option.id} - {option.nombre}
+                                  </MenuItem>
                                 ))}
                               </Select>
                               {isResidentOptionsLoading && <FormHelperText>Loading...</FormHelperText>}
@@ -2777,10 +2852,10 @@ export function ReportForm() {
                             <TextField
                               fullWidth
                               label="Limitation"
-                              value={habitante.limitation || ""}
+                              value={habitante.limitations?.map(limitation => limitation.observacion).join(', ') || ""}
                               onChange={(e) => {
                                 const newHabitantes = [...field.value];
-                                newHabitantes[habitanteIndex].limitation = e.target.value;
+                                newHabitantes[habitanteIndex].limitations = e.target.value.split(',').map(observacion => ({ id: "", observacion }));
                                 field.onChange(newHabitantes);
                               }}
                               placeholder="Physical limitations, if any"
@@ -2790,10 +2865,10 @@ export function ReportForm() {
                             <TextField
                               fullWidth
                               label="Condition"
-                              value={habitante.condition || ""}
+                              value={habitante.conditions?.map(condition => condition.observacion).join(', ') || ""}
                               onChange={(e) => {
                                 const newHabitantes = [...field.value];
-                                newHabitantes[habitanteIndex].condition = e.target.value;
+                                newHabitantes[habitanteIndex].conditions = e.target.value.split(',').map(observacion => ({ id: "", observacion }));
                                 field.onChange(newHabitantes);
                               }}
                               placeholder="Health conditions, if any"
@@ -2803,10 +2878,10 @@ export function ReportForm() {
                             <TextField
                               fullWidth
                               label="Disposition"
-                              value={habitante.disposition || ""}
+                              value={habitante.dispositions?.map(disposition => disposition.observacion).join(', ') || ""}
                               onChange={(e) => {
                                 const newHabitantes = [...field.value];
-                                newHabitantes[habitanteIndex].disposition = e.target.value;
+                                newHabitantes[habitanteIndex].dispositions = e.target.value.split(',').map(observacion => ({ id: "", observacion }));
                                 field.onChange(newHabitantes);
                               }}
                               placeholder="Current disposition/status"
@@ -2966,9 +3041,9 @@ export function ReportForm() {
                   categoria: habitante.categoria,
                   rol: habitante.rol,
                   age: parseInt(habitante.age),
-                  limitation: habitante.limitation,
-                  condition: habitante.condition,
-                  disposition: habitante.disposition,
+                  limitations: habitante.limitations,
+                  conditions: habitante.conditions,
+                  dispositions: habitante.dispositions,
                   contacto: habitante.contacto,
                   family_id: habitante.familyId === "new" ? null : parseInt(habitante.familyId),
                   newFamily: habitante.familyId === "new"
