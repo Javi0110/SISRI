@@ -90,6 +90,66 @@ async function getPropertyDamageInfo(propertyId: number) {
   }
 }
 
+// NEW: Bulk function to get damage info for multiple properties efficiently
+async function getBulkPropertyDamageInfo(propertyIds: number[]): Promise<Map<number, {daños: string | null, fecha: Date | null}>> {
+  try {
+    if (propertyIds.length === 0) {
+      return new Map();
+    }
+
+    const damageData = await prisma.propiedades_afectadas.findMany({
+      where: {
+        propiedadId: {
+          in: propertyIds
+        }
+      },
+      orderBy: [
+        { propiedadId: 'asc' },
+        { fecha: 'desc' }
+      ],
+      select: {
+        propiedadId: true,
+        daños: true,
+        fecha: true
+      }
+    });
+
+    // Create a map with the most recent damage info for each property
+    const damageMap = new Map<number, {daños: string | null, fecha: Date | null}>();
+    
+    // Initialize map with default values
+    propertyIds.forEach(id => {
+      damageMap.set(id, { daños: null, fecha: null });
+    });
+
+    // Group by property and get the most recent entry
+    const groupedDamage = new Map<number, typeof damageData[0]>();
+    damageData.forEach(damage => {
+      if (!groupedDamage.has(damage.propiedadId)) {
+        groupedDamage.set(damage.propiedadId, damage);
+      }
+    });
+
+    // Update map with actual damage data
+    groupedDamage.forEach((damage, propertyId) => {
+      damageMap.set(propertyId, {
+        daños: damage.daños,
+        fecha: damage.fecha
+      });
+    });
+
+    return damageMap;
+  } catch (error) {
+    console.error('Error fetching bulk damage info:', error);
+    // Return empty map with default values on error
+    const errorMap = new Map<number, {daños: string | null, fecha: Date | null}>();
+    propertyIds.forEach(id => {
+      errorMap.set(id, { daños: null, fecha: null });
+    });
+    return errorMap;
+  }
+}
+
 // New helper function to get property damage info in bulk
 
 export async function POST(req: Request) {
@@ -589,9 +649,15 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
     include: includeClause
   });
 
+  // Get all property IDs for bulk damage query  
+  const propertyIds = properties.map(p => p.id);
+  
+  // Get damage info for all properties in one query to avoid connection pool exhaustion
+  const damageMap = await getBulkPropertyDamageInfo(propertyIds);
+
   // Process properties with type assertions
-  const propertiesWithDamage = await Promise.all(properties.map(async (property: any) => {
-    const damageInfo = await getPropertyDamageInfo(property.id);
+  const propertiesWithDamage = properties.map((property: any) => {
+    const damageInfo = damageMap.get(property.id) || { daños: null, fecha: null };
     return {
       id: property.id,
       property_type_id: property.property_type_id,
@@ -644,7 +710,7 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
         }
       }))
     };
-  }));
+  });
 
   // Apply additional filters
   if (filters) {
