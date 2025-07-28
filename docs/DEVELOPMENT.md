@@ -1,4 +1,4 @@
-# SISRI Development Guide
+# RIDS Development Guide
 
 ## Getting Started
 
@@ -12,7 +12,7 @@
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd SISRI
+cd RIDS
 ```
 
 2. Install dependencies:
@@ -40,7 +40,7 @@ npm run dev
 ## Project Structure
 
 ```
-SISRI/
+RIDS/
 ├── app/                    # Next.js app directory
 │   ├── api/               # API routes
 │   ├── components/        # Reusable components

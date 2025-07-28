@@ -9,7 +9,7 @@ import { Button } from "components/ui/button"
 import { Card } from "components/ui/card"
 import { fromLonLat } from 'ol/proj'
 
-interface Municipio {
+interface Municipality {
   id_municipio: number
   nombre: string
   latitud: number
@@ -25,50 +25,50 @@ interface Municipio {
   }>
 }
 
-interface MunicipiosListProps {
+interface MunicipalitiesListProps {
   onMunicipioSelect: (coords: [number, number], zoom: number, forceRefresh?: boolean) => void
 }
 
-export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProps) {
-  const [municipios, setMunicipios] = useState<Municipio[]>([])
+export default function MunicipiosList({ onMunicipioSelect }: MunicipalitiesListProps) {
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedMunicipio, setSelectedMunicipio] = useState<string | null>(null)
+  const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchMunicipios = async () => {
+    const fetchMunicipalities = async () => {
       try {
         const response = await fetch('/api/municipios')
         if (!response.ok) throw new Error(`Error: ${response.status}`)
         const data = await response.json()
-        console.log('Fetched municipios:', data) // Debug log
-        setMunicipios(data)
+        console.log('Fetched municipalities:', data) // Debug log
+        setMunicipalities(data)
       } catch (error) {
-        console.error('Error fetching municipios:', error)
-        setError('Failed to load municipios')
+        console.error('Error fetching municipalities:', error)
+        setError('Failed to load municipalities')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchMunicipios()
+    fetchMunicipalities()
   }, [])
 
-  const filteredMunicipios = useMemo(() => {
+  const filteredMunicipalities = useMemo(() => {
     const term = searchTerm.toLowerCase().trim()
-    return municipios.filter(municipio => 
-      municipio.nombre.toLowerCase().includes(term)
+    return municipalities.filter(municipality => 
+      municipality.nombre.toLowerCase().includes(term)
     )
-  }, [municipios, searchTerm])
+  }, [municipalities, searchTerm])
 
-  const handleMunicipioClick = (municipio: Municipio) => {
-    setSelectedMunicipio(municipio.nombre === selectedMunicipio ? null : municipio.nombre)
+  const handleMunicipalityClick = (municipality: Municipality) => {
+    setSelectedMunicipality(municipality.nombre === selectedMunicipality ? null : municipality.nombre)
     
     let coordinates: [number, number] = [-66.4, 18.2]
     
-    if (municipio.latitud && municipio.longitud) {
-      coordinates = [municipio.longitud, municipio.latitud]
+    if (municipality.latitud && municipality.longitud) {
+      coordinates = [municipality.longitud, municipality.latitud]
     }
     
     const transformedCoords = fromLonLat(coordinates)
@@ -84,7 +84,7 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
         <Search className="absolute left-2 top-3 h-4 w-4 text-gray-400" />
         <Input
           type="text"
-          placeholder="Search municipios..."
+          placeholder="Search municipalities..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-8"
@@ -93,19 +93,19 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
 
       <ScrollArea className="h-[500px]">
         <div className="space-y-2">
-          {filteredMunicipios.map((municipio) => (
-            <div key={municipio.id_municipio} className="space-y-2">
+          {filteredMunicipalities.map((municipality) => (
+            <div key={municipality.id_municipio} className="space-y-2">
               <Button
-                variant={selectedMunicipio === municipio.nombre ? "secondary" : "ghost"}
+                variant={selectedMunicipality === municipality.nombre ? "secondary" : "ghost"}
                 className="w-full justify-between"
-                onClick={() => handleMunicipioClick(municipio)}
+                onClick={() => handleMunicipalityClick(municipality)}
               >
-                <span>{municipio.nombre}</span>
-                {selectedMunicipio === municipio.nombre ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span>{municipality.nombre}</span>
+                {selectedMunicipality === municipality.nombre ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </Button>
 
               <AnimatePresence>
-                {selectedMunicipio === municipio.nombre && (
+                {selectedMunicipality === municipality.nombre && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
@@ -113,13 +113,13 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
                     className="pl-4"
                   >
                     <Card className="p-4">
-                      <p className="text-sm">ID: {municipio.id_municipio}</p>
+                      <p className="text-sm">ID: {municipality.id_municipio}</p>
                       <Button 
                         size="sm" 
                         className="mt-2 w-full"
-                        onClick={() => handleMunicipioClick(municipio)}
+                        onClick={() => handleMunicipalityClick(municipality)}
                       >
-                        Zoom to Municipio
+                        Zoom to Municipality
                       </Button>
                     </Card>
                   </motion.div>
@@ -127,9 +127,9 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
               </AnimatePresence>
             </div>
           ))}
-          {filteredMunicipios.length === 0 && (
+          {filteredMunicipalities.length === 0 && (
             <div className="text-center py-4 text-gray-500">
-              No municipios found
+              No municipalities found
             </div>
           )}
         </div>

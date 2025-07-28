@@ -5,9 +5,16 @@ import Header from "./components/Header"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: 'SISRI',
-  description: 'Sistema de Información de Riesgos',
-  viewport: 'width=device-width, initial-scale=1',
+  title: 'RIDS - Risks and Impacts Detection System',
+  description: 'Comprehensive risk and impact detection system for incident management and response',
+  icons: {
+    icon: '/favicon.svg',
+  },
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({

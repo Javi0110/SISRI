@@ -1,7 +1,7 @@
-# SISRI System Architecture Documentation
+# RIDS System Architecture Documentation
 
 ## Overview
-SISRI (Sistema Integral de Seguridad y Respuesta a Incidentes) is a Next.js-based web application designed for incident management and response. The system integrates geospatial data, property information, and resident data to provide comprehensive incident tracking and management capabilities.
+RIDS (Risks and Impacts Detection System) is a Next.js-based web application designed for risk assessment and incident management. The system integrates geospatial data, property information, and resident data to provide comprehensive risk tracking and management capabilities.
 
 ## Technology Stack
 

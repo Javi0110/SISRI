@@ -1,28 +1,28 @@
-export interface EventoCreateInput {
-  id_notificacion: number;
-  titulo: string;
-  descripcion: string;
-  fecha: string;
-  hora: string;
+export interface EventCreateInput {
+  notification_id: number;
+  title: string;
+  description: string;
+  date: string;
+  time: string;
   grid_id: string;
-  cuencas: {
+  watersheds: {
     create: Array<{
-      cuenca_id: number;
+      watershed_id: number;
     }>;
   };
-  incidentes: {
+  incidents: {
     create: Array<{
-      tipo: string;
-      descripcion: string;
+      type: string;
+      description: string;
     }>;
   };
-  propiedades_afectadas: {
+  affected_properties: {
     create: Array<{
-      tipo: string;
-      municipio_id: number;
-      barrio_id: number | null;
+      type: string;
+      municipality_id: number;
+      neighborhood_id: number | null;
       sector_id: number | null;
-      direccion: string;
+      address: string;
     }>;
   };
 } 

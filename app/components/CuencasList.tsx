@@ -1,159 +1,152 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Input } from "../../components/ui/input"
-import { Button } from "../../components/ui/button"
-import { Search, Droplet, Info } from "lucide-react"
-import { ScrollArea } from "../../components/ui/scroll-area"
+import { useEffect, useState } from "react"
+import { Loader2, Search } from "lucide-react"
+import { Input } from "components/ui/input"
+import { ScrollArea } from "app/components/ui/scroll-area"
+import { Button } from "components/ui/button"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../../components/ui/tooltip"
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "components/ui/collapsible"
 
-interface Cuenca {
+interface Watershed {
   id: number
   nombre: string
-  descripcion: string
-  usngCoords: string[]
-  geom: string
+  descripcion: string | null
+  codigo_cuenca: string | null
+  center: number[]
+  area?: number
+  usngCoords: Array<[number, number]>
 }
 
-interface CuencasListProps {
-  onCuencaSelect: (cuenca: Cuenca) => void
+interface WatershedsListProps {
+  onCuencaSelect: (watershed: Watershed) => void
 }
 
-export default function CuencasList({ onCuencaSelect }: CuencasListProps) {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filteredCuencas, setFilteredCuencas] = useState<Cuenca[]>([])
+export default function CuencasList({ onCuencaSelect }: WatershedsListProps) {
   const [loading, setLoading] = useState(true)
+  const [filteredWatersheds, setFilteredWatersheds] = useState<Watershed[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [expandedWatershed, setExpandedWatershed] = useState<number | null>(null)
 
   useEffect(() => {
-    const fetchCuencas = async () => {
+    const fetchWatersheds = async () => {
       try {
         setLoading(true)
-        setError(null)
-        
         const response = await fetch("/api/cuencas")
-        
+
         if (!response.ok) {
-          throw new Error("Error fetching cuencas data")
+          throw new Error("Error fetching watersheds data")
         }
-        
+
         const data = await response.json()
-        setFilteredCuencas(data)
+        setFilteredWatersheds(data)
       } catch (error) {
-        console.error("Error fetching cuencas:", error)
-        setError("Error cargando las cuencas. Inténtelo de nuevo.")
+        console.error("Error fetching watersheds:", error)
+        setError("Error loading watersheds. Please try again.")
       } finally {
         setLoading(false)
       }
     }
 
-    fetchCuencas()
+    fetchWatersheds()
   }, [])
 
-  // Handle search input changes
-  const handleSearch = async () => {
-    setLoading(true)
-    
-    try {
-      const url = searchTerm.trim() === "" ? 
-        "/api/cuencas" : 
-        `/api/cuencas?search=${encodeURIComponent(searchTerm)}`
-      
-      const response = await fetch(url)
-      if (!response.ok) throw new Error("Error searching cuencas")
-      const data = await response.json()
-      setFilteredCuencas(data)
-    } catch (error) {
-      console.error("Error during search:", error)
-      setError("Error durante la búsqueda. Inténtelo de nuevo.")
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    const searchWatersheds = async () => {
+      try {
+        setLoading(true)
+        const url = searchTerm.trim() === "" ? 
+          "/api/cuencas" : 
+          `/api/cuencas?search=${encodeURIComponent(searchTerm)}`
+        
+        const response = await fetch(url)
+        if (!response.ok) throw new Error("Error searching watersheds")
+        const data = await response.json()
+        setFilteredWatersheds(data)
+      } catch (error) {
+        console.error("Error searching watersheds:", error)
+        setError("Error searching watersheds")
+      } finally {
+        setLoading(false)
+      }
     }
-  }
 
-  // Submit search on Enter key
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSearch()
-    }
-  }
+    const debounceTimer = setTimeout(searchWatersheds, 300)
+    return () => clearTimeout(debounceTimer)
+  }, [searchTerm])
 
-  const handleCuencaSelect = (cuenca: Cuenca) => {
-    onCuencaSelect(cuenca)
+  const handleWatershedSelect = (watershed: Watershed) => {
+    onCuencaSelect(watershed)
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center space-x-2">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         <Input
-          placeholder="Buscar cuenca..."
+          placeholder="Search watershed..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="flex-1"
+          className="pl-8"
         />
-        <Button variant="outline" size="icon" onClick={handleSearch}>
-          <Search className="h-4 w-4" />
-        </Button>
       </div>
 
+      {loading && (
+        <div className="flex justify-center p-4">
+          <Loader2 className="animate-spin" />
+        </div>
+      )}
+
       {error && (
-        <div className="text-red-500 text-sm mt-2">
+        <div className="p-4 text-red-500">
           {error}
         </div>
       )}
 
-      {loading ? (
-        <div className="flex justify-center p-4">
-          <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+      <ScrollArea className="h-[500px]">
+        <div className="space-y-2">
+          {filteredWatersheds.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">No watersheds found</p>
+          ) : (
+            filteredWatersheds.map((watershed) => (
+              <div key={watershed.id} className="flex items-center">
+                <Collapsible className="w-full">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start hover:bg-gray-100"
+                      onClick={() => handleWatershedSelect(watershed)}
+                      onClickCapture={(e) => {
+                        e.stopPropagation()
+                        setExpandedWatershed(expandedWatershed === watershed.id ? null : watershed.id)
+                      }}
+                    >
+                      <span>{watershed.nombre}</span>
+                      <span className="ml-auto text-sm text-gray-500">
+                        {watershed.usngCoords.length} USNG coordinates
+                      </span>
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="p-2 pl-6 space-y-2">
+                    {watershed.codigo_cuenca && (
+                      <p className="text-sm text-gray-600">
+                        Code: {watershed.codigo_cuenca}
+                      </p>
+                    )}
+                    {watershed.descripcion && (
+                      <p>{watershed.descripcion}</p>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            ))
+          )}
         </div>
-      ) : (
-        <ScrollArea className="h-[calc(100vh-12rem)]">
-          <div className="space-y-2">
-            {filteredCuencas.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">No se encontraron cuencas</p>
-            ) : (
-              filteredCuencas.map((cuenca) => (
-                <div key={cuenca.id} className="flex items-center">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => handleCuencaSelect(cuenca)}
-                  >
-                    <div className="flex items-center">
-                      <Droplet className="mr-2 h-4 w-4 text-blue-500" />
-                      <div className="flex flex-col items-start">
-                        <span>{cuenca.nombre}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {cuenca.usngCoords.length} coordenadas USNG
-                        </span>
-                      </div>
-                    </div>
-                  </Button>
-                  
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Info className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{cuenca.descripcion}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
-      )}
+      </ScrollArea>
     </div>
   )
 } 

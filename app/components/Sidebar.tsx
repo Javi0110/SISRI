@@ -13,23 +13,23 @@ export default function Sidebar({
 }: { 
   onUSNGSelect: (coords: number[], zoom: number) => void,
   onMunicipioSelect: (coords: number[], zoom: number) => void,
-  onCuencaSelect: (cuenca: any) => void
+  onCuencaSelect: (watershed: any) => void
 }) {
   return (
     <div className="w-80 bg-white shadow-md p-4 overflow-y-auto">
-      <Tabs defaultValue="municipios">
+      <Tabs defaultValue="municipalities">
         <TabsList className="w-full">
-          <TabsTrigger value="municipios">Municipios</TabsTrigger>
+          <TabsTrigger value="municipalities">Municipalities</TabsTrigger>
           <TabsTrigger value="usng">USNG</TabsTrigger>
-          <TabsTrigger value="cuencas">Cuencas</TabsTrigger>
+          <TabsTrigger value="watersheds">Watersheds</TabsTrigger>
         </TabsList>
-        <TabsContent value="municipios">
+        <TabsContent value="municipalities">
           <MunicipiosList onMunicipioSelect={onMunicipioSelect} />
         </TabsContent>
         <TabsContent value="usng">
           <USNGList onUSNGSelect={onUSNGSelect} />
         </TabsContent>
-        <TabsContent value="cuencas">
+        <TabsContent value="watersheds">
           <CuencasList onCuencaSelect={onCuencaSelect} />
         </TabsContent>
         <TabsContent value="properties">

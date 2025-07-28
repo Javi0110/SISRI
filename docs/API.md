@@ -1,7 +1,7 @@
-# SISRI API Documentation
+# RIDS API Documentation
 
 ## Overview
-The SISRI API is built using Next.js API routes and provides endpoints for managing incidents, properties, residents, and geospatial data. All endpoints are RESTful and return JSON responses.
+The RIDS API is built using Next.js API routes and provides endpoints for managing incidents, properties, residents, and geospatial data. All endpoints are RESTful and return JSON responses.
 
 ## Base URL
 ```

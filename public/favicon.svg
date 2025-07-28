@@ -1,0 +1,18 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simple shield with alert indicator -->
+  <path 
+    d="M16 2 C16 2 28 6 28 6 L28 16 C28 24 22 29 16 30 C10 29 4 24 4 16 L4 6 C4 6 16 2 16 2 Z" 
+    fill="#dc2626"
+    stroke="#dc2626"
+    stroke-width="1"
+  />
+  
+  <!-- Exclamation mark for alert -->
+  <path 
+    d="M16 9 L16 18" 
+    stroke="white" 
+    stroke-width="3" 
+    stroke-linecap="round"
+  />
+  <circle cx="16" cy="22" r="1.5" fill="white"/>
+</svg> 

@@ -22,7 +22,7 @@ export default function Home() {
     })
   }, [map])
   
-  const handleMunicipioSelect = useCallback((coords: number[], zoom: number) => {
+  const handleMunicipalitySelect = useCallback((coords: number[], zoom: number) => {
     if (!map) return
     
     map.getView().animate({
@@ -32,19 +32,19 @@ export default function Home() {
     })
   }, [map])
 
-  const handleCuencaSelect = useCallback((cuenca: any) => {
-    if (!map || !map.handleCuencaSelect) return
+  const handleWatershedSelect = useCallback((watershed: any) => {
+    if (!map || !map.handleWatershedSelect) return
     
     // Use the method we attached to the map instance
-    map.handleCuencaSelect(cuenca)
+    map.handleWatershedSelect(watershed)
   }, [map])
 
   return (
     <main className="flex h-screen">
       <Sidebar 
         onUSNGSelect={handleUSNGSelect} 
-        onMunicipioSelect={handleMunicipioSelect}
-        onCuencaSelect={handleCuencaSelect}
+        onMunicipioSelect={handleMunicipalitySelect}
+        onCuencaSelect={handleWatershedSelect}
       />
       <Map onMapInitialized={handleMapInitialized} />
     </main>

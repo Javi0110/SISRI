@@ -48,15 +48,15 @@ import {
 } from "../../components/ui/tabs";
 import { cn } from "../../lib/utils";
 
-type SearchType = "evento" | "usng" | "municipio" | "residente";
+type SearchType = "event" | "usng" | "municipality" | "resident";
 
 interface EventData {
   id: number;
-  titulo: string;
-  descripcion: string;
-  fecha: string;
-  tipo: string;
-  estado: string;
+  title: string;
+  description: string;
+  date: string;
+  type: string;
+  status: string;
   usng: string | null;
 }
 
@@ -64,82 +64,82 @@ interface PropertyData {
   id: number;
   property_type_id: number;
   property_type_name: string;
-  daños: string | null;
-  fecha: string | null;
-  municipio: string;
-  municipio_id?: number;
-  barrio: string;
-  barrio_id?: number;
+  damages: string | null;
+  date: string | null;
+  municipality: string;
+  municipality_id?: number;
+  neighborhood: string;
+  neighborhood_id?: number;
   sector: string;
   sector_id?: number;
   usng: string;
-  direccion?: string | null;
-  notificaciones?: {
+  address?: string | null;
+  notifications?: {
     id: number;
-    numero_notificacion: string | null;
-    tipo: string;
-    estado: string | null;
-    fecha_creacion: string;
+    notification_number: string | null;
+    type: string;
+    status: string | null;
+    creation_date: string;
   }[];
-  habitantes: ResidentData[];
+  residents: ResidentData[];
 }
 
 interface ResidentData {
   id: number;
-  nombre: string;
-  edad: number;
-  categoria: string;
-  contacto?: string;
-  propiedad_id: number;
+  name: string;
+  age: number;
+  category: string;
+  contact?: string;
+  property_id: number;
   family_id?: number | null;
-  apellido1?: string | null;
-  apellido2?: string | null;
+  lastname1?: string | null;
+  lastname2?: string | null;
   sex?: string;
-  sexo?: string;
-  condicion_id?: number | null;
-  limitacion_id?: number | null;
-  disposicion_id?: number | null;
-  limitacion?: string;
-  limitacion_descripcion?: string | null;
-  limitacion_observacion?: string | null;
-  condicion?: string;
-  condicion_descripcion?: string | null;
-  condicion_observacion?: string | null;
-  disposicion?: string;
-  disposicion_descripcion?: string | null;
-  disposicion_observacion?: string | null;
+  gender?: string;
+  condition_id?: number | null;
+  limitation_id?: number | null;
+  disposition_id?: number | null;
+  limitation?: string;
+  limitation_description?: string | null;
+  limitation_observation?: string | null;
+  condition?: string;
+  condition_description?: string | null;
+  condition_observation?: string | null;
+  disposition?: string;
+  disposition_description?: string | null;
+  disposition_observation?: string | null;
   family?: {
     id: number;
-    apellidos: string;
+    surnames: string;
     description?: string;
   } | null;
-  propiedad_info?: {
+  property_info?: {
     id: number | null;
     property_type_id?: number;
     property_type_name?: string;
-    municipio: string;
-    municipio_id?: number;
-    barrio: string;
-    barrio_id?: number;
+    municipality: string;
+    municipality_id?: number;
+    neighborhood: string;
+    neighborhood_id?: number;
     sector: string;
     sector_id?: number;
     usng: string;
-    direccion?: string | null;
+    address?: string | null;
   };
   _property?: {
     id: number;
     property_type_id?: number;
     property_type_name?: string;
-    daños?: string | null;
-    fecha?: string | null;
-    municipio: string;
-    municipio_id?: number;
-    barrio: string;
-    barrio_id?: number;
+    damages?: string | null;
+    date?: string | null;
+    municipality: string;
+    municipality_id?: number;
+    neighborhood: string;
+    neighborhood_id?: number;
     sector: string;
     sector_id?: number;
     usng: string;
-    direccion?: string | null;
+    address?: string | null;
   };
   // New fields from API response
   id_municipio?: number;
@@ -148,37 +148,37 @@ interface ResidentData {
   habitantes_condiciones?: Array<{
   id: number;
     habitante_id: number;
-    condicion_id: number;
-    observacion: string | null;
-    condicion: {
+    condition_id: number;
+    observation: string | null;
+    condition: {
     id: number;
-    nombre: string;
-      descripcion?: string;
-      codigo?: string;
+    name: string;
+      description?: string;
+      code?: string;
     };
   }>;
   habitantes_limitaciones?: Array<{
       id: number;
     habitante_id: number;
     limitacion_id: number;
-    observacion: string | null;
+    observation: string | null;
     limitacion: {
       id: number;
-      nombre: string;
-      descripcion?: string;
-      codigo?: string;
+      name: string;
+      description?: string;
+      code?: string;
     };
   }>;
   habitantes_disposiciones?: Array<{
   id: number;
     habitante_id: number;
     disposicion_id: number;
-    observacion: string | null;
+    observation: string | null;
     disposiciones: {
   id: number;
-  nombre: string;
-      descripcion?: string;
-      codigo?: string;
+  name: string;
+      description?: string;
+      code?: string;
     };
   }>;
 }
@@ -238,7 +238,7 @@ interface ReportData {
       apellidos: string;
       description?: string;
     } | null;
-    propiedad_info: {
+    property_info: {
       id: number | null;
       tipo: string;
       municipio: string;
@@ -264,7 +264,7 @@ interface NotificationDetailProps {
 }
 
 export function DataAnalytics() {
-  const [searchType, setSearchType] = useState<SearchType>("evento");
+  const [searchType, setSearchType] = useState<SearchType>("event");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -369,53 +369,53 @@ export function DataAnalytics() {
           if ('habitantes_limitaciones' in a && a.habitantes_limitaciones && a.habitantes_limitaciones.length > 0) {
             aValue = a.habitantes_limitaciones[0].limitacion.id;
           } else {
-            aValue = ('limitacion_id' in a ? a.limitacion_id : null) || 999999; // Put null values at the end
+            aValue = (a as any).limitation_id || 999999; // Put null values at the end
           }
           if ('habitantes_limitaciones' in b && b.habitantes_limitaciones && b.habitantes_limitaciones.length > 0) {
             bValue = b.habitantes_limitaciones[0].limitacion.id;
           } else {
-            bValue = ('limitacion_id' in b ? b.limitacion_id : null) || 999999;
+            bValue = (b as any).limitation_id || 999999;
           }
         } else if (config.key === "condicion") {
           // Sort by condition ID
           if ('habitantes_condiciones' in a && a.habitantes_condiciones && a.habitantes_condiciones.length > 0) {
-            aValue = a.habitantes_condiciones[0].condicion.id;
+            aValue = a.habitantes_condiciones[0].condition.id;
           } else {
-            aValue = ('condicion_id' in a ? a.condicion_id : null) || 999999;
+            aValue = (a as any).condition_id || 999999;
           }
           if ('habitantes_condiciones' in b && b.habitantes_condiciones && b.habitantes_condiciones.length > 0) {
-            bValue = b.habitantes_condiciones[0].condicion.id;
+            bValue = b.habitantes_condiciones[0].condition.id;
           } else {
-            bValue = ('condicion_id' in b ? b.condicion_id : null) || 999999;
+            bValue = (b as any).condition_id || 999999;
           }
         } else if (config.key === "disposicion") {
           // Sort by disposition ID
           if ('habitantes_disposiciones' in a && a.habitantes_disposiciones && a.habitantes_disposiciones.length > 0) {
             aValue = a.habitantes_disposiciones[0].disposiciones.id;
           } else {
-            aValue = ('disposicion_id' in a ? a.disposicion_id : null) || 999999;
+            aValue = (a as any).disposition_id || 999999;
           }
           if ('habitantes_disposiciones' in b && b.habitantes_disposiciones && b.habitantes_disposiciones.length > 0) {
             bValue = b.habitantes_disposiciones[0].disposiciones.id;
           } else {
-            bValue = ('disposicion_id' in b ? b.disposicion_id : null) || 999999;
+            bValue = (b as any).disposition_id || 999999;
           }
-        } else if (config.key === "municipio" || config.key === "propiedad_info.municipio") {
+        } else if (config.key === "municipio" || config.key === "property_info.municipality") {
           // Sort by municipio ID
-          const aIdMunicipio = ('id_municipio' in a ? a.id_municipio : null) || ('municipio_id' in a ? a.municipio_id : null) || ('propiedad_info' in a ? a.propiedad_info?.municipio_id : null) || ('_property' in a ? a._property?.municipio_id : null) || 999999;
-          const bIdMunicipio = ('id_municipio' in b ? b.id_municipio : null) || ('municipio_id' in b ? b.municipio_id : null) || ('propiedad_info' in b ? b.propiedad_info?.municipio_id : null) || ('_property' in b ? b._property?.municipio_id : null) || 999999;
+          const aIdMunicipio = ('id_municipio' in a ? a.id_municipio : null) || ('municipality_id' in a ? a.municipality_id : null) || ('property_info' in a ? a.property_info?.municipality_id : null) || ('_property' in a ? a._property?.municipality_id : null) || 999999;
+          const bIdMunicipio = ('id_municipio' in b ? b.id_municipio : null) || ('municipality_id' in b ? b.municipality_id : null) || ('property_info' in b ? b.property_info?.municipality_id : null) || ('_property' in b ? b._property?.municipality_id : null) || 999999;
           aValue = aIdMunicipio;
           bValue = bIdMunicipio;
-        } else if (config.key === "barrio" || config.key === "propiedad_info.barrio") {
+        } else if (config.key === "barrio" || config.key === "property_info.neighborhood") {
           // Sort by barrio ID
-          const aIdBarrio = ('id_barrio' in a ? a.id_barrio : null) || ('barrio_id' in a ? a.barrio_id : null) || ('propiedad_info' in a ? a.propiedad_info?.barrio_id : null) || ('_property' in a ? a._property?.barrio_id : null) || 999999;
-          const bIdBarrio = ('id_barrio' in b ? b.id_barrio : null) || ('barrio_id' in b ? b.barrio_id : null) || ('propiedad_info' in b ? b.propiedad_info?.barrio_id : null) || ('_property' in b ? b._property?.barrio_id : null) || 999999;
+          const aIdBarrio = ('id_barrio' in a ? a.id_barrio : null) || ('neighborhood_id' in a ? a.neighborhood_id : null) || ('property_info' in a ? a.property_info?.neighborhood_id : null) || ('_property' in a ? a._property?.neighborhood_id : null) || 999999;
+          const bIdBarrio = ('id_barrio' in b ? b.id_barrio : null) || ('neighborhood_id' in b ? b.neighborhood_id : null) || ('property_info' in b ? b.property_info?.neighborhood_id : null) || ('_property' in b ? b._property?.neighborhood_id : null) || 999999;
           aValue = aIdBarrio;
           bValue = bIdBarrio;
-        } else if (config.key === "sector" || config.key === "propiedad_info.sector") {
+        } else if (config.key === "sector" || config.key === "property_info.sector") {
           // Sort by sector ID
-          const aIdSector = ('id_sector' in a ? a.id_sector : null) || ('sector_id' in a ? a.sector_id : null) || ('propiedad_info' in a ? a.propiedad_info?.sector_id : null) || ('_property' in a ? a._property?.sector_id : null) || 999999;
-          const bIdSector = ('id_sector' in b ? b.id_sector : null) || ('sector_id' in b ? b.sector_id : null) || ('propiedad_info' in b ? b.propiedad_info?.sector_id : null) || ('_property' in b ? b._property?.sector_id : null) || 999999;
+          const aIdSector = ('id_sector' in a ? a.id_sector : null) || ('sector_id' in a ? a.sector_id : null) || ('property_info' in a ? a.property_info?.sector_id : null) || ('_property' in a ? a._property?.sector_id : null) || 999999;
+          const bIdSector = ('id_sector' in b ? b.id_sector : null) || ('sector_id' in b ? b.sector_id : null) || ('property_info' in b ? b.property_info?.sector_id : null) || ('_property' in b ? b._property?.sector_id : null) || 999999;
           aValue = aIdSector;
           bValue = bIdSector;
         } else {
@@ -511,17 +511,17 @@ export function DataAnalytics() {
       try {
         let endpoint = "";
         switch (searchType) {
-          case "evento":
-            endpoint = `/api/eventos/search?term=${encodeURIComponent(query)}`;
+              case "event":
+      endpoint = `/api/eventos/search?term=${encodeURIComponent(query)}`;
             break;
-          case "municipio":
+          case "municipality":
             endpoint = `/api/municipios?search=${encodeURIComponent(query)}`;
             break;
           case "usng":
             // For USNG, we'll use the comprehensive report endpoint
             endpoint = `/api/analytics/comprehensive-report`;
             break;
-          case "residente":
+          case "resident":
             endpoint = `/api/residentes/search?term=${encodeURIComponent(
               query
             )}`;
@@ -544,7 +544,7 @@ export function DataAnalytics() {
               }))
             );
           }
-        } else if (searchType === "residente") {
+        } else if (searchType === "resident") {
           const response = await fetch(endpoint);
           const data = await response.json();
           setSearchSuggestions(
@@ -559,7 +559,7 @@ export function DataAnalytics() {
         } else {
           const response = await fetch(endpoint);
           const data = await response.json();
-          if (searchType === "evento") {
+          if (searchType === "event") {
             setSearchSuggestions(
               data.map((event: { id: number; titulo: string }) => ({
                 id: event.id,
@@ -567,7 +567,7 @@ export function DataAnalytics() {
                 type: "evento",
               }))
             );
-          } else if (searchType === "municipio") {
+          } else if (searchType === "municipality") {
             setSearchSuggestions(
               data.map((municipio: { id_municipio: number; nombre: string }) => ({
                 id: municipio.id_municipio,
@@ -614,8 +614,8 @@ export function DataAnalytics() {
 
   // Update the handleSearch function to improve the filtering process
   const handleSearch = async () => {
-    // Only require search term for non-residente searches
-    if (!searchQuery.trim() && searchType !== "residente") {
+    // Only require search term for non-resident searches
+    if (!searchQuery.trim() && searchType !== "resident") {
       setError("Please enter a search term");
       return;
     }
@@ -629,8 +629,8 @@ export function DataAnalytics() {
       const filterObj: Record<string, unknown> = {};
 
       if (filters.usng) filterObj.usng = filters.usng;
-      if (filters.municipio) filterObj.municipio = filters.municipio;
-      if (filters.barrio) filterObj.barrio = filters.barrio;
+      if (filters.municipio) filterObj.municipality = filters.municipio;
+      if (filters.barrio) filterObj.neighborhood = filters.barrio;
       if (filters.sector) filterObj.sector = filters.sector;
 
       if (filters.ageRange?.min || filters.ageRange?.max) {
@@ -689,7 +689,7 @@ export function DataAnalytics() {
       } else {
         // If we're searching for residents and have location filters, apply them to the results
         if (
-          searchType === "residente" &&
+          searchType === "resident" &&
           data.residentes &&
           (filters.municipio || filters.barrio || filters.sector)
         ) {
@@ -701,9 +701,9 @@ export function DataAnalytics() {
             data.residentes = data.residentes.filter(
               (resident: ResidentData) => {
                 const propInfoMunicipio =
-                  resident.propiedad_info?.municipio?.toLowerCase() || "";
+                  resident.property_info?.municipality?.toLowerCase() || "";
                 const propMunicipio =
-                  resident._property?.municipio?.toLowerCase() || "";
+                  resident._property?.municipality?.toLowerCase() || "";
                 return (
                   propInfoMunicipio === municipioFilter ||
                   propMunicipio === municipioFilter
@@ -721,9 +721,9 @@ export function DataAnalytics() {
             data.residentes = data.residentes.filter(
               (resident: ResidentData) => {
                 const propInfoBarrio =
-                  resident.propiedad_info?.barrio?.toLowerCase() || "";
+                  resident.property_info?.neighborhood?.toLowerCase() || "";
                 const propBarrio =
-                  resident._property?.barrio?.toLowerCase() || "";
+                  resident._property?.neighborhood?.toLowerCase() || "";
                 return (
                   propInfoBarrio === barrioFilter || propBarrio === barrioFilter
                 );
@@ -740,7 +740,7 @@ export function DataAnalytics() {
             data.residentes = data.residentes.filter(
               (resident: ResidentData) => {
                 const propInfoSector =
-                  resident.propiedad_info?.sector?.toLowerCase() || "";
+                  resident.property_info?.sector?.toLowerCase() || "";
                 const propSector =
                   resident._property?.sector?.toLowerCase() || "";
                 return (
@@ -758,15 +758,9 @@ export function DataAnalytics() {
             const propertyTypeFilter = filters.propertyType.toLowerCase();
             data.residentes = data.residentes.filter(
               (resident: ResidentData) => {
-                const propInfoTipo =
-                  resident.propiedad_info?.property_type_name?.toLowerCase() ||
-                  "";
-                const propTipo =
-                  resident._property?.property_type_name?.toLowerCase() || "";
-                return (
-                  propInfoTipo === propertyTypeFilter ||
-                  propTipo === propertyTypeFilter
-                );
+                          const propertyInfo = getPropertyInfo(resident);
+          const propertyTypeId = propertyInfo.type_id;
+          return propertyTypeId?.toString() === propertyTypeFilter;
               }
             );
             console.log(
@@ -778,7 +772,7 @@ export function DataAnalytics() {
           if (filters.residentCategory) {
             const categoryFilter = filters.residentCategory.toLowerCase();
             data.residentes = data.residentes.filter((resident: ResidentData) => {
-                return resident.categoria.toLowerCase() === categoryFilter;
+                return resident.category.toLowerCase() === categoryFilter;
             });
             console.log(
               `Filtered residents by category "${filters.residentCategory}": ${data.residentes.length} results`
@@ -790,7 +784,7 @@ export function DataAnalytics() {
             const sexFilter = filters.sex.toLowerCase();
             data.residentes = data.residentes.filter((resident: ResidentData) => {
                 const sex = resident.sex?.toLowerCase() || "";
-                const sexo = resident.sexo?.toLowerCase() || "";
+                const sexo = resident.sex?.toLowerCase() || "";
                 return sex === sexFilter || sexo === sexFilter;
             });
             console.log(
@@ -803,13 +797,13 @@ export function DataAnalytics() {
         setReportData({
           ...data,
           searchQuery:
-            searchType === "residente" && !searchQuery.trim()
+            searchType === "resident" && !searchQuery.trim()
               ? "All residents"
               : searchQuery,
         });
         setExpandedProperties({});
 
-        if (searchType === "evento" && data.evento) {
+        if (searchType === "event" && data.evento) {
           try {
             const notificationsResponse = await fetch(
               `/api/notifications/event/${data.evento.id}`
@@ -1014,7 +1008,7 @@ export function DataAnalytics() {
       <div className="space-y-4 mt-4 p-4 border rounded-md bg-muted/30">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Resident Name Filter - Show prominently for resident searches */}
-          {searchType === "residente" && (
+          {searchType === "resident" && (
             <div className="space-y-2 lg:col-span-3">
               <label className="text-sm font-medium">Resident Name</label>
               <Input
@@ -1473,13 +1467,13 @@ export function DataAnalytics() {
 
   const getSearchPlaceholder = () => {
     switch (searchType) {
-      case "evento":
+      case "event":
         return "Event name";
       case "usng":
         return "USNG coordinates";
-      case "municipio":
+      case "municipality":
         return "Municipality name";
-      case "residente":
+      case "resident":
         return "Resident name (optional)";
       default:
         return "Search...";
@@ -1489,13 +1483,13 @@ export function DataAnalytics() {
   const renderHeader = () => {
     if (!reportData) return null;
 
-    if (reportData.searchType === "evento" && reportData.evento) {
+    if (reportData.searchType === "event" && reportData.evento) {
       return (
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>{reportData.evento.titulo}</CardTitle>
+            <CardTitle>{reportData.evento.title}</CardTitle>
             <CardDescription>
-              Date: {new Date(reportData.evento.fecha).toLocaleDateString()}
+              Date: {new Date(reportData.evento.date).toLocaleDateString()}
             </CardDescription>
           </div>
           <div className="flex items-center gap-4">
@@ -1508,10 +1502,10 @@ export function DataAnalytics() {
             <Badge
               className={cn(
                 "text-sm",
-                getStatusColor(reportData.evento.estado)
+                getStatusColor(reportData.evento.status)
               )}
             >
-              {reportData.evento.estado}
+              {reportData.evento.status}
             </Badge>
           </div>
         </div>
@@ -1542,7 +1536,7 @@ export function DataAnalytics() {
                 <Users className="h-3.5 w-3.5" />
                 <span>
                   {reportData.propiedades.reduce(
-                    (total, property) => total + property.habitantes.length,
+                    (total, property) => total + property.residents.length,
                     0
                   )}{" "}
                   residents in total
@@ -1554,7 +1548,7 @@ export function DataAnalytics() {
       );
     }
 
-    if (reportData.searchType === "municipio") {
+    if (reportData.searchType === "municipality") {
       return (
         <div className="flex items-center justify-between">
           <div>
@@ -1568,7 +1562,7 @@ export function DataAnalytics() {
                 <Users className="h-3.5 w-3.5" />
                 <span>
                   {reportData.propiedades.reduce(
-                    (total, property) => total + property.habitantes.length,
+                    (total, property) => total + property.residents.length,
                     0
                   )}{" "}
                   residents in total
@@ -1580,7 +1574,7 @@ export function DataAnalytics() {
       );
     }
 
-    if (reportData.searchType === "residente") {
+    if (reportData.searchType === "resident") {
       return (
         <div className="flex items-center justify-between">
           <div>
@@ -1646,14 +1640,14 @@ export function DataAnalytics() {
     if (hasResidents && reportData.residentes) {
       filteredResidents = reportData.residentes.filter((resident) => {
         if (!quickResidentFilter) return true;
-        return resident.nombre
+        return resident.name
           .toLowerCase()
           .includes(quickResidentFilter.toLowerCase());
       });
     } else if (hasProperties) {
       // Get residents from property expansions and apply filters
       filteredResidents = filteredProperties.flatMap((property) =>
-        applyResidentFilters(property.habitantes).map((resident) => ({
+        applyResidentFilters(property.residents).map((resident) => ({
           ...resident,
           _property: property,
         }))
@@ -1713,7 +1707,7 @@ export function DataAnalytics() {
     }
     if (filters.evento) {
       const selectedEvent = eventOptions.find(event => event.id.toString() === filters.evento);
-      activeFilters.push(`Event: ${selectedEvent?.titulo || filters.evento}`);
+      activeFilters.push(`Event: ${selectedEvent?.title || filters.evento}`);
     }
 
     const filterInfoText =
@@ -1748,7 +1742,7 @@ export function DataAnalytics() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>SISRI-PR Analytics Report</title>
+          <title>RIDS Analytics Report</title>
           <style>
             body {
               font-family: Arial, sans-serif;
@@ -1901,7 +1895,7 @@ export function DataAnalytics() {
           </div>
           
           <div class="report-header">
-            <h1>SISRI-PR ANALYTICS REPORT</h1>
+                          <h1>RIDS ANALYTICS REPORT</h1>
             <h3>Generated: ${new Date().toLocaleString()}</h3>
             ${sortInfoText ? `<p class="info-text">${sortInfoText}</p>` : ""}
             ${
@@ -1920,41 +1914,41 @@ export function DataAnalytics() {
             <div class="row">
               <div class="label">Search Type:</div>
               <div class="value">${
-                reportData.searchType === "evento"
+                reportData.searchType === "event"
                   ? "Event"
                   : reportData.searchType === "usng"
                   ? "USNG Coordinates"
-                  : reportData.searchType === "municipio"
+                  : reportData.searchType === "municipality"
                   ? "Municipality"
-                  : reportData.searchType === "residente"
+                  : reportData.searchType === "resident"
                   ? "Resident"
                   : "Unknown"
               }</div>
             </div>
             ${
-              reportData.searchType === "evento" && reportData.evento
+              reportData.searchType === "event" && reportData.evento
                 ? `
               <div class="row">
                 <div class="label">Event Name:</div>
-                <div class="value">${reportData.evento.titulo}</div>
+                <div class="value">${reportData.evento.title}</div>
               </div>
               <div class="row">
                 <div class="label">Date:</div>
                 <div class="value">${new Date(
-                  reportData.evento.fecha
+                  reportData.evento.date
                 ).toLocaleDateString()}</div>
               </div>
               <div class="row">
                 <div class="label">Status:</div>
                 <div class="value">
-                  <span class="status-badge badge-${reportData.evento.estado.toLowerCase()}">${
-                    reportData.evento.estado
+                  <span class="status-badge badge-${reportData.evento.status.toLowerCase()}">${
+                    reportData.evento.status
                   }</span>
                 </div>
               </div>
               <div class="row">
                 <div class="label">Description:</div>
-                <div class="value">${reportData.evento.descripcion}</div>
+                <div class="value">${reportData.evento.description}</div>
               </div>
               ${
                 reportData.evento.usng
@@ -1974,14 +1968,14 @@ export function DataAnalytics() {
                 <div class="value">${reportData.usngQuery}</div>
               </div>
             `
-                : reportData.searchType === "municipio"
+                : reportData.searchType === "municipality"
                 ? `
               <div class="row">
                 <div class="label">Municipality:</div>
                 <div class="value">${reportData.municipioQuery}</div>
               </div>
             `
-                : reportData.searchType === "residente"
+                : reportData.searchType === "resident"
                 ? `
               <div class="row">
                 <div class="label">Resident Search:</div>
@@ -2024,27 +2018,27 @@ export function DataAnalytics() {
                           case "location":
                             return `<td>
                           <div>
-                            <span>${property.municipio}</span>
+                            <span>${property.municipality}</span>
                             <br>
                             <span style="font-size: 0.9em; color: #666;">
-                              ${property.barrio} • ${property.sector}
+                              ${property.neighborhood} • ${property.sector}
                             </span>
                           </div>
                         </td>`;
                           case "direccion":
-                            return `<td>${property.direccion || "N/A"}</td>`;
+                            return `<td>${property.address || "N/A"}</td>`;
                           case "usng":
                             return `<td>${property.usng}</td>`;
                           case "daños":
-                            return `<td>${property.daños || "N/A"}</td>`;
+                            return `<td>${property.damages || "N/A"}</td>`;
                           case "fecha":
                             return `<td>${
-                              property.fecha
-                                ? new Date(property.fecha).toLocaleDateString()
+                              property.date
+                                ? new Date(property.date).toLocaleDateString()
                                 : "N/A"
                             }</td>`;
                           case "habitantes":
-                            return `<td>${property.habitantes.length}</td>`;
+                            return `<td>${property.residents.length}</td>`;
                           default:
                             return "<td>N/A</td>";
                         }
@@ -2052,7 +2046,7 @@ export function DataAnalytics() {
                       .join("")}
                   </tr>
                   ${
-                    property.habitantes.length > 0
+                    property.residents.length > 0
                       ? `
                   <tr>
                     <td colspan="${
@@ -2068,8 +2062,8 @@ export function DataAnalytics() {
                         </thead>
                         <tbody>
                           ${(sortConfigs
-                            ? sortData(property.habitantes)
-                            : property.habitantes
+                            ? sortData(property.residents)
+                            : property.residents
                           )
                             .map(
                               (resident) => `
@@ -2082,32 +2076,32 @@ export function DataAnalytics() {
                                         resident.family_id || "0"
                                       }-${resident.id}</span></td>`;
                                     case "nombre":
-                                      return `<td>${resident.nombre}</td>`;
+                                      return `<td>${resident.name}</td>`;
                                     case "apellido1":
                                       return `<td>${
-                                        resident.apellido1 || "N/A"
+                                        resident.lastname1 || "N/A"
                                       }</td>`;
                                     case "apellido2":
                                       return `<td>${
-                                        resident.apellido2 || "N/A"
+                                        resident.lastname2 || "N/A"
                                       }</td>`;
                                     case "edad":
-                                      return `<td>${resident.edad}</td>`;
+                                      return `<td>${resident.age}</td>`;
                                     case "sex":
                                       return `<td>${
-                                        resident.sex || resident.sexo || "N/A"
+                                        resident.sex || resident.sex || "N/A"
                                       }</td>`;
                                     case "categoria":
-                                      return `<td>${resident.categoria}</td>`;
+                                      return `<td>${resident.category}</td>`;
                                     case "family":
                                       return `<td>${
                                         resident.family
-                                          ? resident.family.apellidos
+                                          ? resident.family.surnames
                                           : "N/A"
                                       }</td>`;
                                     case "contacto":
                                       return `<td>${
-                                        resident.contacto || "N/A"
+                                        resident.contact || "N/A"
                                       }</td>`;
                                     case "limitacion":
                                       const limitations = getLimitationDisplay(resident);
@@ -2131,29 +2125,23 @@ export function DataAnalytics() {
                                         return `<td><span class="badge badge-outline">N/A</span></td>`;
                                       }
                                     case "property":
-                                      return `<td>${
-                                        resident.propiedad_info
-                                          ?.property_type_name
-                                          ? `${resident.propiedad_info.property_type_name} (${resident.propiedad_info.property_type_id})`
-                                          : property.property_type_name
-                                          ? `${property.property_type_name} (${property.property_type_id})`
-                                          : "N/A"
-                                      }</td>`;
-                                    case "municipio":
-                                      return `<td>${resident.propiedad_info?.municipio || (resident._property?.municipio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.municipio_id || resident._property?.municipio_id || 'N/A'})</span></td>`;
+                                      const propertyInfo = getPropertyInfo(resident);
+                                      return `<td>${propertyInfo.type_name} (${propertyInfo.type_id})</td>`;
+                                    case "municipality":
+                                      return `<td>${resident.property_info?.municipality || (resident._property?.municipality || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.property_info?.municipality_id || resident._property?.municipality_id || 'N/A'})</span></td>`;
                                     case "barrio":
-                                      return `<td>${resident.propiedad_info?.barrio || (resident._property?.barrio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.barrio_id || resident._property?.barrio_id || 'N/A'})</span></td>`;
+                                      return `<td>${resident.property_info?.neighborhood || (resident._property?.neighborhood || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.property_info?.neighborhood_id || resident._property?.neighborhood_id || 'N/A'})</span></td>`;
                                     case "sector":
-                                      return `<td>${resident.propiedad_info?.sector || (resident._property?.sector || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.sector_id || resident._property?.sector_id || 'N/A'})</span></td>`;
+                                      return `<td>${resident.property_info?.sector || (resident._property?.sector || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.property_info?.sector_id || resident._property?.sector_id || 'N/A'})</span></td>`;
                                     case "usng":
                                       return `<td>${
-                                        resident.propiedad_info?.usng ||
+                                        resident.property_info?.usng ||
                                         property.usng
                                       }</td>`;
                                     case "direccion":
                                       return `<td>${
-                                        resident.propiedad_info?.direccion ||
-                                        property.direccion ||
+                                        resident.property_info?.address ||
+                                        property.address ||
                                         "N/A"
                                       }</td>`;
                                     default:
@@ -2218,7 +2206,7 @@ export function DataAnalytics() {
           }
           
           ${
-            residentsCount > 0 && reportData.searchType === "residente"
+            residentsCount > 0 && reportData.searchType === "resident"
               ? `
           <div class="section">
             <div class="section-title">Residents (${residentsCount})</div>
@@ -2243,27 +2231,27 @@ export function DataAnalytics() {
                               resident.id
                             }</td>`;
                           case "nombre":
-                            return `<td>${resident.nombre}</td>`;
+                            return `<td>${resident.name}</td>`;
                           case "apellido1":
-                            return `<td>${resident.apellido1 || "N/A"}</td>`;
+                            return `<td>${resident.lastname1 || "N/A"}</td>`;
                           case "apellido2":
-                            return `<td>${resident.apellido2 || "N/A"}</td>`;
+                            return `<td>${resident.lastname2 || "N/A"}</td>`;
                           case "edad":
-                            return `<td>${resident.edad}</td>`;
+                            return `<td>${resident.age}</td>`;
                           case "sex":
                             return `<td>${
-                              resident.sex || resident.sexo || "N/A"
+                              resident.sex || resident.sex || "N/A"
                             }</td>`;
                           case "categoria":
-                            return `<td>${resident.categoria}</td>`;
+                            return `<td>${resident.category}</td>`;
                           case "family":
                             return `<td>${
                               resident.family
-                                ? resident.family.apellidos
+                                ? resident.family.surnames
                                 : "N/A"
                             }</td>`;
                           case "contacto":
-                            return `<td>${resident.contacto || "N/A"}</td>`;
+                            return `<td>${resident.contact || "N/A"}</td>`;
                           case "limitacion":
                             const limitations = getLimitationDisplay(resident);
                             if (limitations.length > 0) {
@@ -2285,34 +2273,29 @@ export function DataAnalytics() {
                             } else {
                               return `<td><span class="badge badge-outline">N/A</span></td>`;
                             }
-                          case "property":
-                            return `<td>${
-                              resident.propiedad_info
-                                ? `${resident.propiedad_info.property_type_name} (${resident.propiedad_info.property_type_id})`
-                                : resident._property
-                                ? `${resident._property.property_type_name} (${resident._property.property_type_id})`
-                                : "N/A"
-                            }</td>`;
-                          case "municipio":
-                            return `<td>${resident.propiedad_info?.municipio || (resident._property?.municipio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.municipio_id || resident._property?.municipio_id || 'N/A'})</span></td>`;
+                                                                    case "property":
+                                            const propertyInfo = getPropertyInfo(resident);
+                                            return `<td>${propertyInfo.type_name} (${propertyInfo.type_id})</td>`;
+                          case "municipality":
+                            return `<td>${resident.property_info?.municipality || (resident._property?.municipality || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.property_info?.municipality_id || resident._property?.municipality_id || 'N/A'})</span></td>`;
                           case "barrio":
-                            return `<td>${resident.propiedad_info?.barrio || (resident._property?.barrio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.barrio_id || resident._property?.barrio_id || 'N/A'})</span></td>`;
+                            return `<td>${resident.property_info?.neighborhood || (resident._property?.neighborhood || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.property_info?.neighborhood_id || resident._property?.neighborhood_id || 'N/A'})</span></td>`;
                           case "sector":
-                            return `<td>${resident.propiedad_info?.sector || (resident._property?.sector || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.sector_id || resident._property?.sector_id || 'N/A'})</span></td>`;
+                            return `<td>${resident.property_info?.sector || (resident._property?.sector || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.property_info?.sector_id || resident._property?.sector_id || 'N/A'})</span></td>`;
                           case "usng":
                             return `<td>${
-                              resident.propiedad_info
-                                ? resident.propiedad_info.usng
+                              resident.property_info
+                                ? resident.property_info.usng
                                 : resident._property
                                 ? resident._property.usng
                                 : "N/A"
                             }</td>`;
                           case "direccion":
                             return `<td>${
-                              resident.propiedad_info
-                                ? resident.propiedad_info.direccion || "N/A"
+                              resident.property_info
+                                ? resident.property_info.address || "N/A"
                                 : resident._property
-                                ? resident._property.direccion || "N/A"
+                                ? resident._property.address || "N/A"
                                 : "N/A"
                             }</td>`;
                           default:
@@ -2362,12 +2345,12 @@ export function DataAnalytics() {
                       <td>${notification.tipo}</td>
                       <td>
                         <span class="status-badge badge-${(
-                          notification.estado || "pending"
+                          notification.status || "pending"
                         ).toLowerCase()}">
-                          ${notification.estado || "Pending"}
+                          ${notification.status || "Pending"}
                         </span>
                       </td>
-                      <td>${formatDate(notification.fecha_creacion)}</td>
+                      <td>${formatDate(notification.date_creacion)}</td>
                       <td>${notification.mensaje.substring(0, 50)}${
                         notification.mensaje.length > 50 ? "..." : ""
                       }</td>
@@ -2392,7 +2375,7 @@ export function DataAnalytics() {
           </div>
           
           <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #666;">
-            <p>SISRI-PR Official Analytics Report - Confidential</p>
+                          <p>RIDS Official Analytics Report - Confidential</p>
             <p>Generated by the Sistema de Información de Respuesta a Incidentes</p>
           </div>
         </body>
@@ -2411,7 +2394,7 @@ export function DataAnalytics() {
     if (nameFilter) {
       const filterLower = nameFilter.toLowerCase();
       filteredResidents = filteredResidents.filter((resident) =>
-        resident.nombre.toLowerCase().includes(filterLower)
+        resident.name.toLowerCase().includes(filterLower)
       );
     }
 
@@ -2419,7 +2402,7 @@ export function DataAnalytics() {
     if (filters.familyName) {
       const familyFilter = filters.familyName.toLowerCase();
       filteredResidents = filteredResidents.filter((resident) =>
-        resident.family?.apellidos?.toLowerCase().includes(familyFilter)
+        resident.family?.surnames?.toLowerCase().includes(familyFilter)
       );
     }
 
@@ -2427,7 +2410,7 @@ export function DataAnalytics() {
     if (filters.residentCategory) {
       const categoryFilter = filters.residentCategory.toLowerCase();
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
-        return resident.categoria.toLowerCase() === categoryFilter;
+        return resident.category.toLowerCase() === categoryFilter;
       });
     }
 
@@ -2475,7 +2458,7 @@ export function DataAnalytics() {
       filteredResidents = filteredResidents.filter((resident) => {
         const min = Number(filters.ageRange?.min || 0);
         const max = Number(filters.ageRange?.max || 200);
-        return resident.edad >= min && resident.edad <= max;
+        return resident.age >= min && resident.age <= max;
       });
     }
 
@@ -2484,7 +2467,7 @@ export function DataAnalytics() {
       const sexFilter = filters.sex.toLowerCase();
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
         const sex = resident.sex?.toLowerCase() || "";
-        const sexo = resident.sexo?.toLowerCase() || "";
+        const sexo = resident.sex?.toLowerCase() || "";
         return sex === sexFilter || sexo === sexFilter;
       });
     }
@@ -2493,7 +2476,7 @@ export function DataAnalytics() {
     if (filters.usng) {
       const usngFilter = filters.usng.toLowerCase();
       filteredResidents = filteredResidents.filter((resident) => {
-        const propInfoUsng = resident.propiedad_info?.usng?.toLowerCase() || "";
+        const propInfoUsng = resident.property_info?.usng?.toLowerCase() || "";
         const propUsng = resident._property?.usng?.toLowerCase() || "";
         return (
           propInfoUsng.includes(usngFilter) || propUsng.includes(usngFilter)
@@ -2505,9 +2488,9 @@ export function DataAnalytics() {
       const municipioFilter = filters.municipio.toLowerCase();
       filteredResidents = filteredResidents.filter((resident) => {
         const propInfoMunicipio =
-          resident.propiedad_info?.municipio?.toLowerCase() || "";
+          resident.property_info?.municipality?.toLowerCase() || "";
         const propMunicipio =
-          resident._property?.municipio?.toLowerCase() || "";
+          resident._property?.municipality?.toLowerCase() || "";
         return (
           propInfoMunicipio === municipioFilter ||
           propMunicipio === municipioFilter
@@ -2519,8 +2502,8 @@ export function DataAnalytics() {
       const barrioFilter = filters.barrio.toLowerCase();
       filteredResidents = filteredResidents.filter((resident) => {
         const propInfoBarrio =
-          resident.propiedad_info?.barrio?.toLowerCase() || "";
-        const propBarrio = resident._property?.barrio?.toLowerCase() || "";
+          resident.property_info?.neighborhood?.toLowerCase() || "";
+        const propBarrio = resident._property?.neighborhood?.toLowerCase() || "";
         return propInfoBarrio === barrioFilter || propBarrio === barrioFilter;
       });
     }
@@ -2529,7 +2512,7 @@ export function DataAnalytics() {
       const sectorFilter = filters.sector.toLowerCase();
       filteredResidents = filteredResidents.filter((resident) => {
         const propInfoSector =
-          resident.propiedad_info?.sector?.toLowerCase() || "";
+          resident.property_info?.sector?.toLowerCase() || "";
         const propSector = resident._property?.sector?.toLowerCase() || "";
         return propInfoSector === sectorFilter || propSector === sectorFilter;
       });
@@ -2539,9 +2522,8 @@ export function DataAnalytics() {
     if (filters.propertyType) {
       const propertyTypeId = parseInt(filters.propertyType);
       filteredResidents = filteredResidents.filter((resident) => {
-        const propInfoTypeId = resident.propiedad_info?.property_type_id;
-        const propTypeId = resident._property?.property_type_id;
-        return propInfoTypeId === propertyTypeId || propTypeId === propertyTypeId;
+        const propertyInfo = getPropertyInfo(resident);
+        return propertyInfo.type_id?.toString() === propertyTypeId.toString();
       });
     }
 
@@ -2549,7 +2531,7 @@ export function DataAnalytics() {
     if (filters.residentCategory) {
       const categoryFilter = filters.residentCategory.toLowerCase();
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
-        return resident.categoria.toLowerCase() === categoryFilter;
+        return resident.category.toLowerCase() === categoryFilter;
       });
     }
 
@@ -2558,7 +2540,7 @@ export function DataAnalytics() {
       const sexFilter = filters.sex.toLowerCase();
       filteredResidents = filteredResidents.filter((resident: ResidentData) => {
         const sex = resident.sex?.toLowerCase() || "";
-        const sexo = resident.sexo?.toLowerCase() || "";
+        const sexo = resident.sex?.toLowerCase() || "";
         return sex === sexFilter || sexo === sexFilter;
       });
     }
@@ -2771,30 +2753,60 @@ export function DataAnalytics() {
 
   // Update the property display for residents
   const getPropertyInfo = (resident: ResidentData) => {
-    // Find the matching property from properties array using propiedad_id
-    const property = reportData?.propiedades?.find(p => p.id === resident.propiedad_id);
+    // For resident searches, prioritize the property info that comes with the resident data
+    // as it contains complete information including property types
+    if (resident.property_info && (
+      resident.property_info.property_type_name || 
+      resident.property_info.property_type_id
+    )) {
+      return {
+        type_name: resident.property_info.property_type_name || 'N/A',
+        type_id: resident.property_info.property_type_id || 'N/A',
+        municipio: resident.property_info.municipality || 'N/A',
+        barrio: resident.property_info.neighborhood || 'N/A',
+        sector: resident.property_info.sector || 'N/A',
+        usng: resident.property_info.usng || 'N/A',
+        direccion: resident.property_info.address || 'N/A'
+      };
+    }
+
+    // Try to find the matching property from properties array using propiedad_id
+    const property = reportData?.propiedades?.find(p => p.id === resident.property_id);
     
     if (property) {
       return {
         type_name: property.property_type_name || 'N/A',
         type_id: property.property_type_id || 'N/A',
-        municipio: property.municipio || 'N/A',
-        barrio: property.barrio || 'N/A',
+        municipio: property.municipality || 'N/A',
+        barrio: property.neighborhood || 'N/A',
         sector: property.sector || 'N/A',
         usng: property.usng || 'N/A',
-        direccion: property.direccion || 'N/A'
+        direccion: property.address || 'N/A'
       };
     }
 
-    // Fallback to resident's property info if no match found
+    // Fallback to _property if available
+    if (resident._property) {
+      return {
+        type_name: resident._property.property_type_name || 'N/A',
+        type_id: resident._property.property_type_id || 'N/A',
+        municipio: resident._property.municipality || 'N/A',
+        barrio: resident._property.neighborhood || 'N/A',
+        sector: resident._property.sector || 'N/A',
+        usng: resident._property.usng || 'N/A',
+        direccion: resident._property.address || 'N/A'
+      };
+    }
+
+    // Final fallback
     return {
-      type_name: resident.propiedad_info?.property_type_name || 'N/A',
-      type_id: resident.propiedad_info?.property_type_id || 'N/A',
-      municipio: resident.propiedad_info?.municipio || 'N/A',
-      barrio: resident.propiedad_info?.barrio || 'N/A',
-      sector: resident.propiedad_info?.sector || 'N/A',
-      usng: resident.propiedad_info?.usng || 'N/A',
-      direccion: resident.propiedad_info?.direccion || 'N/A'
+      type_name: 'N/A',
+      type_id: 'N/A',
+      municipio: 'N/A',
+      barrio: 'N/A',
+      sector: 'N/A',
+      usng: 'N/A',
+      direccion: 'N/A'
     };
   };
 
@@ -2862,23 +2874,28 @@ export function DataAnalytics() {
             ? dispositions.map(disp => `${disp.name}${disp.id ? ` (ID: ${disp.id})` : ''}`).join(", ")
             : "N/A";
           break;
-        case "municipio":
+        case "municipality":
           const propertyInfo = getPropertyInfo(resident);
-          groupKey = `${propertyInfo.municipio} (ID: ${resident.id_municipio || resident.propiedad_info?.municipio_id || 'N/A'})`;
+          groupKey = `${propertyInfo.municipality} (ID: ${resident.id_municipio || resident.property_info?.municipality_id || 'N/A'})`;
           break;
         case "barrio":
           const propInfo = getPropertyInfo(resident);
-          groupKey = `${propInfo.barrio} (ID: ${resident.id_barrio || resident.propiedad_info?.barrio_id || 'N/A'})`;
+          groupKey = `${propInfo.neighborhood} (ID: ${resident.id_barrio || resident.property_info?.neighborhood_id || 'N/A'})`;
           break;
         case "sector":
           const propInfoSector = getPropertyInfo(resident);
-          groupKey = `${propInfoSector.sector} (ID: ${resident.id_sector || resident.propiedad_info?.sector_id || 'N/A'})`;
+          groupKey = `${propInfoSector.sector} (ID: ${resident.id_sector || resident.property_info?.sector_id || 'N/A'})`;
           break;
         case "categoria":
-          groupKey = resident.categoria;
+          groupKey = resident.category;
           break;
         case "sex":
-          groupKey = resident.sex || resident.sexo || "N/A";
+          console.log('Debug sex for resident', resident.id, ':', {
+            sex: resident.sex,
+            sexo: resident.sex,
+            final: resident.sex || resident.sex || "N/A"
+          });
+          groupKey = resident.sex || resident.sex || "N/A";
           break;
         case "property":
           const propTypeInfo = getPropertyInfo(resident);
@@ -2886,13 +2903,13 @@ export function DataAnalytics() {
           break;
         case "edad":
           // Group ages by ranges
-          const age = resident.edad;
+          const age = resident.age;
           if (age < 18) groupKey = "0-17 (Minor)";
           else if (age < 65) groupKey = "18-64 (Adult)";
           else groupKey = "65+ (Elderly)";
           break;
         case "family":
-          groupKey = resident.family?.apellidos || "N/A";
+          groupKey = resident.family?.surnames || "N/A";
           break;
         default:
           groupKey = "N/A";
@@ -2922,17 +2939,17 @@ export function DataAnalytics() {
     if (visibleColumns.edad) columns.push({ key: "edad", label: "Age", sortKey: "edad" });
     if (visibleColumns.sex) columns.push({ key: "sex", label: "Sex", sortKey: "sex" });
     if (visibleColumns.categoria) columns.push({ key: "categoria", label: "Category", sortKey: "categoria" });
-    if (visibleColumns.family) columns.push({ key: "family", label: "Family", sortKey: "family.apellidos" });
+    if (visibleColumns.family) columns.push({ key: "family", label: "Family", sortKey: "family.surnames" });
     if (visibleColumns.contacto) columns.push({ key: "contacto", label: "Contact", sortKey: "contacto" });
     if (visibleColumns.limitacion) columns.push({ key: "limitacion", label: "Limitation", sortKey: "limitacion" });
     if (visibleColumns.condicion) columns.push({ key: "condicion", label: "Condition", sortKey: "condicion" });
     if (visibleColumns.disposicion) columns.push({ key: "disposicion", label: "Disposition", sortKey: "disposicion" });
-    if (visibleColumns.property) columns.push({ key: "property", label: "Property Type", sortKey: "propiedad_info.property_type_name" });
-    if (visibleColumns.municipio) columns.push({ key: "municipio", label: "Municipality", sortKey: "propiedad_info.municipio" });
-    if (visibleColumns.barrio) columns.push({ key: "barrio", label: "Barrio", sortKey: "propiedad_info.barrio" });
-    if (visibleColumns.sector) columns.push({ key: "sector", label: "Sector", sortKey: "propiedad_info.sector" });
-    if (visibleColumns.usng) columns.push({ key: "usng", label: "USNG", sortKey: "propiedad_info.usng" });
-    if (visibleColumns.direccion) columns.push({ key: "direccion", label: "Address", sortKey: "propiedad_info.direccion" });
+    if (visibleColumns.property) columns.push({ key: "property", label: "Property Type", sortKey: "property_info.property_type_name" });
+    if (visibleColumns.municipality) columns.push({ key: "municipio", label: "Municipality", sortKey: "property_info.municipality" });
+    if (visibleColumns.neighborhood) columns.push({ key: "barrio", label: "Barrio", sortKey: "property_info.neighborhood" });
+    if (visibleColumns.sector) columns.push({ key: "sector", label: "Sector", sortKey: "property_info.sector" });
+    if (visibleColumns.usng) columns.push({ key: "usng", label: "USNG", sortKey: "property_info.usng" });
+    if (visibleColumns.address) columns.push({ key: "direccion", label: "Address", sortKey: "property_info.address" });
     
     return columns;
   };
@@ -3000,7 +3017,7 @@ export function DataAnalytics() {
                   </div>
                 )}
               </div>
-              {searchType === "residente" && (
+              {searchType === "resident" && (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -3054,9 +3071,9 @@ export function DataAnalytics() {
         <Card>
           <CardHeader>
             {renderHeader()}
-            {reportData.searchType === "evento" && reportData.evento && (
+            {reportData.searchType === "event" && reportData.evento && (
               <p className="text-sm text-muted-foreground mt-2">
-                {reportData.evento.descripcion}
+                {reportData.evento.description}
               </p>
             )}
 
@@ -3073,7 +3090,7 @@ export function DataAnalytics() {
             </div>
           </CardHeader>
 
-          {reportData.searchType === "evento" && reportData.evento && (
+          {reportData.searchType === "event" && reportData.evento && (
             <Tabs
               defaultValue="properties"
               value={activeTab}
@@ -3104,6 +3121,59 @@ export function DataAnalytics() {
               </TabsList>
 
               <TabsContent value="properties" className="pt-4">
+                {/* Count Break Results for Event searches */}
+                {filters.countBreak && reportData.propiedades && (() => {
+                  // Extract residents from properties for count break analysis
+                  const allResidents = reportData.propiedades.flatMap(property =>
+                    applyResidentFilters(property.residents || []).map(resident => ({
+                      ...resident,
+                      _property: property,
+                    }))
+                  );
+                  
+                  console.log('Event Count Break Debug:', {
+                    countBreak: filters.countBreak,
+                    propiedadesLength: reportData.propiedades.length,
+                    allResidentsLength: allResidents.length,
+                    sampleResidents: allResidents.slice(0, 3).map(r => ({
+                      id: r.id,
+                      sex: r.sex,
+                      sexo: r.sexo,
+                      name: r.nombre
+                    }))
+                  });
+                  
+                  const countBreakData = getCountBreakData(
+                    allResidents,
+                    filters.countBreak
+                  );
+                  
+                  return countBreakData && allResidents.length > 0 ? (
+                    <div className="mb-6 p-4 bg-muted/30 rounded-md">
+                      <h4 className="text-lg font-semibold mb-4">
+                        Count Break by {countBreakOptions.find(opt => opt.value === filters.countBreak)?.label}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {countBreakData.map((item, index) => (
+                          <Card key={index} className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1 mr-2">
+                                <h5 className="font-medium text-sm break-words">{item.group}</h5>
+                              </div>
+                              <Badge variant="secondary" className="ml-2 flex-shrink-0">
+                                {item.count}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {((item.count / allResidents.length) * 100).toFixed(1)}% of total
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
                 {/* Column Visibility Controls for Properties */}
                 {renderPropertyColumnControls()}
 
@@ -3199,16 +3269,16 @@ export function DataAnalytics() {
                               {visibleColumns.property_location && (
                                 <td className="py-3 px-4">
                                   <div className="flex flex-col">
-                                    <span>{property.municipio}</span>
+                                    <span>{property.municipality}</span>
                                     <span className="text-sm text-muted-foreground">
-                                      {property.barrio} • {property.sector}
+                                      {property.neighborhood} • {property.sector}
                                     </span>
                                   </div>
                                 </td>
                               )}
                               {visibleColumns.property_address && (
                                 <td className="py-3 px-4">
-                                  {property.direccion || "N/A"}
+                                  {property.address || "N/A"}
                                 </td>
                               )}
                               {visibleColumns.property_usng && (
@@ -3216,14 +3286,14 @@ export function DataAnalytics() {
                               )}
                               {visibleColumns.property_damage && (
                                 <td className="py-3 px-4">
-                                  {property.daños || "N/A"}
+                                  {property.damages || "N/A"}
                                 </td>
                               )}
                               {visibleColumns.property_date && (
                                 <td className="py-3 px-4">
-                                  {property.fecha
+                                  {property.date
                                     ? new Date(
-                                        property.fecha
+                                        property.date
                                       ).toLocaleDateString()
                                     : "N/A"}
                                 </td>
@@ -3232,8 +3302,8 @@ export function DataAnalytics() {
                                 <td className="py-3 px-4">
                                   <div className="flex items-center gap-1">
                                     <Users className="h-4 w-4" />
-                                    <span>{property.habitantes.length}</span>
-                                    {property.habitantes.length > 0 && (
+                                    <span>{property.residents.length}</span>
+                                    {property.residents.length > 0 && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -3254,7 +3324,7 @@ export function DataAnalytics() {
                               )}
                             </tr>
                             {expandedProperties[property.id] &&
-                              property.habitantes.length > 0 && (
+                              property.residents.length > 0 && (
                                 <tr className="bg-muted/30">
                                   <td
                                     colSpan={
@@ -3366,14 +3436,14 @@ export function DataAnalytics() {
                                                 className="py-2 px-3 text-left font-medium cursor-pointer"
                                                 onClick={(e) =>
                                                   requestSort(
-                                                    "family.apellidos",
+                                                    "family.surnames",
                                                     e
                                                   )
                                                 }
                                               >
                                                 Family{" "}
                                                 {getSortDirectionIndicator(
-                                                  "family.apellidos"
+                                                  "family.surnames"
                                                 )}
                                               </th>
                                             )}
@@ -3434,46 +3504,46 @@ export function DataAnalytics() {
                                                 className="py-2 px-3 text-left font-medium cursor-pointer"
                                                 onClick={(e) =>
                                                   requestSort(
-                                                    "propiedad_info.property_type_name",
+                                                    "property_info.property_type_name",
                                                     e
                                                   )
                                                 }
                                               >
                                                 Property{" "}
                                                 {getSortDirectionIndicator(
-                                                  "propiedad_info.property_type_name"
+                                                  "property_info.property_type_name"
                                                 )}
                                               </th>
                                             )}
-                                            {visibleColumns.municipio && (
+                                            {visibleColumns.municipality && (
                                               <th
                                                 className="py-2 px-3 text-left font-medium cursor-pointer"
                                                 onClick={(e) =>
                                                   requestSort(
-                                                    "propiedad_info.municipio",
+                                                    "property_info.municipality",
                                                     e
                                                   )
                                                 }
                                               >
                                                 Municipality{" "}
                                                 {getSortDirectionIndicator(
-                                                  "propiedad_info.municipio"
+                                                  "property_info.municipality"
                                                 )}
                                               </th>
                                             )}
-                                            {visibleColumns.barrio && (
+                                            {visibleColumns.neighborhood && (
                                               <th
                                                 className="py-2 px-3 text-left font-medium cursor-pointer"
                                                 onClick={(e) =>
                                                   requestSort(
-                                                    "propiedad_info.barrio",
+                                                    "property_info.neighborhood",
                                                     e
                                                   )
                                                 }
                                               >
                                                 Barrio{" "}
                                                 {getSortDirectionIndicator(
-                                                  "propiedad_info.barrio"
+                                                  "property_info.neighborhood"
                                                 )}
                                               </th>
                                             )}
@@ -3482,30 +3552,30 @@ export function DataAnalytics() {
                                                 className="py-2 px-3 text-left font-medium cursor-pointer"
                                                 onClick={(e) =>
                                                   requestSort(
-                                                    "propiedad_info.sector",
+                                                    "property_info.sector",
                                                     e
                                                   )
                                                 }
                                               >
                                                 Sector{" "}
                                                 {getSortDirectionIndicator(
-                                                  "propiedad_info.sector"
+                                                  "property_info.sector"
                                                 )}
                                               </th>
                                             )}
-                                            {visibleColumns.direccion && (
+                                            {visibleColumns.address && (
                                               <th
                                                 className="py-2 px-3 text-left font-medium cursor-pointer"
                                                 onClick={(e) =>
                                                   requestSort(
-                                                    "propiedad_info.direccion",
+                                                    "property_info.address",
                                                     e
                                                   )
                                                 }
                                               >
                                                 Address{" "}
                                                 {getSortDirectionIndicator(
-                                                  "propiedad_info.direccion"
+                                                  "property_info.address"
                                                 )}
                                               </th>
                                             )}
@@ -3514,8 +3584,8 @@ export function DataAnalytics() {
                                         <tbody>
                                           {(sortConfigs &&
                                           expandedProperties[property.id]
-                                            ? sortData(property.habitantes)
-                                            : property.habitantes
+                                            ? sortData(property.residents)
+                                            : property.residents
                                           ).map((resident: ResidentData) => (
                                             <tr
                                               key={resident.id}
@@ -3534,48 +3604,48 @@ export function DataAnalytics() {
                                               )}
                                               {visibleColumns.nombre && (
                                                 <td className="py-2 px-3">
-                                                  {resident.nombre}
+                                                  {resident.name}
                                                 </td>
                                               )}
                                               {visibleColumns.apellido1 && (
                                                 <td className="py-2 px-3">
-                                                  {resident.apellido1 || "N/A"}
+                                                  {resident.lastname1 || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.apellido2 && (
                                                 <td className="py-2 px-3">
-                                                  {resident.apellido2 || "N/A"}
+                                                  {resident.lastname2 || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.edad && (
                                                 <td className="py-2 px-3">
-                                                  {resident.edad}
+                                                  {resident.age}
                                                 </td>
                                               )}
                                               {visibleColumns.sex && (
                                                 <td className="py-2 px-3">
                                                   {resident.sex ||
-                                                    resident.sexo ||
+                                                    resident.sex ||
                                                     "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.categoria && (
                                                 <td className="py-2 px-3">
                                                   <Badge variant="outline">
-                                                    {resident.categoria}
+                                                    {resident.category}
                                                   </Badge>
                                                 </td>
                                               )}
                                               {visibleColumns.family && (
                                                 <td className="py-2 px-3">
                                                   {resident.family
-                                                    ? resident.family.apellidos
+                                                    ? resident.family.surnames
                                                     : "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.contacto && (
                                                 <td className="py-2 px-3">
-                                                  {resident.contacto || "N/A"}
+                                                  {resident.contact || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.limitacion && (
@@ -3660,8 +3730,8 @@ export function DataAnalytics() {
                                                       {`${getPropertyInfo(resident).type_name} (${getPropertyInfo(resident).type_id})`}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {getPropertyInfo(resident).municipio},{" "}
-                                                      {getPropertyInfo(resident).barrio},{" "}
+                                                      {getPropertyInfo(resident).municipality},{" "}
+                                                      {getPropertyInfo(resident).neighborhood},{" "}
                                                       {getPropertyInfo(resident).sector}
                                                     </span>
                                                     <span className="text-xs font-mono mt-1">
@@ -3670,32 +3740,32 @@ export function DataAnalytics() {
                                                   </div>
                                                 </td>
                                               )}
-                                              {visibleColumns.municipio && (
+                                              {visibleColumns.municipality && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
                                                     <Badge
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {property.municipio || "N/A"}
+                                                      {property.municipality || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      ID: {property.municipio_id || resident.id_municipio || "N/A"}
+                                                      ID: {property.municipality_id || resident.id_municipio || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
                                               )}
-                                              {visibleColumns.barrio && (
+                                              {visibleColumns.neighborhood && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
                                                     <Badge
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {property.barrio || "N/A"}
+                                                      {property.neighborhood || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      ID: {property.barrio_id || resident.id_barrio || "N/A"}
+                                                      ID: {property.neighborhood_id || resident.id_barrio || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3715,17 +3785,17 @@ export function DataAnalytics() {
                                                   </div>
                                                 </td>
                                               )}
-                                              {visibleColumns.direccion && (
+                                              {visibleColumns.address && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
                                                     <Badge
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                                      {property.direccion || "N/A"}
+                                                      {property.address || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {property.direccion || "N/A"}
+                                                      {property.address || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -3758,15 +3828,15 @@ export function DataAnalytics() {
                               </CardTitle>
                             <CardDescription className="text-sm">
                               #{notification.numero_notificacion} •{" "}
-                                {formatDate(notification.fecha_creacion)}
+                                {formatDate(notification.date_creacion)}
                               </CardDescription>
                             </div>
                             <Badge
                             variant={
-                              getNotificationStatusColor(notification.estado) as any
+                              getNotificationStatusColor(notification.status) as any
                             }
                             >
-                              {notification.estado}
+                              {notification.status}
                             </Badge>
                         </div>
                           </CardHeader>
@@ -3791,8 +3861,62 @@ export function DataAnalytics() {
           )}
 
           {/* Properties Display for USNG and Municipality searches */}
-          {(reportData.searchType === "usng" || reportData.searchType === "municipio") && reportData.propiedades && reportData.propiedades.length > 0 && (
+          {(reportData.searchType === "usng" || reportData.searchType === "municipality") && reportData.propiedades && reportData.propiedades.length > 0 && (
             <CardContent>
+              {/* Count Break Results for USNG/Municipality searches */}
+              {filters.countBreak && reportData.propiedades && (() => {
+                // Extract residents from properties for count break analysis
+                const allResidents = reportData.propiedades.flatMap(property =>
+                  applyResidentFilters(property.residents || []).map(resident => ({
+                    ...resident,
+                    _property: property,
+                  }))
+                );
+                
+                console.log('USNG/Municipality Count Break Debug:', {
+                  searchType: reportData.searchType,
+                  countBreak: filters.countBreak,
+                  propiedadesLength: reportData.propiedades.length,
+                  allResidentsLength: allResidents.length,
+                  sampleResidents: allResidents.slice(0, 3).map(r => ({
+                    id: r.id,
+                    sex: r.sex,
+                    sexo: r.sexo,
+                    name: r.nombre
+                  }))
+                });
+                
+                const countBreakData = getCountBreakData(
+                  allResidents,
+                  filters.countBreak
+                );
+                
+                return countBreakData && allResidents.length > 0 ? (
+                  <div className="mb-6 p-4 bg-muted/30 rounded-md">
+                    <h4 className="text-lg font-semibold mb-4">
+                      Count Break by {countBreakOptions.find(opt => opt.value === filters.countBreak)?.label}
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {countBreakData.map((item, index) => (
+                        <Card key={index} className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 mr-2">
+                              <h5 className="font-medium text-sm break-words">{item.group}</h5>
+                            </div>
+                            <Badge variant="secondary" className="ml-2 flex-shrink-0">
+                              {item.count}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {((item.count / allResidents.length) * 100).toFixed(1)}% of total
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
               {/* Column Visibility Controls for Properties */}
               {renderPropertyColumnControls()}
 
@@ -3888,16 +4012,16 @@ export function DataAnalytics() {
                             {visibleColumns.property_location && (
                               <td className="py-3 px-4">
                                 <div className="flex flex-col">
-                                  <span>{property.municipio}</span>
+                                  <span>{property.municipality}</span>
                                   <span className="text-sm text-muted-foreground">
-                                    {property.barrio} • {property.sector}
+                                    {property.neighborhood} • {property.sector}
                                   </span>
                                 </div>
                               </td>
                             )}
                             {visibleColumns.property_address && (
                               <td className="py-3 px-4">
-                                {property.direccion || "N/A"}
+                                {property.address || "N/A"}
                               </td>
                             )}
                             {visibleColumns.property_usng && (
@@ -3905,14 +4029,14 @@ export function DataAnalytics() {
                             )}
                             {visibleColumns.property_damage && (
                               <td className="py-3 px-4">
-                                {property.daños || "N/A"}
+                                {property.damages || "N/A"}
                               </td>
                             )}
                             {visibleColumns.property_date && (
                               <td className="py-3 px-4">
-                                {property.fecha
+                                {property.date
                                   ? new Date(
-                                      property.fecha
+                                      property.date
                                     ).toLocaleDateString()
                                   : "N/A"}
                               </td>
@@ -3921,8 +4045,8 @@ export function DataAnalytics() {
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-1">
                                   <Users className="h-4 w-4" />
-                                  <span>{property.habitantes.length}</span>
-                                  {property.habitantes.length > 0 && (
+                                  <span>{property.residents.length}</span>
+                                  {property.residents.length > 0 && (
                                     <Button
                                       variant="ghost"
                                       size="sm"
@@ -3943,7 +4067,7 @@ export function DataAnalytics() {
                             )}
                           </tr>
                           {expandedProperties[property.id] &&
-                            property.habitantes.length > 0 && (
+                            property.residents.length > 0 && (
                               <tr className="bg-muted/30">
                                 <td
                                   colSpan={
@@ -4055,14 +4179,14 @@ export function DataAnalytics() {
                                               className="py-2 px-3 text-left font-medium cursor-pointer"
                                               onClick={(e) =>
                                                 requestSort(
-                                                  "family.apellidos",
+                                                  "family.surnames",
                                                   e
                                                 )
                                               }
                                             >
                                               Family{" "}
                                               {getSortDirectionIndicator(
-                                                "family.apellidos"
+                                                "family.surnames"
                                               )}
                                             </th>
                                           )}
@@ -4123,46 +4247,46 @@ export function DataAnalytics() {
                                               className="py-2 px-3 text-left font-medium cursor-pointer"
                                               onClick={(e) =>
                                                 requestSort(
-                                                  "propiedad_info.property_type_name",
+                                                  "property_info.property_type_name",
                                                   e
                                                 )
                                               }
                                             >
                                               Property{" "}
                                               {getSortDirectionIndicator(
-                                                "propiedad_info.property_type_name"
+                                                "property_info.property_type_name"
                                               )}
                                             </th>
                                           )}
-                                          {visibleColumns.municipio && (
+                                          {visibleColumns.municipality && (
                                             <th
                                               className="py-2 px-3 text-left font-medium cursor-pointer"
                                               onClick={(e) =>
                                                 requestSort(
-                                                  "propiedad_info.municipio",
+                                                  "property_info.municipality",
                                                   e
                                                 )
                                               }
                                             >
                                               Municipality{" "}
                                               {getSortDirectionIndicator(
-                                                "propiedad_info.municipio"
+                                                "property_info.municipality"
                                               )}
                                             </th>
                                           )}
-                                          {visibleColumns.barrio && (
+                                          {visibleColumns.neighborhood && (
                                             <th
                                               className="py-2 px-3 text-left font-medium cursor-pointer"
                                               onClick={(e) =>
                                                 requestSort(
-                                                  "propiedad_info.barrio",
+                                                  "property_info.neighborhood",
                                                   e
                                                 )
                                               }
                                             >
                                               Barrio{" "}
                                               {getSortDirectionIndicator(
-                                                "propiedad_info.barrio"
+                                                "property_info.neighborhood"
                                               )}
                                             </th>
                                           )}
@@ -4171,30 +4295,30 @@ export function DataAnalytics() {
                                               className="py-2 px-3 text-left font-medium cursor-pointer"
                                               onClick={(e) =>
                                                 requestSort(
-                                                  "propiedad_info.sector",
+                                                  "property_info.sector",
                                                   e
                                                 )
                                               }
                                             >
                                               Sector{" "}
                                               {getSortDirectionIndicator(
-                                                "propiedad_info.sector"
+                                                "property_info.sector"
                                               )}
                                             </th>
                                           )}
-                                          {visibleColumns.direccion && (
+                                          {visibleColumns.address && (
                                             <th
                                               className="py-2 px-3 text-left font-medium cursor-pointer"
                                               onClick={(e) =>
                                                 requestSort(
-                                                  "propiedad_info.direccion",
+                                                  "property_info.address",
                                                   e
                                                 )
                                               }
                                             >
                                               Address{" "}
                                               {getSortDirectionIndicator(
-                                                "propiedad_info.direccion"
+                                                "property_info.address"
                                               )}
                                             </th>
                                           )}
@@ -4203,8 +4327,8 @@ export function DataAnalytics() {
                                       <tbody>
                                         {(sortConfigs &&
                                         expandedProperties[property.id]
-                                          ? sortData(property.habitantes)
-                                          : property.habitantes
+                                          ? sortData(property.residents)
+                                          : property.residents
                                         ).map((resident: ResidentData) => (
                                           <tr
                                             key={resident.id}
@@ -4223,48 +4347,48 @@ export function DataAnalytics() {
                                             )}
                                             {visibleColumns.nombre && (
                                               <td className="py-2 px-3">
-                                                {resident.nombre}
+                                                {resident.name}
                                               </td>
                                             )}
                                             {visibleColumns.apellido1 && (
                                               <td className="py-2 px-3">
-                                                {resident.apellido1 || "N/A"}
+                                                {resident.lastname1 || "N/A"}
                                               </td>
                                             )}
                                             {visibleColumns.apellido2 && (
                                               <td className="py-2 px-3">
-                                                {resident.apellido2 || "N/A"}
+                                                {resident.lastname2 || "N/A"}
                                               </td>
                                             )}
                                             {visibleColumns.edad && (
                                               <td className="py-2 px-3">
-                                                {resident.edad}
+                                                {resident.age}
                                               </td>
                                             )}
                                             {visibleColumns.sex && (
                                               <td className="py-2 px-3">
                                                 {resident.sex ||
-                                                  resident.sexo ||
+                                                  resident.sex ||
                                                   "N/A"}
                                               </td>
                                             )}
                                             {visibleColumns.categoria && (
                                               <td className="py-2 px-3">
                                                 <Badge variant="outline">
-                                                  {resident.categoria}
+                                                  {resident.category}
                                                 </Badge>
                                               </td>
                                             )}
                                             {visibleColumns.family && (
                                               <td className="py-2 px-3">
                                                 {resident.family
-                                                  ? resident.family.apellidos
+                                                  ? resident.family.surnames
                                                   : "N/A"}
                                               </td>
                                             )}
                                             {visibleColumns.contacto && (
                                               <td className="py-2 px-3">
-                                                {resident.contacto || "N/A"}
+                                                {resident.contact || "N/A"}
                                               </td>
                                             )}
                                             {visibleColumns.limitacion && (
@@ -4349,8 +4473,8 @@ export function DataAnalytics() {
                                                     {`${getPropertyInfo(resident).type_name} (${getPropertyInfo(resident).type_id})`}
                                                   </Badge>
                                                   <span className="text-xs text-muted-foreground">
-                                                    {getPropertyInfo(resident).municipio},{" "}
-                                                    {getPropertyInfo(resident).barrio},{" "}
+                                                    {getPropertyInfo(resident).municipality},{" "}
+                                                    {getPropertyInfo(resident).neighborhood},{" "}
                                                     {getPropertyInfo(resident).sector}
                                                   </span>
                                                   <span className="text-xs font-mono mt-1">
@@ -4359,32 +4483,32 @@ export function DataAnalytics() {
                                                 </div>
                                               </td>
                                             )}
-                                            {visibleColumns.municipio && (
+                                            {visibleColumns.municipality && (
                                               <td className="py-2 px-3">
                                                 <div className="flex flex-col">
                                                   <Badge
                                                     variant="outline"
                                                     className="mb-1"
                                                   >
-                                                    {property.municipio || "N/A"}
+                                                    {property.municipality || "N/A"}
                                                   </Badge>
                                                   <span className="text-xs text-muted-foreground">
-                                                    ID: {property.municipio_id || resident.id_municipio || "N/A"}
+                                                    ID: {property.municipality_id || resident.id_municipio || "N/A"}
                                                   </span>
                                                 </div>
                                               </td>
                                             )}
-                                            {visibleColumns.barrio && (
+                                            {visibleColumns.neighborhood && (
                                               <td className="py-2 px-3">
                                                 <div className="flex flex-col">
                                                   <Badge
                                                     variant="outline"
                                                     className="mb-1"
                                                   >
-                                                    {property.barrio || "N/A"}
+                                                    {property.neighborhood || "N/A"}
                                                   </Badge>
                                                   <span className="text-xs text-muted-foreground">
-                                                    ID: {property.barrio_id || resident.id_barrio || "N/A"}
+                                                    ID: {property.neighborhood_id || resident.id_barrio || "N/A"}
                                                   </span>
                                                 </div>
                                               </td>
@@ -4404,17 +4528,17 @@ export function DataAnalytics() {
                                                 </div>
                                               </td>
                                             )}
-                                            {visibleColumns.direccion && (
+                                            {visibleColumns.address && (
                                               <td className="py-2 px-3">
                                                 <div className="flex flex-col">
                                                   <Badge
                                                     variant="outline"
                                                     className="mb-1"
                                                   >
-                                                    {property.direccion || "N/A"}
+                                                    {property.address || "N/A"}
                                                   </Badge>
                                                   <span className="text-xs text-muted-foreground">
-                                                    {property.direccion || "N/A"}
+                                                    {property.address || "N/A"}
                                                   </span>
                                                 </div>
                                               </td>
@@ -4437,7 +4561,7 @@ export function DataAnalytics() {
           )}
 
           {/* Residents Display */}
-          {reportData.searchType === "residente" && reportData.residentes && (
+          {reportData.searchType === "resident" && reportData.residentes && (
               <CardContent>
               {/* Quick Filter */}
               {reportData.residentes.length > 0 && (
@@ -4468,13 +4592,53 @@ export function DataAnalytics() {
                 </div>
 
                   {/* Count Break Results */}
-                  {filters.countBreak && reportData.residentes && (() => {
-                    const filteredResidents = applyResidentFilters(reportData.residentes || []);
+                  {filters.countBreak && (reportData.residentes || reportData.propiedades) && (() => {
+                    // Get residents from either direct residents or from properties
+                    let allResidents: ResidentData[] = [];
+                    
+                    console.log('Count Break Debug:', {
+                      countBreak: filters.countBreak,
+                      hasResidentes: !!reportData.residentes,
+                      hasPropiedades: !!reportData.propiedades,
+                      propiedadesLength: reportData.propiedades?.length || 0
+                    });
+                    
+                    if (reportData.residentes) {
+                      // Direct resident search
+                      allResidents = applyResidentFilters(reportData.residentes);
+                      console.log('Using direct residents:', allResidents.length);
+                    } else if (reportData.propiedades) {
+                      // Property search - extract residents from properties
+                      console.log('Extracting residents from properties...');
+                      reportData.propiedades.forEach((property, index) => {
+                        console.log(`Property ${index}:`, {
+                          id: property.id,
+                          habitantesLength: property.residents?.length || 0,
+                          habitantes: property.residents
+                        });
+                      });
+                      
+                      allResidents = reportData.propiedades.flatMap(property =>
+                        applyResidentFilters(property.residents || []).map(resident => ({
+                          ...resident,
+                          _property: property,
+                        }))
+                      );
+                      console.log('Extracted residents total:', allResidents.length);
+                    }
+                    
+                    console.log('Sample residents for count break:', allResidents.slice(0, 3).map(r => ({
+                      id: r.id,
+                      sex: r.sex,
+                      sexo: r.sexo,
+                      name: r.nombre
+                    })));
+                    
                     const countBreakData = getCountBreakData(
-                      filteredResidents,
+                      allResidents,
                       filters.countBreak
                     );
-                    return countBreakData ? (
+                    return countBreakData && allResidents.length > 0 ? (
                       <div className="mb-6 p-4 bg-muted/30 rounded-md">
                         <h4 className="text-lg font-semibold mb-4">
                           Count Break by {countBreakOptions.find(opt => opt.value === filters.countBreak)?.label}
@@ -4491,7 +4655,7 @@ export function DataAnalytics() {
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {((item.count / filteredResidents.length) * 100).toFixed(1)}% of total
+                                {((item.count / allResidents.length) * 100).toFixed(1)}% of total
                               </div>
                             </Card>
                           ))}
@@ -4540,43 +4704,43 @@ export function DataAnalytics() {
                                                 </td>
                                               )}
                                               {visibleColumns.nombre && (
-                                <td className="py-2 px-3">{resident.nombre}</td>
+                                <td className="py-2 px-3">{resident.name}</td>
                                               )}
                                               {visibleColumns.apellido1 && (
                                                 <td className="py-2 px-3">
-                                                  {resident.apellido1 || "N/A"}
+                                                  {resident.lastname1 || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.apellido2 && (
                                                 <td className="py-2 px-3">
-                                                  {resident.apellido2 || "N/A"}
+                                                  {resident.lastname2 || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.edad && (
-                                <td className="py-2 px-3">{resident.edad}</td>
+                                <td className="py-2 px-3">{resident.age}</td>
                                               )}
                                               {visibleColumns.sex && (
                                                 <td className="py-2 px-3">
-                                  {resident.sex || resident.sexo || "N/A"}
+                                  {resident.sex || resident.sex || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.categoria && (
                                                 <td className="py-2 px-3">
                                                   <Badge variant="outline">
-                                                    {resident.categoria}
+                                                    {resident.category}
                                                   </Badge>
                                                 </td>
                                               )}
                                               {visibleColumns.family && (
                                                 <td className="py-2 px-3">
                                                   {resident.family
-                                                    ? resident.family.apellidos
+                                                    ? resident.family.surnames
                                                     : "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.contacto && (
                                                 <td className="py-2 px-3">
-                                                  {resident.contacto || "N/A"}
+                                                  {resident.contact || "N/A"}
                                                 </td>
                                               )}
                                               {visibleColumns.limitacion && (
@@ -4658,8 +4822,8 @@ export function DataAnalytics() {
                                                       {`${getPropertyInfo(resident).type_name} (${getPropertyInfo(resident).type_id})`}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                                      {getPropertyInfo(resident).municipio},{" "}
-                                                      {getPropertyInfo(resident).barrio},{" "}
+                                                      {getPropertyInfo(resident).municipality},{" "}
+                                                      {getPropertyInfo(resident).neighborhood},{" "}
                                                       {getPropertyInfo(resident).sector}
                                                     </span>
                                                     <span className="text-xs font-mono mt-1">
@@ -4668,32 +4832,32 @@ export function DataAnalytics() {
                                                   </div>
                                                 </td>
                                               )}
-                                              {visibleColumns.municipio && (
+                                              {visibleColumns.municipality && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
                                                     <Badge
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                      {getPropertyInfo(resident).municipio || "N/A"}
+                                      {getPropertyInfo(resident).municipality || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                      ID: {resident.id_municipio || resident.propiedad_info?.municipio_id || "N/A"}
+                                      ID: {resident.id_municipio || resident.property_info?.municipality_id || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
                                               )}
-                                              {visibleColumns.barrio && (
+                                              {visibleColumns.neighborhood && (
                                                 <td className="py-2 px-3">
                                                   <div className="flex flex-col">
                                                     <Badge
                                                       variant="outline"
                                                       className="mb-1"
                                                     >
-                                      {getPropertyInfo(resident).barrio || "N/A"}
+                                      {getPropertyInfo(resident).neighborhood || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                      ID: {resident.id_barrio || resident.propiedad_info?.barrio_id || "N/A"}
+                                      ID: {resident.id_barrio || resident.property_info?.neighborhood_id || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -4708,7 +4872,7 @@ export function DataAnalytics() {
                                       {getPropertyInfo(resident).sector || "N/A"}
                                                     </Badge>
                                                     <span className="text-xs text-muted-foreground">
-                                      ID: {resident.id_sector || resident.propiedad_info?.sector_id || "N/A"}
+                                      ID: {resident.id_sector || resident.property_info?.sector_id || "N/A"}
                                                     </span>
                                                   </div>
                                                 </td>
@@ -4725,11 +4889,11 @@ export function DataAnalytics() {
                                                   </div>
                                                 </td>
                         )}
-                        {visibleColumns.direccion && (
+                        {visibleColumns.address && (
                                 <td className="py-2 px-3">
                                   <div className="flex flex-col">
                                     <span className="text-sm">
-                                      {getPropertyInfo(resident).direccion || "N/A"}
+                                      {getPropertyInfo(resident).address || "N/A"}
                                       </span>
                                   </div>
                                 </td>
@@ -4797,7 +4961,7 @@ function NotificationDetail({
                         {prop.property_type_name} ({prop.property_type_id})
                       </CardTitle>
                       <CardDescription>
-                        {prop.municipio} • {prop.barrio} • {prop.sector}
+                        {prop.municipality} • {prop.neighborhood} • {prop.sector}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -4808,22 +4972,22 @@ function NotificationDetail({
                           </div>
                         <div>
                           <span className="font-medium">Address:</span>{" "}
-                          {prop.direccion || "N/A"}
+                          {prop.address || "N/A"}
                                   </div>
                         <div>
                           <span className="font-medium">Damage:</span>{" "}
-                          {prop.daños || "N/A"}
+                          {prop.damages || "N/A"}
                               </div>
                         <div>
                           <span className="font-medium">Date:</span>{" "}
-                          {prop.fecha
-                            ? new Date(prop.fecha).toLocaleDateString()
+                          {prop.date
+                            ? new Date(prop.date).toLocaleDateString()
                             : "N/A"}
               </div>
                         {fullProperty && (
                           <div className="col-span-2">
                             <span className="font-medium">Residents:</span>{" "}
-                            {fullProperty.habitantes.length}
+                            {fullProperty.residents.length}
               </div>
             )}
                       </div>

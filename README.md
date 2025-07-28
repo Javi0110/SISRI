@@ -1,7 +1,7 @@
-# SISRI (Sistema Integral de Seguridad y Respuesta a Incidentes)
+# RIDS (Risks and Impacts Detection System)
 
 ## Overview
-SISRI is a comprehensive incident management and response system designed to track, monitor, and manage incidents across different geographical locations. The system integrates geospatial data, property information, and resident data to provide a complete solution for incident management.
+RIDS is a comprehensive risk and impact detection system designed to track, monitor, and manage incidents across different geographical locations. The system integrates geospatial data, property information, and resident data to provide a complete solution for incident management and risk assessment.
 
 ## Features
 - Incident tracking and management
@@ -35,7 +35,7 @@ SISRI is a comprehensive incident management and response system designed to tra
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd SISRI
+cd RIDS
 ```
 
 2. Install dependencies:
