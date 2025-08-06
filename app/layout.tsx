@@ -5,8 +5,8 @@ import Header from "./components/Header"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: 'SISRI',
-  description: 'Sistema de Información de Riesgos',
+  title: 'RIDS - Risk Detection System',
+  description: 'Risk Detection System - Comprehensive incident management and response system',
   viewport: 'width=device-width, initial-scale=1',
 }
 

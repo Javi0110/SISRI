@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
-import { Home, FileText, Map, Menu, X, BarChart2 } from "lucide-react"
+import { FileText, Map, Menu, X, BarChart2 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "../../lib/utils"
 
@@ -13,6 +13,33 @@ const navigation = [
   { name: "Analytics", href: "/analytics", icon: BarChart2 },
 ]
 
+// Custom Shield Icon Component
+const ShieldIcon = () => (
+  <div className="relative w-8 h-8">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="w-8 h-8"
+    >
+      {/* Shield shape */}
+      <path
+        d="M12 2L3 7V12C3 16.4183 6.58172 20 11 20H13C17.4183 20 21 16.4183 21 12V7L12 2Z"
+        fill="#DC2626"
+        stroke="#DC2626"
+        strokeWidth="1.5"
+      />
+      {/* Exclamation mark */}
+      <path
+        d="M12 8V12M12 16H12.01"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </div>
+)
+
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
@@ -20,16 +47,23 @@ export default function Header() {
   return (
     <header className="bg-white shadow-sm">
       <nav className="mx-auto flex max-w-7xl items-center justify-between p-4 lg:px-8" aria-label="Global">
-        <div className="flex lg:flex-1">
-          <Link href="/" className="-m-1.5 p-1.5 flex items-center gap-2">
+        {/* Logo - positioned exactly where the black rectangle is drawn */}
+        <div className="flex-shrink-0 -ml-10">
+          <Link href="/" className="-m-1.5 p-1.5 flex items-center gap-3">
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center"
+              className="flex items-center gap-3"
             >
-              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 bg-clip-text text-transparent">
-                SISRI-PR
-              </span>
+              <ShieldIcon />
+              <div className="flex flex-col">
+                <span className="text-2xl font-bold text-gray-900">
+                  RIDS
+                </span>
+                <span className="text-sm text-gray-500 -mt-1">
+                  RISK DETECTION SYSTEM
+                </span>
+              </div>
             </motion.div>
           </Link>
         </div>
@@ -50,8 +84,8 @@ export default function Header() {
           </button>
         </div>
 
-        {/* Desktop navigation */}
-        <div className="hidden lg:flex lg:gap-x-12">
+        {/* Desktop navigation - centered */}
+        <div className="hidden lg:flex lg:gap-x-12 lg:flex-1 lg:justify-center">
           {navigation.map((item) => (
             <Link
               key={item.name}
@@ -75,20 +109,8 @@ export default function Header() {
           ))}
         </div>
 
-        <div className="hidden lg:flex lg:flex-1 lg:justify-end">
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Link
-              href="/"
-              className="flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            >
-              <Home className="h-4 w-4" />
-              Back to Map
-            </Link>
-          </motion.div>
-        </div>
+        {/* Empty div to maintain layout balance */}
+        <div className="hidden lg:flex lg:flex-1"></div>
       </nav>
 
       {/* Mobile menu */}
@@ -122,14 +144,6 @@ export default function Header() {
                 {item.name}
               </Link>
             ))}
-            <Link
-              href="/"
-              className="flex items-center gap-2 -mx-3 rounded-lg bg-blue-600 px-3 py-2 text-base font-semibold leading-7 text-white hover:bg-blue-500"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <Home className="h-5 w-5" />
-              Back to Map
-            </Link>
           </div>
         </div>
       </motion.div>
