@@ -70,7 +70,7 @@ export default function CuencasList({ onCuencaSelect }: CuencasListProps) {
       setFilteredCuencas(data)
     } catch (error) {
       console.error("Error during search:", error)
-      setError("Error durante la búsqueda. Inténtelo de nuevo.")
+      setError("Error during search. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -91,7 +91,7 @@ export default function CuencasList({ onCuencaSelect }: CuencasListProps) {
     <div className="space-y-4">
       <div className="flex items-center space-x-2">
         <Input
-          placeholder="Buscar cuenca..."
+          placeholder="Search watershed..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -116,7 +116,7 @@ export default function CuencasList({ onCuencaSelect }: CuencasListProps) {
         <ScrollArea className="h-[calc(100vh-12rem)]">
           <div className="space-y-2">
             {filteredCuencas.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">No se encontraron cuencas</p>
+              <p className="text-center text-muted-foreground py-4">No watersheds found</p>
             ) : (
               filteredCuencas.map((cuenca) => (
                 <div key={cuenca.id} className="flex items-center">
@@ -130,7 +130,7 @@ export default function CuencasList({ onCuencaSelect }: CuencasListProps) {
                       <div className="flex flex-col items-start">
                         <span>{cuenca.nombre}</span>
                         <span className="text-xs text-muted-foreground">
-                          {cuenca.usngCoords.length} coordenadas USNG
+                          {cuenca.usngCoords.length} USNG coordinates
                         </span>
                       </div>
                     </div>

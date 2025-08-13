@@ -46,7 +46,7 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
         setMunicipios(data)
       } catch (error) {
         console.error('Error fetching municipios:', error)
-        setError('Failed to load municipios')
+        setError('Failed to load municipalities')
       } finally {
         setLoading(false)
       }
@@ -84,7 +84,7 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
         <Search className="absolute left-2 top-3 h-4 w-4 text-gray-400" />
         <Input
           type="text"
-          placeholder="Search municipios..."
+          placeholder="Search municipalities..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-8"
@@ -119,7 +119,7 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
                         className="mt-2 w-full"
                         onClick={() => handleMunicipioClick(municipio)}
                       >
-                        Zoom to Municipio
+                        Zoom to Municipality
                       </Button>
                     </Card>
                   </motion.div>
@@ -129,7 +129,7 @@ export default function MunicipiosList({ onMunicipioSelect }: MunicipiosListProp
           ))}
           {filteredMunicipios.length === 0 && (
             <div className="text-center py-4 text-gray-500">
-              No municipios found
+              No municipalities found
             </div>
           )}
         </div>

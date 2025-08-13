@@ -19,9 +19,9 @@ export default function Sidebar({
     <div className="w-80 bg-white shadow-md p-4 overflow-y-auto">
       <Tabs defaultValue="municipios">
         <TabsList className="w-full">
-          <TabsTrigger value="municipios">Municipios</TabsTrigger>
+          <TabsTrigger value="municipios">Municipalities</TabsTrigger>
           <TabsTrigger value="usng">USNG</TabsTrigger>
-          <TabsTrigger value="cuencas">Cuencas</TabsTrigger>
+          <TabsTrigger value="cuencas">Watersheds</TabsTrigger>
         </TabsList>
         <TabsContent value="municipios">
           <MunicipiosList onMunicipioSelect={onMunicipioSelect} />

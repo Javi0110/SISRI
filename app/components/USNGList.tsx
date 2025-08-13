@@ -242,7 +242,7 @@ export default function USNGList({ onUSNGSelect }: { onUSNGSelect: (coords: numb
                               </Badge>
                             ))
                           ) : (
-                            <span className="text-sm text-gray-500">No cuencas found</span>
+                            <span className="text-sm text-gray-500">No watersheds found</span>
                           )}
                         </div>
 
