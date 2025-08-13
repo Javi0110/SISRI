@@ -1625,6 +1625,52 @@ export function DataAnalytics() {
   const handlePrintReport = () => {
     if (!reportData) return;
 
+    // Debug: Log the data structure to console
+    console.log('Print Report Data:', {
+      searchType: reportData.searchType,
+      propiedades: reportData.propiedades?.slice(0, 2), // First 2 properties for debugging
+      residentes: reportData.residentes?.slice(0, 2), // First 2 residents for debugging
+    });
+
+    // Helper function to get location data for a resident
+    const getResidentLocationData = (resident: any, property?: any) => {
+      return {
+        municipio: resident.propiedad_info?.municipio || 
+                   resident._property?.municipio || 
+                   property?.municipio || 
+                   resident.municipio?.nombre || 
+                   'N/A',
+        barrio: resident.propiedad_info?.barrio || 
+                resident._property?.barrio || 
+                property?.barrio || 
+                resident.barrio?.nombre || 
+                'N/A',
+        sector: resident.propiedad_info?.sector || 
+                resident._property?.sector || 
+                property?.sector || 
+                resident.sector?.nombre || 
+                'N/A',
+        municipio_id: resident.propiedad_info?.municipio_id || 
+                      resident._property?.municipio_id || 
+                      property?.municipio_id || 
+                      resident.id_municipio || 
+                      resident.municipio?.id_municipio || 
+                      'N/A',
+        barrio_id: resident.propiedad_info?.barrio_id || 
+                   resident._property?.barrio_id || 
+                   property?.barrio_id || 
+                   resident.id_barrio || 
+                   resident.barrio?.id_barrio || 
+                   'N/A',
+        sector_id: resident.propiedad_info?.sector_id || 
+                   resident._property?.sector_id || 
+                   property?.sector_id || 
+                   resident.id_sector || 
+                   resident.sector?.id_sector || 
+                   'N/A'
+      };
+    };
+
     // Create a new window for the printable report
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -2024,10 +2070,10 @@ export function DataAnalytics() {
                           case "location":
                             return `<td>
                           <div>
-                            <span>${property.municipio}</span>
+                            <span>${property.municipio || 'N/A'}</span>
                             <br>
                             <span style="font-size: 0.9em; color: #666;">
-                              ${property.barrio} • ${property.sector}
+                              ${property.barrio || 'N/A'} • ${property.sector || 'N/A'}
                             </span>
                           </div>
                         </td>`;
@@ -2140,11 +2186,14 @@ export function DataAnalytics() {
                                           : "N/A"
                                       }</td>`;
                                     case "municipio":
-                                      return `<td>${resident.propiedad_info?.municipio || (resident._property?.municipio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.municipio_id || resident._property?.municipio_id || 'N/A'})</span></td>`;
+                                      const municipioData = getResidentLocationData(resident, property);
+                                      return `<td>${municipioData.municipio} <span style='font-size:0.85em;color:#888;'>(ID: ${municipioData.municipio_id})</span></td>`;
                                     case "barrio":
-                                      return `<td>${resident.propiedad_info?.barrio || (resident._property?.barrio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.barrio_id || resident._property?.barrio_id || 'N/A'})</span></td>`;
+                                      const barrioData = getResidentLocationData(resident, property);
+                                      return `<td>${barrioData.barrio} <span style='font-size:0.85em;color:#888;'>(ID: ${barrioData.barrio_id})</span></td>`;
                                     case "sector":
-                                      return `<td>${resident.propiedad_info?.sector || (resident._property?.sector || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.sector_id || resident._property?.sector_id || 'N/A'})</span></td>`;
+                                      const sectorData = getResidentLocationData(resident, property);
+                                      return `<td>${sectorData.sector} <span style='font-size:0.85em;color:#888;'>(ID: ${sectorData.sector_id})</span></td>`;
                                     case "usng":
                                       return `<td>${
                                         resident.propiedad_info?.usng ||
@@ -2294,11 +2343,14 @@ export function DataAnalytics() {
                                 : "N/A"
                             }</td>`;
                           case "municipio":
-                            return `<td>${resident.propiedad_info?.municipio || (resident._property?.municipio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.municipio_id || resident._property?.municipio_id || 'N/A'})</span></td>`;
+                            const municipioDataSeparate = getResidentLocationData(resident);
+                            return `<td>${municipioDataSeparate.municipio} <span style='font-size:0.85em;color:#888;'>(ID: ${municipioDataSeparate.municipio_id})</span></td>`;
                           case "barrio":
-                            return `<td>${resident.propiedad_info?.barrio || (resident._property?.barrio || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.barrio_id || resident._property?.barrio_id || 'N/A'})</span></td>`;
+                            const barrioDataSeparate = getResidentLocationData(resident);
+                            return `<td>${barrioDataSeparate.barrio} <span style='font-size:0.85em;color:#888;'>(ID: ${barrioDataSeparate.barrio_id})</span></td>`;
                           case "sector":
-                            return `<td>${resident.propiedad_info?.sector || (resident._property?.sector || 'N/A')} <span style='font-size:0.85em;color:#888;'>(ID: ${resident.propiedad_info?.sector_id || resident._property?.sector_id || 'N/A'})</span></td>`;
+                            const sectorDataSeparate = getResidentLocationData(resident);
+                            return `<td>${sectorDataSeparate.sector} <span style='font-size:0.85em;color:#888;'>(ID: ${sectorDataSeparate.sector_id})</span></td>`;
                           case "usng":
                             return `<td>${
                               resident.propiedad_info
