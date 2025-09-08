@@ -165,6 +165,7 @@ interface PropertyTypeOption {
 const formSchema = z.object({
   notificationNumber: z.string(),
   eventName: z.string().min(2, "Event name must be at least 2 characters"),
+  eventDescription: z.string().optional(),
   date: z.string(),
   time: z.string(),
   usngCode: z.string().min(1, "USNG code is required"),
@@ -186,6 +187,7 @@ const formSchema = z.object({
     newSectorName: z.string().optional(),
     newSectorCode: z.string().optional(),
     address: z.string(),
+    propertyNumber: z.string().optional(),
     value: z.string().optional(),
     location: z.object({
       lat: z.number().optional(),
@@ -271,6 +273,7 @@ export function ReportForm() {
   // Initialize form
   const defaultValues = useMemo(() => ({
     notificationNumber: generateNotificationNumber(),
+    eventDescription: "",
     date: new Date().toISOString().split('T')[0],
     usngCode: "",
     tipo: incidentTypes[0],
@@ -280,6 +283,7 @@ export function ReportForm() {
       type: propertyTypeOptions.length > 0 ? propertyTypeOptions[0].id.toString() : "1",
       municipioId: "", 
       address: "",
+      propertyNumber: "",
       habitantes: [],
     }],
     cuencaIds: [] as string[],
@@ -631,6 +635,7 @@ export function ReportForm() {
         type: propertyTypes[0],
         municipioId: "", 
         address: "",
+        propertyNumber: "",
         habitantes: [],
       }]);
       
@@ -656,6 +661,7 @@ export function ReportForm() {
           type: propertyTypes[0],
           municipioId: "", 
           address: "",
+          propertyNumber: "",
           habitantes: [],
         }]);
       }
@@ -747,7 +753,7 @@ export function ReportForm() {
             titulo: values.eventName,
             tipo: values.tipo,
             estado: values.estado,
-            descripcion: values.incidents[0].description,
+            descripcion: values.eventDescription || values.incidents[0].description,
             fecha: new Date(values.date).toISOString(),
             usngId: usngId, // Add USNG ID to the event for Event Only mode
           }
@@ -758,7 +764,7 @@ export function ReportForm() {
           formattedData.notificacion = {
             numero_notificacion: values.notificationNumber,
             tipo: values.tipo,
-            mensaje: values.incidents[0].description,
+            mensaje: values.eventDescription || values.incidents[0].description,
             estado: values.estado,
             fecha: new Date(values.date).toISOString(),
           };
@@ -785,6 +791,7 @@ export function ReportForm() {
             tipo: property.type,
             id_municipio: parseInt(property.municipioId),
             direccion: property.address,
+            property_number: property.propertyNumber || null,
             gridId: usngId, // Use the numeric USNG ID retrieved from API
             geometria: property.location || null,
           };
@@ -945,6 +952,7 @@ export function ReportForm() {
             tipo: property.type,
             id_municipio: parseInt(property.municipioId),
             direccion: property.address,
+            property_number: property.propertyNumber || null,
             habitantes: {
               create: property.habitantes?.map(habitante => ({
                 name: habitante.name,
@@ -1067,7 +1075,7 @@ export function ReportForm() {
           evento: {
             create: {
               titulo: values.eventName,
-              descripcion: values.incidents[0].description,
+              descripcion: values.eventDescription || values.incidents[0].description,
               fecha: new Date(values.date).toISOString(),
               tipo: values.tipo,
               estado: values.estado,
@@ -1159,6 +1167,7 @@ export function ReportForm() {
       // Reset form with default values
       reset({
         notificationNumber: generateNotificationNumber(),
+        eventDescription: "",
         date: new Date().toISOString().split('T')[0],
         usngCode: "",
         tipo: incidentTypes[0],
@@ -1168,6 +1177,7 @@ export function ReportForm() {
           type: propertyTypes[0],
           municipioId: "", 
           address: "",
+          propertyNumber: "",
           habitantes: [],
         }],
         cuencaIds: [] as string[],
@@ -1194,7 +1204,7 @@ export function ReportForm() {
     const currentProperties = getValues("properties")
     setValue("properties", [
       ...currentProperties,
-      { type: propertyTypes[0], municipioId: "", address: "", habitantes: [] }
+      { type: propertyTypes[0], municipioId: "", address: "", propertyNumber: "", habitantes: [] }
     ])
   }, [getValues, setValue])
 
@@ -1530,97 +1540,25 @@ export function ReportForm() {
                   />
                 </Grid>
                 
-                {/* Description field */}
+                {/* Event Description field */}
                 <Grid item xs={12}>
                   <Controller
-                    name="incidents.0.description"
+                    name="eventDescription"
                     control={control}
                     render={({ field }) => (
                       <TextField
                         {...field}
-                        label="Description"
+                        label="Event Description"
                         variant="outlined"
                         fullWidth
                         multiline
                         rows={3}
-                        error={!!errors.incidents?.[0]?.description}
-                        helperText={errors.incidents?.[0]?.description?.message}
+                        error={!!errors.eventDescription}
+                        helperText={errors.eventDescription?.message}
                       />
                     )}
                   />
                 </Grid>
-
-                {/* Incidents section only in Full Report mode */}
-                {formMode === "Full Report" && (
-                  <Grid item xs={12}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="subtitle1">Incidents</Typography>
-                      <Button
-                        variant="outlined"
-                        startIcon={<AddIcon />}
-                        onClick={handleAddIncident}
-                        size="small"
-                      >
-                        Add Incident
-                      </Button>
-                    </Box>
-                    
-                    <Box sx={{ maxHeight: 400, overflow: 'auto', pr: 1 }}>
-                      {incidents.map((_, index) => (
-                        <Card key={index} variant="outlined" sx={{ mb: 2 }}>
-                          <CardContent>
-                            <Grid container spacing={2}>
-                              <Grid item xs={12} md={6}>
-                                <Controller
-                                  name={`incidents.${index}.type`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <FormControl fullWidth error={!!errors.incidents?.[index]?.type}>
-                                      <InputLabel>Incident Type</InputLabel>
-                                      <Select
-                                        {...field}
-                                        label="Incident Type"
-                                      >
-                                        {incidentTypes.map((type) => (
-                                          <MenuItem key={type} value={type}>
-                                            {type}
-                                          </MenuItem>
-                                        ))}
-                                      </Select>
-                                      {errors.incidents?.[index]?.type && (
-                                        <FormHelperText>
-                                          {String(errors.incidents[index]?.type || "Invalid type")}
-                                        </FormHelperText>
-                                      )}
-                                    </FormControl>
-                                  )}
-                                />
-                              </Grid>
-                              <Grid item xs={12} md={6}>
-                                <Controller
-                                  name={`incidents.${index}.description`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <TextField
-                                      {...field}
-                                      label="Description"
-                                      variant="outlined"
-                                      fullWidth
-                                      multiline
-                                      rows={2}
-                                      error={!!errors.incidents?.[index]?.description}
-                                      helperText={errors.incidents?.[index]?.description?.message}
-                                    />
-                                  )}
-                                />
-                              </Grid>
-                            </Grid>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </Box>
-                  </Grid>
-                )}
 
                 {/* Affected Cuencas in Full Report mode only */}
                 {formMode === "Full Report" && (
@@ -2096,12 +2034,20 @@ export function ReportForm() {
                                       debouncedBarrioSearch(newValue, selectedMunicipios[index]);
                                     }
                                   }}
+                                  onFocus={() => {
+                                    // Load all barrios for the selected municipality when field is focused
+                                    if (selectedMunicipios[index] && barrioSearchResults.length === 0) {
+                                      searchBarrios("", selectedMunicipios[index]);
+                                    }
+                                  }}
                                   renderInput={(params) => (
                                     <TextField
                                       {...params}
                                       label="Neighborhood"
+                                      placeholder="Select or search neighborhood..."
                                       error={!!errors.properties?.[index]?.barrioId}
-                                      helperText={errors.properties?.[index]?.barrioId?.message}
+                                      helperText={errors.properties?.[index]?.barrioId?.message || 
+                                        (barrioSearchResults.length > 0 ? `${barrioSearchResults.length} neighborhoods available` : "Click to load neighborhoods")}
                                       InputProps={{
                                         ...params.InputProps,
                                         endAdornment: (
@@ -2215,12 +2161,20 @@ export function ReportForm() {
                                         debouncedSectorSearch(newValue, selectedBarrios[index]);
                                       }
                                     }}
+                                    onFocus={() => {
+                                      // Load all sectors for the selected barrio when field is focused
+                                      if (selectedBarrios[index] && sectorSearchResults.length === 0) {
+                                        searchSectores("", selectedBarrios[index]);
+                                      }
+                                    }}
                                     renderInput={(params) => (
                                       <TextField
                                         {...params}
                                         label="Sector"
+                                        placeholder="Select or search sector..."
                                         error={!!errors.properties?.[index]?.sectorId}
-                                        helperText={errors.properties?.[index]?.sectorId?.message}
+                                        helperText={errors.properties?.[index]?.sectorId?.message || 
+                                          (sectorSearchResults.length > 0 ? `${sectorSearchResults.length} sectors available` : "Click to load sectors")}
                                         InputProps={{
                                           ...params.InputProps,
                                           endAdornment: (
@@ -2313,6 +2267,23 @@ export function ReportForm() {
                                 fullWidth
                                 error={!!errors.properties?.[index]?.address}
                                 helperText={errors.properties?.[index]?.address?.message}
+                              />
+                            )}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <Controller
+                            name={`properties.${index}.propertyNumber`}
+                            control={control}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                label="Property Number"
+                                variant="outlined"
+                                fullWidth
+                                placeholder="e.g., PROP-001, 12345"
+                                error={!!errors.properties?.[index]?.propertyNumber}
+                                helperText={errors.properties?.[index]?.propertyNumber?.message || "Optional property identifier"}
                               />
                             )}
                           />
@@ -3207,6 +3178,7 @@ export function ReportForm() {
                 // Reset the form
                 reset({
                   notificationNumber: generateNotificationNumber(),
+                  eventDescription: "",
                   date: new Date().toISOString().split('T')[0],
                   usngCode: "",
                   tipo: incidentTypes[0],
@@ -3216,6 +3188,7 @@ export function ReportForm() {
                     type: propertyTypes[0],
                     municipioId: "", 
                     address: "",
+                    propertyNumber: "",
                     habitantes: [],
                   }],
                   cuencaIds: [] as string[],
@@ -3282,6 +3255,7 @@ export function ReportForm() {
                   tipo: property.type,
                   id_municipio: parseInt(property.municipioId),
                   direccion: property.address,
+                  property_number: property.propertyNumber || null,
                   usngId: usngId,
                   gridId: usngId,
                   habitantes: { create: [] }
@@ -3360,6 +3334,7 @@ export function ReportForm() {
                 // Reset form
                 reset({
                   notificationNumber: generateNotificationNumber(),
+                  eventDescription: "",
                   date: new Date().toISOString().split('T')[0],
                   usngCode: "",
                   tipo: incidentTypes[0],
@@ -3369,6 +3344,7 @@ export function ReportForm() {
                     type: propertyTypes[0],
                     municipioId: "", 
                     address: "",
+                    propertyNumber: "",
                     habitantes: [],
                   }],
                   cuencaIds: [] as string[],
