@@ -11,6 +11,8 @@ interface USNGResponse {
     id: number
     property_type_id: number
     valor: number
+    direccion?: string | null
+    type?: string | null
   }[]
   cuencas: {
     id: number
@@ -21,6 +23,23 @@ interface USNGResponse {
     id: number
     tipo: string
     estado: string
+  }[]
+  eventos: {
+    id: number
+    titulo: string | null
+    tipo: string | null
+    estado: string | null
+    fecha: Date
+    descripcion: string | null
+  }[]
+  habitantes: {
+    id: number
+    nombre: string | null
+    apellido1: string | null
+    apellido2: string | null
+    categoria: string | null
+    rol: string | null
+    edad: number | null
   }[]
 }
 
@@ -33,11 +52,30 @@ type USNGSquareWithRelations = {
     id: number
     property_type_id: number
     gridId: number
+    direccion: string | null
+    property_types: { type_name: string } | null
   }[]
   cuencas: {
     id: number
     nombre: string
     codigo_cuenca: string
+  }[]
+  eventos: {
+    id: number
+    titulo: string | null
+    tipo: string | null
+    estado: string | null
+    fecha: Date
+    descripcion: string | null
+  }[]
+  habitantes: {
+    id: number
+    nombre: string | null
+    apellido1: string | null
+    apellido2: string | null
+    categoria: string | null
+    rol: string | null
+    edad: number | null
   }[]
 }
 
@@ -71,7 +109,9 @@ export async function GET(
           select: {
             id: true,
             property_type_id: true,
-            gridId: true
+            gridId: true,
+            direccion: true,
+            property_types: { select: { type_name: true } }
           }
         },
         cuencas: {
@@ -79,6 +119,27 @@ export async function GET(
             id: true,
             nombre: true,
             codigo_cuenca: true
+          }
+        },
+        eventos: {
+          select: {
+            id: true,
+            titulo: true,
+            tipo: true,
+            estado: true,
+            fecha: true,
+            descripcion: true
+          }
+        },
+        habitantes: {
+          select: {
+            id: true,
+            nombre: true,
+            apellido1: true,
+            apellido2: true,
+            categoria: true,
+            rol: true,
+            edad: true
           }
         }
       }
@@ -119,14 +180,33 @@ export async function GET(
       properties: usngSquare.propiedades.map(prop => ({
         id: prop.id,
         property_type_id: prop.property_type_id || 0,
-        valor: prop.gridId || 0
+        valor: prop.gridId || 0,
+        direccion: prop.direccion ?? null,
+        type: prop.property_types?.type_name ?? null
       })),
       cuencas: usngSquare.cuencas.map(cuenca => ({
         id: cuenca.id,
         nombre: cuenca.nombre || '',
         codigo_cuenca: cuenca.codigo_cuenca || ''
       })),
-      tools: []
+      tools: [],
+      eventos: usngSquare.eventos.map(e => ({
+        id: e.id,
+        titulo: e.titulo,
+        tipo: e.tipo,
+        estado: e.estado,
+        fecha: e.fecha,
+        descripcion: e.descripcion
+      })),
+      habitantes: usngSquare.habitantes.map(h => ({
+        id: h.id,
+        nombre: h.nombre,
+        apellido1: h.apellido1,
+        apellido2: h.apellido2,
+        categoria: h.categoria,
+        rol: h.rol,
+        edad: h.edad
+      }))
     }
 
     return NextResponse.json(response, {

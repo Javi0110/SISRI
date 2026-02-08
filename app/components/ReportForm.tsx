@@ -1,5 +1,6 @@
 "use client"
 
+import { useSearchParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { debounce } from "lodash"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -301,6 +302,21 @@ export function ReportForm() {
     resolver: zodResolver(formSchema),
     defaultValues,
   })
+
+  const searchParams = useSearchParams()
+
+  // Auto-fill USNG from URL query param (e.g. when navigating from map context menu)
+  useEffect(() => {
+    const usngFromUrl = searchParams.get("usng")
+    if (usngFromUrl) {
+      const decoded = decodeURIComponent(usngFromUrl).trim()
+      setValue("usngCode", decoded)
+    }
+    const modeFromUrl = searchParams.get("mode")
+    if (modeFromUrl === "event") setFormMode("Event Only")
+    else if (modeFromUrl === "property") setFormMode("Property Only")
+    else if (modeFromUrl === "resident") setFormMode("Resident Only")
+  }, [searchParams, setValue])
 
   // Fetch municipios and cuencas data
   useEffect(() => {

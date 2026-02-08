@@ -161,11 +161,25 @@ const usngLayer = new VectorLayer({
   opacity: 1
 });
 
+interface USNGContextData {
+  usng: string
+  properties: Array<{ id: number; direccion?: string | null; type?: string | null }>
+  eventos: Array<{ id: number; titulo: string | null; tipo: string | null; estado: string | null }>
+  habitantes: Array<{ id: number; nombre: string | null; apellido1: string | null; apellido2: string | null }>
+}
+
 export default function MapComponent({ onMapInitialized }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<Map | null>(null)
   const [loading, setLoading] = useState(true)
   const selectedCuencaRef = useRef<string[]>([])
+  const [usngContext, setUsngContext] = useState<{
+    x: number
+    y: number
+    loading: boolean
+    data: USNGContextData | null
+    error: string | null
+  } | null>(null)
   
   // Helper function to match and highlight features
   const tryHighlightFeatures = useCallback((features: any[], usngCoords: string[]) => {
@@ -511,6 +525,23 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
     }
   }, [highlightCuencaUSNG, handleLoadUSNGData, calculateUSNGBounds]);
 
+  const usngPopoverRef = useRef<HTMLDivElement>(null)
+  // Close USNG context popover when clicking outside or Escape
+  useEffect(() => {
+    if (!usngContext) return
+    const close = () => setUsngContext(null)
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onMouseDown = (e: MouseEvent) => {
+      if (usngPopoverRef.current && !usngPopoverRef.current.contains(e.target as Node)) close()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('mousedown', onMouseDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('mousedown', onMouseDown)
+    }
+  }, [usngContext])
+
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -694,8 +725,51 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
 
     map.on('click', clickListener);
 
+    // Right-click (contextmenu) handler for USNG details - use DOM listener since OL Map has no contextmenu event
+    const contextMenuListener = async (ev: MouseEvent) => {
+      const pixel = map.getEventPixel(ev)
+      const feature = map.forEachFeatureAtPixel(
+        pixel,
+        (f) => f,
+        { layerFilter: (layer) => layer === usngLayer, hitTolerance: 5 }
+      )
+      if (!feature) return
+      ev.preventDefault()
+      const usng = feature.get('USNG')
+      if (!usng) return
+      setUsngContext({ x: ev.clientX, y: ev.clientY, loading: true, data: null, error: null })
+      try {
+        const res = await fetch(`/api/usng/${encodeURIComponent(usng)}`)
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error || 'Failed to fetch')
+        setUsngContext({
+          x: ev.clientX,
+          y: ev.clientY,
+          loading: false,
+          data: {
+            usng: json.usng || usng,
+            properties: json.properties || [],
+            eventos: json.eventos || [],
+            habitantes: json.habitantes || [],
+          },
+          error: null,
+        })
+      } catch (err) {
+        setUsngContext({
+          x: ev.clientX,
+          y: ev.clientY,
+          loading: false,
+          data: null,
+          error: err instanceof Error ? err.message : 'Failed to load',
+        })
+      }
+    }
+    const mapEl = mapRef.current
+    mapEl?.addEventListener('contextmenu', contextMenuListener)
+
     // Cleanup
     return () => {
+      mapEl?.removeEventListener('contextmenu', contextMenuListener)
       isMounted = false;
       map.un('moveend', moveEndListener);
       map.un('click', clickListener);
@@ -704,6 +778,20 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       mapInstanceRef.current = null;
     }
   }, []); // Empty dependency array to ensure the map is initialized only once
+
+  const handleZoomIn = useCallback(() => {
+    if (!mapInstanceRef.current) return
+    const view = mapInstanceRef.current.getView()
+    const zoom = view.getZoom() ?? ZOOM_LEVELS.INITIAL
+    view.animate({ zoom: Math.min(zoom + 1, ZOOM_LEVELS.MAX), duration: 200 })
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    if (!mapInstanceRef.current) return
+    const view = mapInstanceRef.current.getView()
+    const zoom = view.getZoom() ?? ZOOM_LEVELS.INITIAL
+    view.animate({ zoom: Math.max(zoom - 1, ZOOM_LEVELS.MIN), duration: 200 })
+  }, [])
 
   return (
     <motion.div
@@ -723,6 +811,97 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
         className="w-full h-full" 
         style={{ position: 'absolute', top: 0, left: 0, bottom: 0, right: 0 }}
       />
+      {/* USNG right-click context popover */}
+      {usngContext && (
+        <div
+          ref={usngPopoverRef}
+          className="fixed z-[9999] w-80 max-h-[70vh] overflow-auto bg-white rounded-lg shadow-lg border border-gray-200 p-4"
+          style={{ left: Math.max(8, Math.min(usngContext.x, window.innerWidth - 328)), top: Math.max(8, Math.min(usngContext.y, window.innerHeight - 308)) }}
+        >
+          {usngContext.loading ? (
+            <div className="flex justify-center py-6"><div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full" /></div>
+          ) : usngContext.error ? (
+            <p className="text-sm text-red-600">{usngContext.error}</p>
+          ) : usngContext.data ? (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm text-gray-800">USNG: {usngContext.data.usng}</h3>
+              <div className="text-xs text-gray-600 space-y-2">
+                <p><strong>Properties:</strong> {usngContext.data.properties.length}</p>
+                <p><strong>Events:</strong> {usngContext.data.eventos.length}</p>
+                <p><strong>Residents:</strong> {usngContext.data.habitantes.length}</p>
+              </div>
+              {usngContext.data.eventos.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Events</p>
+                  <div className="max-h-24 overflow-y-auto space-y-1 text-xs">
+                    {usngContext.data.eventos.slice(0, 5).map((e) => (
+                      <div key={e.id} className="py-1 border-b border-gray-100 last:border-0">
+                        {e.titulo || 'Untitled'} · {e.tipo || '-'} ({e.estado || '-'})
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {usngContext.data.properties.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Properties</p>
+                  <div className="max-h-24 overflow-y-auto space-y-1 text-xs">
+                    {usngContext.data.properties.slice(0, 5).map((p) => (
+                      <div key={p.id} className="py-1 border-b border-gray-100 last:border-0">
+                        {p.direccion || 'No address'} · {p.type || '-'}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="pt-2 border-t border-gray-200">
+                <p className="text-xs font-medium text-gray-500 mb-2">Add to this USNG</p>
+                <div className="flex flex-col gap-1">
+                  <a
+                    href={`/reports?usng=${encodeURIComponent(usngContext.data.usng)}`}
+                    className="text-xs px-2 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                  >
+                    + Add Event
+                  </a>
+                  <a
+                    href={`/reports?usng=${encodeURIComponent(usngContext.data.usng)}&mode=property`}
+                    className="text-xs px-2 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
+                  >
+                    + Add Property
+                  </a>
+                  <a
+                    href={`/reports?usng=${encodeURIComponent(usngContext.data.usng)}&mode=resident`}
+                    className="text-xs px-2 py-1.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
+                  >
+                    + Add Person
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Zoom controls */}
+      <div className="absolute bottom-24 right-4 flex flex-col gap-1 z-10 bg-white rounded-lg shadow-md border overflow-hidden">
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          className="p-2 hover:bg-gray-100 transition-colors text-lg font-bold text-gray-700"
+          aria-label="Zoom in"
+        >
+          +
+        </button>
+        <div className="h-px bg-gray-200" />
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          className="p-2 hover:bg-gray-100 transition-colors text-lg font-bold text-gray-700"
+          aria-label="Zoom out"
+        >
+          −
+        </button>
+      </div>
     </motion.div>
   )
 }
