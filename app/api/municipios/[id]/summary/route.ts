@@ -20,6 +20,7 @@ export async function GET(
         where: { id_municipio: id },
         select: {
           id: true,
+          nombre: true,
           direccion: true,
           property_number: true,
           property_types: { select: { type_name: true } },
@@ -86,6 +87,7 @@ export async function GET(
       },
       properties: propiedades.map((p) => ({
         id: p.id,
+        nombre: p.nombre,
         direccion: p.direccion,
         property_number: p.property_number,
         type: p.property_types?.type_name,

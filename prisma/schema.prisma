@@ -120,6 +120,7 @@ model propiedades_existentes {
   usngId            Int?
   direccion         String?                 @db.VarChar(255)
   property_type_id  Int?
+  nombre            String?                 @db.VarChar(255)
   property_number   String?                 @db.VarChar(50)
   habitantes        habitantes[]
   notificacion      notificacion[]

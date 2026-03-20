@@ -10,7 +10,9 @@ export async function POST(request: Request) {
     const createdProperty = await prisma.propiedades_existentes.create({
       data: {
         property_type_id: data.tipo,
+        nombre: data.nombre || null,
         direccion: data.direccion,
+        property_number: data.property_number || null,
         id_municipio: data.id_municipio,
         id_barrio: data.id_barrio || null,
         id_sector: data.id_sector || null

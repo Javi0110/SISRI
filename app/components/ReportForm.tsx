@@ -188,6 +188,7 @@ const formSchema = z.object({
     newSectorName: z.string().optional(),
     newSectorCode: z.string().optional(),
     address: z.string(),
+    propertyName: z.string().optional(),
     propertyNumber: z.string().optional(),
     value: z.string().optional(),
     location: z.object({
@@ -284,6 +285,7 @@ export function ReportForm() {
       type: propertyTypeOptions.length > 0 ? propertyTypeOptions[0].id.toString() : "1",
       municipioId: "", 
       address: "",
+      propertyName: "",
       propertyNumber: "",
       habitantes: [],
     }],
@@ -651,6 +653,7 @@ export function ReportForm() {
         type: propertyTypes[0],
         municipioId: "", 
         address: "",
+        propertyName: "",
         propertyNumber: "",
         habitantes: [],
       }]);
@@ -677,6 +680,7 @@ export function ReportForm() {
           type: propertyTypes[0],
           municipioId: "", 
           address: "",
+          propertyName: "",
           propertyNumber: "",
           habitantes: [],
         }]);
@@ -807,6 +811,7 @@ export function ReportForm() {
             tipo: property.type,
             id_municipio: parseInt(property.municipioId),
             direccion: property.address,
+            nombre: property.propertyName?.trim() || null,
             property_number: property.propertyNumber || null,
             gridId: usngId, // Use the numeric USNG ID retrieved from API
             geometria: property.location || null,
@@ -968,6 +973,7 @@ export function ReportForm() {
             tipo: property.type,
             id_municipio: parseInt(property.municipioId),
             direccion: property.address,
+            nombre: property.propertyName?.trim() || null,
             property_number: property.propertyNumber || null,
             habitantes: {
               create: property.habitantes?.map(habitante => ({
@@ -1193,6 +1199,7 @@ export function ReportForm() {
           type: propertyTypes[0],
           municipioId: "", 
           address: "",
+          propertyName: "",
           propertyNumber: "",
           habitantes: [],
         }],
@@ -1220,7 +1227,7 @@ export function ReportForm() {
     const currentProperties = getValues("properties")
     setValue("properties", [
       ...currentProperties,
-      { type: propertyTypes[0], municipioId: "", address: "", propertyNumber: "", habitantes: [] }
+      { type: propertyTypes[0], municipioId: "", address: "", propertyName: "", propertyNumber: "", habitantes: [] }
     ])
   }, [getValues, setValue])
 
@@ -2289,6 +2296,23 @@ export function ReportForm() {
                         </Grid>
                         <Grid item xs={12} md={6}>
                           <Controller
+                            name={`properties.${index}.propertyName`}
+                            control={control}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                label="NOMBRE / NAME"
+                                variant="outlined"
+                                fullWidth
+                                placeholder="Optional property name"
+                                error={!!errors.properties?.[index]?.propertyName}
+                                helperText={errors.properties?.[index]?.propertyName?.message || "Optional"}
+                              />
+                            )}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <Controller
                             name={`properties.${index}.propertyNumber`}
                             control={control}
                             render={({ field }) => (
@@ -3204,6 +3228,7 @@ export function ReportForm() {
                     type: propertyTypes[0],
                     municipioId: "", 
                     address: "",
+                    propertyName: "",
                     propertyNumber: "",
                     habitantes: [],
                   }],
@@ -3271,6 +3296,7 @@ export function ReportForm() {
                   tipo: property.type,
                   id_municipio: parseInt(property.municipioId),
                   direccion: property.address,
+                  nombre: property.propertyName?.trim() || null,
                   property_number: property.propertyNumber || null,
                   usngId: usngId,
                   gridId: usngId,
@@ -3360,6 +3386,7 @@ export function ReportForm() {
                     type: propertyTypes[0],
                     municipioId: "", 
                     address: "",
+                    propertyName: "",
                     propertyNumber: "",
                     habitantes: [],
                   }],

@@ -22,7 +22,9 @@ export interface EventoCreateInput {
       municipio_id: number;
       barrio_id: number | null;
       sector_id: number | null;
+      nombre?: string | null;
       direccion: string;
+      property_number?: string | null;
     }>;
   };
 } 

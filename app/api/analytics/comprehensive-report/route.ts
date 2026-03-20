@@ -156,8 +156,8 @@ export async function POST(req: Request) {
   try {
     const { searchType, searchQuery, filters }: SearchRequest = await req.json();
 
-    // Allow empty search queries for resident searches
-    if (!searchQuery && searchType !== 'residente') {
+    // Allow empty search queries for resident and municipality searches
+    if (!searchQuery && searchType !== 'residente' && searchType !== 'municipio') {
       return NextResponse.json(
         { error: "El término de búsqueda es requerido" },
         { status: 400 }
@@ -519,6 +519,11 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
         }
       }
     },
+    orderBy: [
+      { id_municipio: 'asc' },
+      { id_barrio: 'asc' },
+      { id_sector: 'asc' }
+    ],
     include: includeClause
   });
 
@@ -532,8 +537,11 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
       daños: damageInfo.daños,
       fecha: damageInfo.fecha,
       municipio: property.municipio?.nombre || 'N/A',
+      municipio_id: property.id_municipio ?? property.municipio?.id_municipio ?? null,
       barrio: property.barrio?.nombre || 'N/A',
+      barrio_id: property.id_barrio ?? property.barrio?.id_barrio ?? null,
       sector: property.sector?.nombre || 'N/A',
+      sector_id: property.id_sector ?? property.sector?.id_sector ?? null,
       usng: property.usngsquare?.usng || 'N/A',
       direccion: property.direccion || 'N/A',
       habitantes: property.habitantes.map((h: any) => ({
@@ -608,6 +616,25 @@ async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filt
   });
 }
 
+function parseLocationCompositeQuery(query: string): { municipioId: number; barrioId: number; sectorId: number } | null {
+  const normalizedQuery = query.trim();
+  const match = normalizedQuery.match(/^(\d{1,3})-(\d{1,3})-(\d{1,3})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const municipioId = Number.parseInt(match[1], 10);
+  const barrioId = Number.parseInt(match[2], 10);
+  const sectorId = Number.parseInt(match[3], 10);
+
+  if ([municipioId, barrioId, sectorId].some((id) => Number.isNaN(id))) {
+    return null;
+  }
+
+  return { municipioId, barrioId, sectorId };
+}
+
 async function handleMunicipioSearch(municipioQuery: string, filters?: SearchRequest['filters']) {
   const includeClause = {
     municipio: true,
@@ -637,14 +664,23 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
     }
   } as any; // Use any type assertion to bypass Prisma typing limitations
 
+  const locationComposite = parseLocationCompositeQuery(municipioQuery);
   const properties = await prisma.propiedades_existentes.findMany({
     where: {
-      municipio: {
-        nombre: {
-          contains: municipioQuery,
-          mode: 'insensitive'
-        }
-      }
+      ...(locationComposite
+        ? {
+            id_municipio: locationComposite.municipioId,
+            id_barrio: locationComposite.barrioId,
+            id_sector: locationComposite.sectorId
+          }
+        : {
+            municipio: {
+              nombre: {
+                contains: municipioQuery,
+                mode: 'insensitive'
+              }
+            }
+          })
     },
     include: includeClause
   });
@@ -665,8 +701,11 @@ async function handleMunicipioSearch(municipioQuery: string, filters?: SearchReq
       daños: damageInfo.daños,
       fecha: damageInfo.fecha,
       municipio: property.municipio?.nombre || 'N/A',
+      municipio_id: property.id_municipio ?? property.municipio?.id_municipio ?? null,
       barrio: property.barrio?.nombre || 'N/A',
+      barrio_id: property.id_barrio ?? property.barrio?.id_barrio ?? null,
       sector: property.sector?.nombre || 'N/A',
+      sector_id: property.id_sector ?? property.sector?.id_sector ?? null,
       usng: property.usngsquare?.usng || 'N/A',
       direccion: property.direccion || 'N/A',
       habitantes: property.habitantes.map((h: any) => ({

@@ -18,7 +18,9 @@ export interface EventoCreateInput {
         id_municipio: number;
         id_barrio: number | null;
         id_sector: number | null;
+        nombre?: string | null;
         direccion: string;
+        property_number?: string | null;
       };
     };
   }>;

@@ -353,7 +353,42 @@ export function DataAnalytics() {
     }[]
   >([]);
 
-    // Update the sorting function to handle multiple sort criteria
+  const getLocationIds = (
+    item: PropertyData | ResidentData | NotificationData
+  ) => {
+    const municipioId =
+      ("id_municipio" in item ? item.id_municipio : null) ||
+      ("municipio_id" in item ? item.municipio_id : null) ||
+      ("propiedad_info" in item ? item.propiedad_info?.municipio_id : null) ||
+      ("_property" in item ? item._property?.municipio_id : null) ||
+      0;
+    const barrioId =
+      ("id_barrio" in item ? item.id_barrio : null) ||
+      ("barrio_id" in item ? item.barrio_id : null) ||
+      ("propiedad_info" in item ? item.propiedad_info?.barrio_id : null) ||
+      ("_property" in item ? item._property?.barrio_id : null) ||
+      0;
+    const sectorId =
+      ("id_sector" in item ? item.id_sector : null) ||
+      ("sector_id" in item ? item.sector_id : null) ||
+      ("propiedad_info" in item ? item.propiedad_info?.sector_id : null) ||
+      ("_property" in item ? item._property?.sector_id : null) ||
+      0;
+
+    return { municipioId, barrioId, sectorId };
+  };
+
+  const formatLocationCode = (municipioId?: number | null, barrioId?: number | null, sectorId?: number | null) => {
+    const toCode = (value?: number | null) => String(value ?? 0).padStart(3, "0");
+    return `${toCode(municipioId)}-${toCode(barrioId)}-${toCode(sectorId)}`;
+  };
+
+  const getLocationCode = (item: PropertyData | ResidentData | NotificationData) => {
+    const { municipioId, barrioId, sectorId } = getLocationIds(item);
+    return formatLocationCode(municipioId, barrioId, sectorId);
+  };
+
+  // Update the sorting function to handle multiple sort criteria
   const sortData = <T extends PropertyData | ResidentData | NotificationData>(data: T[]): T[] => {
     return [...data].sort((a, b) => {
       for (const config of sortConfigs) {
@@ -401,11 +436,9 @@ export function DataAnalytics() {
             bValue = ('disposicion_id' in b ? b.disposicion_id : null) || 999999;
           }
         } else if (config.key === "municipio" || config.key === "propiedad_info.municipio") {
-          // Sort by municipio ID
-          const aIdMunicipio = ('id_municipio' in a ? a.id_municipio : null) || ('municipio_id' in a ? a.municipio_id : null) || ('propiedad_info' in a ? a.propiedad_info?.municipio_id : null) || ('_property' in a ? a._property?.municipio_id : null) || 999999;
-          const bIdMunicipio = ('id_municipio' in b ? b.id_municipio : null) || ('municipio_id' in b ? b.municipio_id : null) || ('propiedad_info' in b ? b.propiedad_info?.municipio_id : null) || ('_property' in b ? b._property?.municipio_id : null) || 999999;
-          aValue = aIdMunicipio;
-          bValue = bIdMunicipio;
+          // Sort location by full municipio-barrio-sector code (000 for missing IDs)
+          aValue = getLocationCode(a);
+          bValue = getLocationCode(b);
         } else if (config.key === "barrio" || config.key === "propiedad_info.barrio") {
           // Sort by barrio ID
           const aIdBarrio = ('id_barrio' in a ? a.id_barrio : null) || ('barrio_id' in a ? a.barrio_id : null) || ('propiedad_info' in a ? a.propiedad_info?.barrio_id : null) || ('_property' in a ? a._property?.barrio_id : null) || 999999;
@@ -614,8 +647,12 @@ export function DataAnalytics() {
 
   // Update the handleSearch function to improve the filtering process
   const handleSearch = async () => {
-    // Only require search term for non-residente searches
-    if (!searchQuery.trim() && searchType !== "residente") {
+    // Allow empty query for resident and municipality searches
+    if (
+      !searchQuery.trim() &&
+      searchType !== "residente" &&
+      searchType !== "municipio"
+    ) {
       setError("Please enter a search term");
       return;
     }
@@ -1478,7 +1515,7 @@ export function DataAnalytics() {
       case "usng":
         return "USNG coordinates";
       case "municipio":
-        return "Municipality name";
+        return "Municipality name or 001-005-006";
       case "residente":
         return "Resident name (optional)";
       default:
@@ -2073,7 +2110,7 @@ export function DataAnalytics() {
                             <span>${property.municipio || 'N/A'}</span>
                             <br>
                             <span style="font-size: 0.9em; color: #666;">
-                              ${property.barrio || 'N/A'} • ${property.sector || 'N/A'}
+                              ${formatLocationCode(property.municipio_id, property.barrio_id, property.sector_id)}
                             </span>
                           </div>
                         </td>`;
@@ -3253,7 +3290,11 @@ export function DataAnalytics() {
                                   <div className="flex flex-col">
                                     <span>{property.municipio}</span>
                                     <span className="text-sm text-muted-foreground">
-                                      {property.barrio} • {property.sector}
+                                      {formatLocationCode(
+                                        property.municipio_id,
+                                        property.barrio_id,
+                                        property.sector_id
+                                      )}
                                     </span>
                                   </div>
                                 </td>
@@ -3942,7 +3983,11 @@ export function DataAnalytics() {
                                 <div className="flex flex-col">
                                   <span>{property.municipio}</span>
                                   <span className="text-sm text-muted-foreground">
-                                    {property.barrio} • {property.sector}
+                                    {formatLocationCode(
+                                      property.municipio_id,
+                                      property.barrio_id,
+                                      property.sector_id
+                                    )}
                                   </span>
                                 </div>
                               </td>
@@ -4821,6 +4866,16 @@ function NotificationDetail({
   open,
   onOpenChange,
 }: NotificationDetailProps) {
+  const formatLocationCode = (
+    municipioId?: number | null,
+    barrioId?: number | null,
+    sectorId?: number | null
+  ) => {
+    const toCode = (value?: number | null) =>
+      String(value ?? 0).padStart(3, "0");
+    return `${toCode(municipioId)}-${toCode(barrioId)}-${toCode(sectorId)}`;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
@@ -4849,7 +4904,11 @@ function NotificationDetail({
                         {prop.property_type_name} ({prop.property_type_id})
                       </CardTitle>
                       <CardDescription>
-                        {prop.municipio} • {prop.barrio} • {prop.sector}
+                        {prop.municipio} • {formatLocationCode(
+                          prop.municipio_id,
+                          prop.barrio_id,
+                          prop.sector_id
+                        )}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
