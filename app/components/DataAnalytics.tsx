@@ -3,12 +3,15 @@
 import {
   AlertCircle,
   Bell,
+  Building2,
   ChevronDown,
   ChevronUp,
+  Crosshair,
   Home,
   MapPin,
   Printer,
   Search,
+  User,
   Users,
   Eye,
   EyeOff,
@@ -532,6 +535,39 @@ export function DataAnalytics() {
     };
   };
 
+  const searchTypeFieldIconClass = "h-4 w-4 shrink-0 text-primary";
+
+  const SearchTypeFieldIcon = () => {
+    switch (searchType) {
+      case "evento":
+        return <Bell className={searchTypeFieldIconClass} aria-hidden />;
+      case "usng":
+        return <Crosshair className={searchTypeFieldIconClass} aria-hidden />;
+      case "municipio":
+        return <Building2 className={searchTypeFieldIconClass} aria-hidden />;
+      case "residente":
+        return <User className={searchTypeFieldIconClass} aria-hidden />;
+      default:
+        return <Search className={searchTypeFieldIconClass} aria-hidden />;
+    }
+  };
+
+  const SuggestionTypeIcon = ({ type }: { type: string }) => {
+    const cls = "h-4 w-4 shrink-0 text-primary";
+    switch (type) {
+      case "evento":
+        return <Bell className={cls} aria-hidden />;
+      case "usng":
+        return <Crosshair className={cls} aria-hidden />;
+      case "municipio":
+        return <Building2 className={cls} aria-hidden />;
+      case "residente":
+        return <User className={cls} aria-hidden />;
+      default:
+        return <Search className={cls} aria-hidden />;
+    }
+  };
+
   // Add search suggestions function
   const fetchSearchSuggestions = useCallback(
     async (query: string) => {
@@ -971,8 +1007,12 @@ export function DataAnalytics() {
     const fetchEvents = async () => {
       try {
         const response = await fetch('/api/eventos');
+        if (!response.ok) {
+          console.error('Failed to fetch events:', response.status);
+          return;
+        }
         const data = await response.json();
-        setEventOptions(data);
+        setEventOptions(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching events:', error);
       }
@@ -3052,6 +3092,12 @@ export function DataAnalytics() {
                 </SelectContent>
               </Select>
               <div className="relative flex-1">
+                <div
+                  className="pointer-events-none absolute left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/15"
+                  aria-hidden
+                >
+                  <SearchTypeFieldIcon />
+                </div>
                 <Input
                   placeholder={getSearchPlaceholder()}
                   value={searchQuery}
@@ -3060,7 +3106,7 @@ export function DataAnalytics() {
                     debouncedFetchSuggestions(e.target.value);
                   }}
                   onFocus={() => setShowSuggestions(true)}
-                  className="flex-1"
+                  className="flex-1 pl-11"
                 />
                 {showSuggestions && searchSuggestions.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
@@ -3074,13 +3120,18 @@ export function DataAnalytics() {
                           {searchSuggestions.map((suggestion) => (
                             <button
                               key={suggestion.id}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
+                              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
                               onClick={() => {
                                 setSearchQuery(suggestion.label);
                                 setShowSuggestions(false);
                               }}
                             >
-                              {suggestion.label}
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/15">
+                                <SuggestionTypeIcon type={suggestion.type} />
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {suggestion.label}
+                              </span>
                             </button>
                           ))}
                         </div>

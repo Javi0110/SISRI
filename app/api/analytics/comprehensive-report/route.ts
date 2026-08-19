@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
-    
+import {
+  applyPropertyFilters,
+  HABITANTE_RELATIONS_INCLUDE,
+  parseLocationCompositeQuery,
+  searchPropertiesWithDamage,
+  type AnalyticsSearchFilters,
+} from "../../../../lib/analytics-search";
+
 type SearchType = 'evento' | 'usng' | 'municipio' | 'residente';
 
 interface Habitante {
@@ -8,21 +15,9 @@ interface Habitante {
   edad: number;
   sex?: string;
   categoria: string;
-  habitantes_condiciones: {
-    condicion: {
-      nombre: string;
-    };
-  }[];
-  habitantes_limitaciones: {
-    limitacion: {
-      nombre: string;
-    };
-  }[];
-  habitantes_disposiciones: {
-    disposiciones: {
-      nombre: string;
-    };
-  }[];
+  habitantes_condiciones: { condicion: { nombre: string } }[];
+  habitantes_limitaciones: { limitacion: { nombre: string } }[];
+  habitantes_disposiciones: { disposiciones: { nombre: string } }[];
 }
 
 interface Property {
@@ -39,124 +34,13 @@ interface Property {
 interface SearchRequest {
   searchType: SearchType;
   searchQuery: string;
-  filters?: {
-    usng?: string;
-    municipio?: string;
-    barrio?: string;
-    sector?: string;
-    ageRange?: { min: number; max: number };
-    propertyType?: string;
-    incidentType?: string;
-    damageType?: string;
-    residentCategory?: string;
-    residentCondition?: string;
-    residentLimitation?: string;
-    residentDisposition?: string;
-    residentName?: string;
-    familyName?: string;
-    dateRange?: { start: string; end: string };
-    sex?: string;
-  };
+  filters?: AnalyticsSearchFilters;
 }
-
-// Helper function to get the latest damage report for a property
-async function getPropertyDamageInfo(propertyId: number) {
-  try {
-    const latestDamage = await prisma.propiedades_afectadas.findFirst({
-      where: {
-        propiedadId: propertyId
-      },
-      orderBy: {
-        fecha: 'desc'
-      },
-      include: {
-        evento: true
-      }
-    });
-
-    return latestDamage ? {
-      daños: latestDamage.daños,
-      fecha: latestDamage.fecha
-    } : {
-      daños: null,
-      fecha: null
-    };
-  } catch (error) {
-    console.error(`Error fetching damage info for property ${propertyId}:`, error);
-    return {
-      daños: null,
-      fecha: null
-    };
-  }
-}
-
-// NEW: Bulk function to get damage info for multiple properties efficiently
-async function getBulkPropertyDamageInfo(propertyIds: number[]): Promise<Map<number, {daños: string | null, fecha: Date | null}>> {
-  try {
-    if (propertyIds.length === 0) {
-      return new Map();
-    }
-
-    const damageData = await prisma.propiedades_afectadas.findMany({
-      where: {
-        propiedadId: {
-          in: propertyIds
-        }
-      },
-      orderBy: [
-        { propiedadId: 'asc' },
-        { fecha: 'desc' }
-      ],
-      select: {
-        propiedadId: true,
-        daños: true,
-        fecha: true
-      }
-    });
-
-    // Create a map with the most recent damage info for each property
-    const damageMap = new Map<number, {daños: string | null, fecha: Date | null}>();
-    
-    // Initialize map with default values
-    propertyIds.forEach(id => {
-      damageMap.set(id, { daños: null, fecha: null });
-    });
-
-    // Group by property and get the most recent entry
-    const groupedDamage = new Map<number, typeof damageData[0]>();
-    damageData.forEach(damage => {
-      if (!groupedDamage.has(damage.propiedadId)) {
-        groupedDamage.set(damage.propiedadId, damage);
-      }
-    });
-
-    // Update map with actual damage data
-    groupedDamage.forEach((damage, propertyId) => {
-      damageMap.set(propertyId, {
-        daños: damage.daños,
-        fecha: damage.fecha
-      });
-    });
-
-    return damageMap;
-  } catch (error) {
-    console.error('Error fetching bulk damage info:', error);
-    // Return empty map with default values on error
-    const errorMap = new Map<number, {daños: string | null, fecha: Date | null}>();
-    propertyIds.forEach(id => {
-      errorMap.set(id, { daños: null, fecha: null });
-    });
-    return errorMap;
-  }
-}
-
-// New helper function to get property damage info in bulk
 
 export async function POST(req: Request) {
   try {
     const { searchType, searchQuery, filters }: SearchRequest = await req.json();
 
-    // Allow empty search queries for resident and municipality searches
     if (!searchQuery && searchType !== 'residente' && searchType !== 'municipio') {
       return NextResponse.json(
         { error: "El término de búsqueda es requerido" },
@@ -165,24 +49,19 @@ export async function POST(req: Request) {
     }
 
     switch (searchType) {
-      case 'evento': {
+      case 'evento':
         return await handleEventSearch(searchQuery, filters);
-      }
-      case 'usng': {
+      case 'usng':
         return await handleUSNGSearch(searchQuery, filters);
-      }
-      case 'municipio': {
+      case 'municipio':
         return await handleMunicipioSearch(searchQuery, filters);
-      }
-      case 'residente': {
+      case 'residente':
         return await handleResidentSearch(searchQuery, filters);
-      }
-      default: {
+      default:
         return NextResponse.json(
           { error: "Tipo de búsqueda no válido" },
           { status: 400 }
         );
-      }
     }
   } catch (error) {
     console.error("Error processing search:", error);
@@ -193,84 +72,46 @@ export async function POST(req: Request) {
   }
 }
 
-async function handleEventSearch(eventQuery: string, filters?: SearchRequest['filters']) {
+async function handleEventSearch(eventQuery: string, filters?: AnalyticsSearchFilters) {
   try {
-    // Find matching events
     const event = await prisma.eventos.findFirst({
       where: {
         OR: [
           { titulo: { contains: eventQuery, mode: 'insensitive' } },
-          { descripcion: { contains: eventQuery, mode: 'insensitive' } }
-        ]
+          { descripcion: { contains: eventQuery, mode: 'insensitive' } },
+        ],
       },
       include: {
+        usngsquare: true,
         notificaciones: {
           include: {
             propiedades_existentes: {
               include: {
                 property_types: true,
-                habitantes: {
-                  include: {
-                    family: true,
-                    habitantes_condiciones: {
-                      include: {
-                        condicion: true
-                      }
-                    },
-                    habitantes_limitaciones: {
-                      include: {
-                        limitacion: true
-                      }
-                    },
-                    habitantes_disposiciones: {
-                      include: {
-                        disposiciones: true
-                      }
-                    }
-                  }
-                },
+                habitantes: { include: HABITANTE_RELATIONS_INCLUDE },
                 municipio: true,
                 barrio: true,
                 sector: true,
-                usngsquare: true
-              }
-            }
-          }
+                usngsquare: true,
+              },
+            },
+          },
         },
         propiedades_afectadas: {
           include: {
             propiedad: {
               include: {
                 property_types: true,
-                habitantes: {
-                  include: {
-                    family: true,
-                    habitantes_condiciones: {
-                      include: {
-                        condicion: true
-                      }
-                    },
-                    habitantes_limitaciones: {
-                      include: {
-                        limitacion: true
-                      }
-                    },
-                    habitantes_disposiciones: {
-                      include: {
-                        disposiciones: true
-                      }
-                    }
-                  }
-                },
+                habitantes: { include: HABITANTE_RELATIONS_INCLUDE },
                 municipio: true,
                 barrio: true,
                 sector: true,
-                usngsquare: true
-              }
-            }
-          }
-        }
-      }
+                usngsquare: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!event) {
@@ -278,49 +119,36 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         searchType: 'evento',
         searchQuery: eventQuery,
         evento: null,
-        propiedades: []
+        propiedades: [],
       });
     }
 
-    // Collect all properties from both notifications and affected properties
     let properties: any[] = [];
 
-    // Add properties from notifications
-    event.notificaciones.forEach(notification => {
-      if (notification.propiedades_existentes) {
-        const property = notification.propiedades_existentes;
-        console.log('Processing notification property:', {
-          id: property.id,
-          type_id: property.property_type_id,
-          type_name: property.property_types?.type_name
-        });
-        properties.push({
-          id: property.id,
-          property_type_id: property.property_type_id || 0,
-          property_type_name: property.property_types?.type_name || 'N/A',
-          daños: null,
-          fecha: notification.fecha_creacion,
-          municipio: property.municipio?.nombre || 'N/A',
-          municipio_id: property.id_municipio,
-          barrio: property.barrio?.nombre || 'N/A',
-          barrio_id: property.id_barrio,
-          sector: property.sector?.nombre || 'N/A',
-          sector_id: property.id_sector,
-          usng: property.usngsquare?.usng || 'N/A',
-          direccion: property.direccion,
-          habitantes: property.habitantes || []
-        });
-      }
-    });
+    for (const notification of event.notificaciones) {
+      const property = notification.propiedades_existentes;
+      if (!property) continue;
 
-    // Add properties from propiedades_afectadas
-    event.propiedades_afectadas.forEach(afectada => {
-      const property = afectada.propiedad;
-      console.log('Processing affected property:', {
+      properties.push({
         id: property.id,
-        type_id: property.property_type_id,
-        type_name: property.property_types?.type_name
+        property_type_id: property.property_type_id || 0,
+        property_type_name: property.property_types?.type_name || 'N/A',
+        daños: null,
+        fecha: notification.fecha_creacion,
+        municipio: property.municipio?.nombre || 'N/A',
+        municipio_id: property.id_municipio,
+        barrio: property.barrio?.nombre || 'N/A',
+        barrio_id: property.id_barrio,
+        sector: property.sector?.nombre || 'N/A',
+        sector_id: property.id_sector,
+        usng: property.usngsquare?.usng || 'N/A',
+        direccion: property.direccion,
+        habitantes: property.habitantes || [],
       });
+    }
+
+    for (const afectada of event.propiedades_afectadas) {
+      const property = afectada.propiedad;
       properties.push({
         id: property.id,
         property_type_id: property.property_type_id || 0,
@@ -335,122 +163,16 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         sector_id: property.id_sector,
         usng: property.usngsquare?.usng || 'N/A',
         direccion: property.direccion,
-        habitantes: property.habitantes || []
+        habitantes: property.habitantes || [],
       });
-    });
+    }
 
-    // Remove duplicates based on property ID
-    properties = properties.filter((property, index, self) =>
-      index === self.findIndex((p) => p.id === property.id)
+    properties = properties.filter(
+      (property, index, self) => index === self.findIndex((p) => p.id === property.id)
     );
 
-    // Apply filters
     if (filters) {
-      // Property type filter
-      if (filters.propertyType) {
-        const propertyTypeId = parseInt(filters.propertyType);
-        if (!isNaN(propertyTypeId)) {
-          console.log('Filtering by property type ID:', propertyTypeId);
-          properties = properties.filter(property => {
-            console.log('Property:', property.id, 'Type ID:', property.property_type_id);
-            const matches = property.property_type_id === propertyTypeId;
-            if (matches) {
-              console.log('Property matches filter:', property.id);
-            }
-            return matches;
-          });
-          console.log('Properties after filter:', properties.length);
-        }
-      }
-
-      // Municipality filter
-      if (filters.municipio) {
-        properties = properties.filter(property => 
-          property.municipio.toLowerCase() === filters.municipio?.toLowerCase()
-        );
-      }
-
-      // Barrio filter
-      if (filters.barrio) {
-        properties = properties.filter(property => 
-          property.barrio.toLowerCase() === filters.barrio?.toLowerCase()
-        );
-      }
-
-      // Sector filter
-      if (filters.sector) {
-        properties = properties.filter(property => 
-          property.sector.toLowerCase() === filters.sector?.toLowerCase()
-        );
-      }
-
-      // USNG filter
-      if (filters.usng) {
-        properties = properties.filter(property => 
-          property.usng.toLowerCase().includes(filters.usng?.toLowerCase() || '')
-        );
-      }
-
-      // Age range filter
-      if (filters.ageRange) {
-        properties = properties.filter((property: Property) => 
-          property.habitantes.some((habitante: Habitante) => 
-            (!filters.ageRange?.min || habitante.edad >= filters.ageRange.min) &&
-            (!filters.ageRange?.max || habitante.edad <= filters.ageRange.max)
-          )
-        );
-      }
-
-      // Resident category filter
-      if (filters.residentCategory) {
-        properties = properties.filter((property: Property) => 
-          property.habitantes.some((habitante: Habitante) => 
-            habitante.categoria.toLowerCase() === filters.residentCategory?.toLowerCase()
-          )
-        );
-      }
-
-      // Resident condition filter
-      if (filters.residentCondition) {
-        properties = properties.filter((property: Property) => 
-          property.habitantes.some((habitante: Habitante) => 
-            habitante.habitantes_condiciones.some(condition => 
-              condition.condicion.nombre.toLowerCase() === filters.residentCondition?.toLowerCase()
-            )
-          )
-        );
-      }
-
-      // Resident limitation filter
-      if (filters.residentLimitation) {
-        properties = properties.filter((property: Property) => 
-          property.habitantes.some((habitante: Habitante) => 
-            habitante.habitantes_limitaciones.some(limitation => 
-              limitation.limitacion.nombre.toLowerCase() === filters.residentLimitation?.toLowerCase()
-            )
-          )
-        );
-      }
-
-      // Resident disposition filter
-      if (filters.residentDisposition) {
-        properties = properties.filter((property: Property) => 
-          property.habitantes.some((habitante: Habitante) => 
-            habitante.habitantes_disposiciones.some(disposition => 
-              disposition.disposiciones.nombre.toLowerCase() === filters.residentDisposition?.toLowerCase()
-            )
-          )
-        );
-      }
-
-      // Sex filter
-      if (filters.sex) {
-        properties = properties.filter((property: Property) => 
-          property.habitantes.some((habitante: Habitante) => 
-            habitante.sex?.toLowerCase() === filters.sex?.toLowerCase()
-          )
-        );
-      }
+      properties = applyEventPropertyFilters(properties, filters);
     }
 
     return NextResponse.json({
@@ -463,17 +185,17 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
         fecha: event.fecha,
         tipo: event.tipo,
         estado: event.estado,
-        usng: event.usngId ? (await prisma.usngsquare.findUnique({ where: { id: event.usngId } }))?.usng : null
+        usng: event.usngsquare?.usng ?? null,
       },
-      notificaciones: event.notificaciones.map(notification => ({
+      notificaciones: event.notificaciones.map((notification) => ({
         id: notification.id,
         tipo: notification.tipo,
         mensaje: notification.mensaje,
         fecha_creacion: notification.fecha_creacion,
         estado: notification.estado,
-        numero_notificacion: notification.numero_notificacion
+        numero_notificacion: notification.numero_notificacion,
       })),
-      propiedades: properties
+      propiedades: properties,
     });
   } catch (error) {
     console.error('Error in handleEventSearch:', error);
@@ -481,421 +203,203 @@ async function handleEventSearch(eventQuery: string, filters?: SearchRequest['fi
   }
 }
 
-async function handleUSNGSearch(usngQuery: string, filters?: SearchRequest['filters']) {
-  const includeClause = {
-    municipio: true,
-    barrio: true,
-    sector: true,
-    usngsquare: true,
-    property_types: true,
-    habitantes: {
-      include: {
-        family: true,
-        ...(prisma as any).habitantes_condiciones ? {
-          habitantes_condiciones: {
-            include: { condicion: true }
-          }
-        } : {},
-        ...(prisma as any).habitantes_limitaciones ? {
-          habitantes_limitaciones: {
-            include: { limitacion: true }
-          }
-        } : {},
-        ...(prisma as any).habitantes_disposiciones ? {
-          habitantes_disposiciones: {
-            include: { disposiciones: true }
-          }
-        } : {}
+function applyEventPropertyFilters(properties: Property[], filters: AnalyticsSearchFilters) {
+  return properties.filter((property) => {
+    if (filters.propertyType) {
+      const propertyTypeId = parseInt(filters.propertyType, 10);
+      if (!Number.isNaN(propertyTypeId) && property.property_type_id !== propertyTypeId) {
+        return false;
       }
     }
-  } as any; // Use any type assertion to bypass Prisma typing limitations
 
-  const properties = await prisma.propiedades_existentes.findMany({
-    where: {
-      usngsquare: {
-        usng: {
-          contains: usngQuery,
-          mode: 'insensitive'
-        }
+    if (
+      filters.municipio &&
+      property.municipio.toLowerCase() !== filters.municipio.toLowerCase()
+    ) {
+      return false;
+    }
+
+    if (filters.barrio && property.barrio.toLowerCase() !== filters.barrio.toLowerCase()) {
+      return false;
+    }
+
+    if (filters.sector && property.sector.toLowerCase() !== filters.sector.toLowerCase()) {
+      return false;
+    }
+
+    if (filters.usng && !property.usng.toLowerCase().includes(filters.usng.toLowerCase())) {
+      return false;
+    }
+
+    if (filters.ageRange) {
+      if (
+        !property.habitantes.some(
+          (habitante) =>
+            (!filters.ageRange?.min || habitante.edad >= filters.ageRange.min) &&
+            (!filters.ageRange?.max || habitante.edad <= filters.ageRange.max)
+        )
+      ) {
+        return false;
       }
-    },
-    orderBy: [
-      { id_municipio: 'asc' },
-      { id_barrio: 'asc' },
-      { id_sector: 'asc' }
-    ],
-    include: includeClause
+    }
+
+    if (filters.residentCategory) {
+      const category = filters.residentCategory.toLowerCase();
+      if (
+        !property.habitantes.some(
+          (habitante) => habitante.categoria.toLowerCase() === category
+        )
+      ) {
+        return false;
+      }
+    }
+
+    if (filters.residentCondition) {
+      const condition = filters.residentCondition.toLowerCase();
+      if (
+        !property.habitantes.some((habitante) =>
+          habitante.habitantes_condiciones.some(
+            (entry) => entry.condicion.nombre.toLowerCase() === condition
+          )
+        )
+      ) {
+        return false;
+      }
+    }
+
+    if (filters.residentLimitation) {
+      const limitation = filters.residentLimitation.toLowerCase();
+      if (
+        !property.habitantes.some((habitante) =>
+          habitante.habitantes_limitaciones.some(
+            (entry) => entry.limitacion.nombre.toLowerCase() === limitation
+          )
+        )
+      ) {
+        return false;
+      }
+    }
+
+    if (filters.residentDisposition) {
+      const disposition = filters.residentDisposition.toLowerCase();
+      if (
+        !property.habitantes.some((habitante) =>
+          habitante.habitantes_disposiciones.some(
+            (entry) => entry.disposiciones.nombre.toLowerCase() === disposition
+          )
+        )
+      ) {
+        return false;
+      }
+    }
+
+    if (filters.sex) {
+      const sex = filters.sex.toLowerCase();
+      if (!property.habitantes.some((habitante) => habitante.sex?.toLowerCase() === sex)) {
+        return false;
+      }
+    }
+
+    return true;
   });
+}
 
-  // Process properties with type assertions
-  const propertiesWithDamage = await Promise.all(properties.map(async (property: any) => {
-    const damageInfo = await getPropertyDamageInfo(property.id);
-    return {
-      id: property.id,
-      property_type_id: property.property_type_id,
-      property_type_name: property.property_types?.type_name || 'N/A',
-      daños: damageInfo.daños,
-      fecha: damageInfo.fecha,
-      municipio: property.municipio?.nombre || 'N/A',
-      municipio_id: property.id_municipio ?? property.municipio?.id_municipio ?? null,
-      barrio: property.barrio?.nombre || 'N/A',
-      barrio_id: property.id_barrio ?? property.barrio?.id_barrio ?? null,
-      sector: property.sector?.nombre || 'N/A',
-      sector_id: property.id_sector ?? property.sector?.id_sector ?? null,
-      usng: property.usngsquare?.usng || 'N/A',
-      direccion: property.direccion || 'N/A',
-      habitantes: property.habitantes.map((h: any) => ({
-        id: h.id,
-        nombre: h.nombre,
-        apellido1: h.apellido1,
-        apellido2: h.apellido2,
-        edad: h.edad,
-        sex: h.sex || h.sexo,
-        sexo: h.sexo || h.sex,
-        categoria: h.categoria,
-        limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
-        limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
-        limitacion_observacion: h.habitantes_limitaciones?.[0]?.observacion || null,
-        condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
-        condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
-        condicion_observacion: h.habitantes_condiciones?.[0]?.observacion || null,
-        disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
-        disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
-        disposicion_observacion: h.habitantes_disposiciones?.[0]?.observacion || null,
-        contacto: h.contacto,
-        propiedad_id: h.propiedad_id,
-        family_id: h.family_id,
-        family: h.family ? {
-          id: h.family.id,
-          apellidos: h.family.apellidos,
-          description: h.family.description
-        } : null,
-        propiedad_info: {
-          id: property.id,
-          property_type_id: property.property_type_id,
-          property_type_name: property.property_types?.type_name || 'N/A',
-          municipio: property.municipio?.nombre || 'N/A',
-          barrio: property.barrio?.nombre || 'N/A',
-          sector: property.sector?.nombre || 'N/A',
-          usng: property.usngsquare?.usng || 'N/A',
-          direccion: property.direccion || 'N/A',
-          municipio_id: property.municipio?.id_municipio,
-          barrio_id: property.barrio?.id_barrio,
-          sector_id: property.sector?.id_sector
-        }
-      }))
-    };
-  }));
-
-  // Apply filters if provided
-  let filteredProperties = propertiesWithDamage;
-  if (filters?.ageRange || filters?.residentCategory) {
-    filteredProperties = propertiesWithDamage.filter((property: any) => {
-      const habitantes = property.habitantes;
-      if (!habitantes.length) return false;
-      
-      return habitantes.some((resident: any) => {
-        const ageMatch = filters?.ageRange ? 
-          (!filters.ageRange.min || resident.edad >= filters.ageRange.min) && 
-          (!filters.ageRange.max || resident.edad <= filters.ageRange.max) : 
-          true;
-        
-        const categoryMatch = filters?.residentCategory ? 
-          resident.categoria.toLowerCase() === filters.residentCategory.toLowerCase() : 
-          true;
-        
-        return ageMatch && categoryMatch;
-      });
-    });
-  }
+async function handleUSNGSearch(usngQuery: string, filters?: AnalyticsSearchFilters) {
+  const propertiesWithDamage = await searchPropertiesWithDamage(
+    {
+      usngsquare: {
+        usng: { contains: usngQuery, mode: 'insensitive' },
+      },
+    },
+    [{ id_municipio: 'asc' }, { id_barrio: 'asc' }, { id_sector: 'asc' }]
+  );
 
   return NextResponse.json({
     searchType: 'usng',
     usngQuery,
-    propiedades: filteredProperties
+    propiedades: applyPropertyFilters(propertiesWithDamage, filters),
   });
 }
 
-function parseLocationCompositeQuery(query: string): { municipioId: number; barrioId: number; sectorId: number } | null {
-  const normalizedQuery = query.trim();
-  const match = normalizedQuery.match(/^(\d{1,3})-(\d{1,3})-(\d{1,3})$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const municipioId = Number.parseInt(match[1], 10);
-  const barrioId = Number.parseInt(match[2], 10);
-  const sectorId = Number.parseInt(match[3], 10);
-
-  if ([municipioId, barrioId, sectorId].some((id) => Number.isNaN(id))) {
-    return null;
-  }
-
-  return { municipioId, barrioId, sectorId };
-}
-
-async function handleMunicipioSearch(municipioQuery: string, filters?: SearchRequest['filters']) {
-  const includeClause = {
-    municipio: true,
-    barrio: true, 
-    sector: true,
-    usngsquare: true,
-    property_types: true,
-    habitantes: {
-      include: {
-        family: true,
-        ...(prisma as any).habitantes_condiciones ? {
-          habitantes_condiciones: {
-            include: { condicion: true }
-          }
-        } : {},
-        ...(prisma as any).habitantes_limitaciones ? {
-          habitantes_limitaciones: {
-            include: { limitacion: true }
-          }
-        } : {},
-        ...(prisma as any).habitantes_disposiciones ? {
-          habitantes_disposiciones: {
-            include: { disposiciones: true }
-          }
-        } : {}
-      }
-    }
-  } as any; // Use any type assertion to bypass Prisma typing limitations
-
+async function handleMunicipioSearch(municipioQuery: string, filters?: AnalyticsSearchFilters) {
   const locationComposite = parseLocationCompositeQuery(municipioQuery);
-  const properties = await prisma.propiedades_existentes.findMany({
-    where: {
-      ...(locationComposite
-        ? {
-            id_municipio: locationComposite.municipioId,
-            id_barrio: locationComposite.barrioId,
-            id_sector: locationComposite.sectorId
-          }
-        : {
-            municipio: {
-              nombre: {
-                contains: municipioQuery,
-                mode: 'insensitive'
-              }
-            }
-          })
-    },
-    include: includeClause
-  });
-
-  // Get all property IDs for bulk damage query  
-  const propertyIds = properties.map(p => p.id);
-  
-  // Get damage info for all properties in one query to avoid connection pool exhaustion
-  const damageMap = await getBulkPropertyDamageInfo(propertyIds);
-
-  // Process properties with type assertions
-  const propertiesWithDamage = properties.map((property: any) => {
-    const damageInfo = damageMap.get(property.id) || { daños: null, fecha: null };
-    return {
-      id: property.id,
-      property_type_id: property.property_type_id,
-      property_type_name: property.property_types?.type_name || 'N/A',
-      daños: damageInfo.daños,
-      fecha: damageInfo.fecha,
-      municipio: property.municipio?.nombre || 'N/A',
-      municipio_id: property.id_municipio ?? property.municipio?.id_municipio ?? null,
-      barrio: property.barrio?.nombre || 'N/A',
-      barrio_id: property.id_barrio ?? property.barrio?.id_barrio ?? null,
-      sector: property.sector?.nombre || 'N/A',
-      sector_id: property.id_sector ?? property.sector?.id_sector ?? null,
-      usng: property.usngsquare?.usng || 'N/A',
-      direccion: property.direccion || 'N/A',
-      habitantes: property.habitantes.map((h: any) => ({
-        id: h.id,
-        nombre: h.nombre,
-        apellido1: h.apellido1,
-        apellido2: h.apellido2,
-        edad: h.edad,
-        sex: h.sex || h.sexo,
-        sexo: h.sexo || h.sex,
-        categoria: h.categoria,
-        limitacion: h.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
-        limitacion_descripcion: h.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
-        limitacion_observacion: h.habitantes_limitaciones?.[0]?.observacion || null,
-        condicion: h.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
-        condicion_descripcion: h.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
-        condicion_observacion: h.habitantes_condiciones?.[0]?.observacion || null,
-        disposicion: h.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
-        disposicion_descripcion: h.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
-        disposicion_observacion: h.habitantes_disposiciones?.[0]?.observacion || null,
-        contacto: h.contacto,
-        propiedad_id: h.propiedad_id,
-        family_id: h.family_id,
-        family: h.family ? {
-          id: h.family.id,
-          apellidos: h.family.apellidos,
-          description: h.family.description
-        } : null,
-        propiedad_info: {
-          id: property.id,
-          property_type_id: property.property_type_id,
-          property_type_name: property.property_types?.type_name || 'N/A',
-          municipio: property.municipio?.nombre || 'N/A',
-          barrio: property.barrio?.nombre || 'N/A',
-          sector: property.sector?.nombre || 'N/A',
-          usng: property.usngsquare?.usng || 'N/A',
-          direccion: property.direccion || 'N/A',
-          municipio_id: property.municipio?.id_municipio,
-          barrio_id: property.barrio?.id_barrio,
-          sector_id: property.sector?.id_sector
-        }
-      }))
-    };
-  });
-
-  // Apply additional filters
-  if (filters) {
-    const filteredProperties = propertiesWithDamage.filter(property => {
-      let matches = true;
-
-      if (filters.usng && !property.usng.toLowerCase().includes(filters.usng.toLowerCase())) {
-        matches = false;
+  const where = locationComposite
+    ? {
+        id_municipio: locationComposite.municipioId,
+        id_barrio: locationComposite.barrioId,
+        id_sector: locationComposite.sectorId,
       }
+    : {
+        municipio: {
+          nombre: { contains: municipioQuery, mode: 'insensitive' as const },
+        },
+      };
 
-      if (filters.municipio && !property.municipio.toLowerCase().includes(filters.municipio.toLowerCase())) {
-        matches = false;
-      }
-
-      if (filters.propertyType) {
-        const propertyTypeId = parseInt(filters.propertyType);
-        if (!isNaN(propertyTypeId)) {
-          matches = property.property_type_id === propertyTypeId;
-        }
-      }
-
-      if (filters.ageRange) {
-        const hasResidentInRange = property.habitantes.some(
-          (resident: any) => {
-            const age = resident.edad || 0; // Default to 0 if null
-            return age >= filters.ageRange!.min && age <= filters.ageRange!.max;
-          }
-        );
-        if (!hasResidentInRange) {
-          matches = false;
-        }
-      }
-
-      if (filters.residentCategory) {
-        const hasResidentOfCategory = property.habitantes.some(
-          (resident: any) => resident.categoria === filters.residentCategory
-        );
-        if (!hasResidentOfCategory) {
-          matches = false;
-        }
-      }
-
-      return matches;
-    });
-
-    return NextResponse.json({
-      searchType: 'municipio',
-      municipioQuery,
-      propiedades: filteredProperties
-    });
-  }
+  const propertiesWithDamage = await searchPropertiesWithDamage(where);
 
   return NextResponse.json({
     searchType: 'municipio',
     municipioQuery,
-    propiedades: propertiesWithDamage
+    propiedades: applyPropertyFilters(propertiesWithDamage, filters),
   });
 }
 
-async function handleResidentSearch(residentQuery: string, filters?: SearchRequest['filters']) {
+async function handleResidentSearch(residentQuery: string, filters?: AnalyticsSearchFilters) {
   try {
-    // Build the where clause for the query with family included
-    const whereClause: any = {};
-    
-    // Add name filter if a query is provided
+    const whereClause: Record<string, unknown> = {};
+
     if (residentQuery) {
-      whereClause.nombre = {
-        contains: residentQuery,
-        mode: 'insensitive'
-      };
+      whereClause.nombre = { contains: residentQuery, mode: 'insensitive' };
     }
-    
-    // Add category filter
+
     if (filters?.residentCategory && filters.residentCategory !== 'all') {
       whereClause.categoria = filters.residentCategory;
     }
-    
-    // Add condition filter by ID
+
     if (filters?.residentCondition) {
-      const conditionId = parseInt(filters.residentCondition);
-      if (!isNaN(conditionId)) {
+      const conditionId = parseInt(filters.residentCondition, 10);
+      if (!Number.isNaN(conditionId)) {
         whereClause.habitantes_condiciones = {
-          some: {
-            condicion: {
-              id: conditionId
-            }
-          }
+          some: { condicion: { id: conditionId } },
         };
       }
     }
-    
-    // Add limitation filter by ID
+
     if (filters?.residentLimitation) {
-      const limitationId = parseInt(filters.residentLimitation);
-      if (!isNaN(limitationId)) {
+      const limitationId = parseInt(filters.residentLimitation, 10);
+      if (!Number.isNaN(limitationId)) {
         whereClause.habitantes_limitaciones = {
-          some: {
-            limitacion: {
-              id: limitationId
-            }
-          }
+          some: { limitacion: { id: limitationId } },
         };
       }
     }
-    
-    // Add disposition filter by ID
+
     if (filters?.residentDisposition) {
-      const dispositionId = parseInt(filters.residentDisposition);
-      if (!isNaN(dispositionId)) {
+      const dispositionId = parseInt(filters.residentDisposition, 10);
+      if (!Number.isNaN(dispositionId)) {
         whereClause.habitantes_disposiciones = {
-          some: {
-            disposiciones: {
-              id: dispositionId
-            }
-          }
+          some: { disposiciones: { id: dispositionId } },
         };
       }
     }
-    
-    // Add age range filter
+
     if (filters?.ageRange) {
       whereClause.edad = {
         gte: filters.ageRange.min,
-        lte: filters.ageRange.max
-      };
-    }
-    
-    // Add family name filter
-    if (filters?.familyName) {
-      whereClause.family = {
-        apellidos: {
-          contains: filters.familyName,
-          mode: 'insensitive'
-        }
-      };
-    }
-    
-    // Add sex filter
-    if (filters?.sex) {
-      whereClause.sex = {
-        equals: filters.sex,
-        mode: 'insensitive'
+        lte: filters.ageRange.max,
       };
     }
 
-    // First find all residents that match the criteria - use any to bypass type checking
+    if (filters?.familyName) {
+      whereClause.family = {
+        apellidos: { contains: filters.familyName, mode: 'insensitive' },
+      };
+    }
+
+    if (filters?.sex) {
+      whereClause.sex = { equals: filters.sex, mode: 'insensitive' };
+    }
+
     const residents = await prisma.habitantes.findMany({
       where: whereClause,
       include: {
@@ -905,101 +409,72 @@ async function handleResidentSearch(residentQuery: string, filters?: SearchReque
             barrio: true,
             sector: true,
             usngsquare: true,
-            property_types: true
-          }
+            property_types: true,
+          },
         },
-        family: true,
-        ...(prisma as any).habitantes_condiciones ? {
-          habitantes_condiciones: {
-            include: { condicion: true }
-          }
-        } : {},
-        ...(prisma as any).habitantes_limitaciones ? {
-          habitantes_limitaciones: {
-            include: { limitacion: true }
-          }
-        } : {},
-        ...(prisma as any).habitantes_disposiciones ? {
-          habitantes_disposiciones: {
-            include: { disposiciones: true }
-          }
-        } : {}
-      }
-    } as any);
-    
-    if (residents.length === 0) {
-      return NextResponse.json({
-        searchType: 'residente',
-        residentQuery,
-        residentes: []
-      });
-    }
-
-    // Now process the residents to include property information
-    const processedResidents = residents.map((resident: any) => {
-      return {
-        id: resident.id,
-        nombre: resident.nombre,
-        apellido1: resident.apellido1,
-        apellido2: resident.apellido2,
-        edad: resident.edad,
-        sex: resident.sex || resident.sexo,
-        sexo: resident.sexo || resident.sex,
-        categoria: resident.categoria,
-        limitacion: resident.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
-        limitacion_descripcion: resident.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
-        limitacion_observacion: resident.habitantes_limitaciones?.[0]?.observacion || null,
-        limitacion_id: resident.habitantes_limitaciones?.[0]?.limitacion?.id || null,
-        condicion: resident.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
-        condicion_descripcion: resident.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
-        condicion_observacion: resident.habitantes_condiciones?.[0]?.observacion || null,
-        condicion_id: resident.habitantes_condiciones?.[0]?.condicion?.id || null,
-        disposicion: resident.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
-        disposicion_descripcion: resident.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
-        disposicion_observacion: resident.habitantes_disposiciones?.[0]?.observacion || null,
-        disposicion_id: resident.habitantes_disposiciones?.[0]?.disposiciones?.id || null,
-        contacto: resident.contacto,
-        propiedad_id: resident.propiedad_id,
-        family_id: resident.family_id,
-        // Add the full array structures for frontend filtering and sorting
-        habitantes_condiciones: resident.habitantes_condiciones || [],
-        habitantes_limitaciones: resident.habitantes_limitaciones || [],
-        habitantes_disposiciones: resident.habitantes_disposiciones || [],
-        // Add location IDs for frontend filtering
-        id_municipio: resident.propiedad?.municipio?.id_municipio || null,
-        id_barrio: resident.propiedad?.barrio?.id_barrio || null,
-        id_sector: resident.propiedad?.sector?.id_sector || null,
-        family: resident.family ? {
-          id: resident.family.id,
-          apellidos: resident.family.apellidos,
-          description: resident.family.description
-        } : null,
-        propiedad_info: {
-          id: resident.propiedad?.id || null,
-          property_type_id: resident.propiedad?.property_type_id,
-          property_type_name: resident.propiedad?.property_types?.type_name || 'N/A',
-          municipio: resident.propiedad?.municipio?.nombre || 'N/A',
-          barrio: resident.propiedad?.barrio?.nombre || 'N/A',
-          sector: resident.propiedad?.sector?.nombre || 'N/A',
-          usng: resident.propiedad?.usngsquare?.usng || 'N/A',
-          direccion: resident.propiedad?.direccion || 'N/A',
-          municipio_id: resident.propiedad?.municipio?.id_municipio,
-          barrio_id: resident.propiedad?.barrio?.id_barrio,
-          sector_id: resident.propiedad?.sector?.id_sector
-        }
-      };
+        ...HABITANTE_RELATIONS_INCLUDE,
+      },
     });
+
+    const processedResidents = residents.map((resident: any) => ({
+      id: resident.id,
+      nombre: resident.nombre,
+      apellido1: resident.apellido1,
+      apellido2: resident.apellido2,
+      edad: resident.edad,
+      sex: resident.sex || resident.sexo,
+      sexo: resident.sexo || resident.sex,
+      categoria: resident.categoria,
+      limitacion: resident.habitantes_limitaciones?.[0]?.limitacion?.nombre || 'N/A',
+      limitacion_descripcion: resident.habitantes_limitaciones?.[0]?.limitacion?.descripcion || null,
+      limitacion_observacion: resident.habitantes_limitaciones?.[0]?.observacion || null,
+      limitacion_id: resident.habitantes_limitaciones?.[0]?.limitacion?.id || null,
+      condicion: resident.habitantes_condiciones?.[0]?.condicion?.nombre || 'N/A',
+      condicion_descripcion: resident.habitantes_condiciones?.[0]?.condicion?.descripcion || null,
+      condicion_observacion: resident.habitantes_condiciones?.[0]?.observacion || null,
+      condicion_id: resident.habitantes_condiciones?.[0]?.condicion?.id || null,
+      disposicion: resident.habitantes_disposiciones?.[0]?.disposiciones?.nombre || 'N/A',
+      disposicion_descripcion: resident.habitantes_disposiciones?.[0]?.disposiciones?.descripcion || null,
+      disposicion_observacion: resident.habitantes_disposiciones?.[0]?.observacion || null,
+      disposicion_id: resident.habitantes_disposiciones?.[0]?.disposiciones?.id || null,
+      contacto: resident.contacto,
+      propiedad_id: resident.propiedad_id,
+      family_id: resident.family_id,
+      habitantes_condiciones: resident.habitantes_condiciones || [],
+      habitantes_limitaciones: resident.habitantes_limitaciones || [],
+      habitantes_disposiciones: resident.habitantes_disposiciones || [],
+      id_municipio: resident.propiedad?.municipio?.id_municipio || null,
+      id_barrio: resident.propiedad?.barrio?.id_barrio || null,
+      id_sector: resident.propiedad?.sector?.id_sector || null,
+      family: resident.family
+        ? {
+            id: resident.family.id,
+            apellidos: resident.family.apellidos,
+            description: resident.family.description,
+          }
+        : null,
+      propiedad_info: {
+        id: resident.propiedad?.id || null,
+        property_type_id: resident.propiedad?.property_type_id,
+        property_type_name: resident.propiedad?.property_types?.type_name || 'N/A',
+        municipio: resident.propiedad?.municipio?.nombre || 'N/A',
+        barrio: resident.propiedad?.barrio?.nombre || 'N/A',
+        sector: resident.propiedad?.sector?.nombre || 'N/A',
+        usng: resident.propiedad?.usngsquare?.usng || 'N/A',
+        direccion: resident.propiedad?.direccion || 'N/A',
+        municipio_id: resident.propiedad?.municipio?.id_municipio,
+        barrio_id: resident.propiedad?.barrio?.id_barrio,
+        sector_id: resident.propiedad?.sector?.id_sector,
+      },
+    }));
 
     return NextResponse.json({
       searchType: 'residente',
       residentQuery,
-      residentes: processedResidents
+      residentes: processedResidents,
     });
   } catch (error) {
     console.error("Error in handleResidentSearch:", error);
-    return NextResponse.json(
-      { error: "Error al buscar residentes" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error al buscar residentes" }, { status: 500 });
   }
-} 
+}

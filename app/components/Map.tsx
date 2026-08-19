@@ -802,8 +802,8 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       style={{ minHeight: '500px' }}
     >
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-          <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500" />
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
         </div>
       )}
       <div 
@@ -815,27 +815,27 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
       {usngContext && (
         <div
           ref={usngPopoverRef}
-          className="fixed z-[9999] w-80 max-h-[70vh] overflow-auto bg-white rounded-lg shadow-lg border border-gray-200 p-4"
+          className="fixed z-[9999] w-80 max-h-[70vh] overflow-auto rounded-md border border-border bg-card p-4 shadow-md"
           style={{ left: Math.max(8, Math.min(usngContext.x, window.innerWidth - 328)), top: Math.max(8, Math.min(usngContext.y, window.innerHeight - 308)) }}
         >
           {usngContext.loading ? (
-            <div className="flex justify-center py-6"><div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full" /></div>
+            <div className="flex justify-center py-6"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>
           ) : usngContext.error ? (
-            <p className="text-sm text-red-600">{usngContext.error}</p>
+            <p className="text-sm text-destructive">{usngContext.error}</p>
           ) : usngContext.data ? (
             <div className="space-y-3">
-              <h3 className="font-semibold text-sm text-gray-800">USNG: {usngContext.data.usng}</h3>
-              <div className="text-xs text-gray-600 space-y-2">
+              <h3 className="font-semibold text-sm text-foreground">USNG: {usngContext.data.usng}</h3>
+              <div className="text-xs text-muted-foreground space-y-2">
                 <p><strong>Properties:</strong> {usngContext.data.properties.length}</p>
                 <p><strong>Events:</strong> {usngContext.data.eventos.length}</p>
                 <p><strong>Residents:</strong> {usngContext.data.habitantes.length}</p>
               </div>
               {usngContext.data.eventos.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Events</p>
+                  <p className="enterprise-section-label mb-1">Events</p>
                   <div className="max-h-24 overflow-y-auto space-y-1 text-xs">
                     {usngContext.data.eventos.slice(0, 5).map((e) => (
-                      <div key={e.id} className="py-1 border-b border-gray-100 last:border-0">
+                      <div key={e.id} className="py-1 border-b border-border last:border-0">
                         {e.titulo || 'Untitled'} · {e.tipo || '-'} ({e.estado || '-'})
                       </div>
                     ))}
@@ -844,34 +844,34 @@ export default function MapComponent({ onMapInitialized }: MapComponentProps) {
               )}
               {usngContext.data.properties.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Properties</p>
+                  <p className="enterprise-section-label mb-1">Properties</p>
                   <div className="max-h-24 overflow-y-auto space-y-1 text-xs">
                     {usngContext.data.properties.slice(0, 5).map((p) => (
-                      <div key={p.id} className="py-1 border-b border-gray-100 last:border-0">
+                      <div key={p.id} className="py-1 border-b border-border last:border-0">
                         {p.direccion || 'No address'} · {p.type || '-'}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="pt-2 border-t border-gray-200">
-                <p className="text-xs font-medium text-gray-500 mb-2">Add to this USNG</p>
+              <div className="pt-2 border-t border-border">
+                <p className="enterprise-section-label mb-2">Add to this USNG</p>
                 <div className="flex flex-col gap-1">
                   <a
                     href={`/reports?usng=${encodeURIComponent(usngContext.data.usng)}`}
-                    className="text-xs px-2 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                    className="rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                   >
                     + Add Event
                   </a>
                   <a
                     href={`/reports?usng=${encodeURIComponent(usngContext.data.usng)}&mode=property`}
-                    className="text-xs px-2 py-1.5 rounded bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
+                    className="rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                   >
                     + Add Property
                   </a>
                   <a
                     href={`/reports?usng=${encodeURIComponent(usngContext.data.usng)}&mode=resident`}
-                    className="text-xs px-2 py-1.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
+                    className="rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                   >
                     + Add Person
                   </a>

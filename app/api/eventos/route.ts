@@ -2,6 +2,27 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import prisma from '../../../lib/prisma';
 
+export async function GET() {
+  try {
+    const eventos = await prisma.eventos.findMany({
+      select: {
+        id: true,
+        titulo: true,
+        tipo: true,
+        estado: true,
+        fecha: true,
+      },
+      orderBy: { fecha: 'desc' },
+      take: 100,
+    });
+
+    return NextResponse.json(eventos);
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const data = await request.json()
